@@ -1,0 +1,8 @@
+.DS_Store
+build/
+dist/
+CLAUDE.md
+
+# Apple signing / notarization keys — never commit
+*.p8
+*.p12
