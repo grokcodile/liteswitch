@@ -114,6 +114,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// combo being recorded can't fire the old binding mid-keystroke.
     var recording = false { didSet { syncHotkeys() } }
 
+    /// True while we're posting the ⌘Space→⌘N sequence. Parking the hotkeys
+    /// here too is what makes ⌘1–⌘4 usable AS the global shortcuts (the
+    /// natural choice, mirroring Spotlight's own keys): Carbon captures
+    /// matching combos even when synthesized, so without parking, our own
+    /// posted ⌘N would be eaten by our own registration — and re-trigger it.
+    private var synthesizing = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installHandler()
@@ -201,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         conflicted = []
         defer { settings?.refreshBanner() }
-        guard !recording else { return }
+        guard !recording && !synthesizing else { return }
         for (i, panel) in panels.enumerated() {
             guard let sc = Shortcut.load(panel) else { continue }
             let isApps = panel.defaultsKey == "apps"
@@ -271,11 +278,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // sequence; the rare cost is that a hotkey pressed while Spotlight
         // is already open closes it and the panel key reaches the previous
         // app. (When Spotlight is open it has focus — just press ⌘1–⌘4.)
+        // Park our own hotkeys for the duration of the sequence (see the
+        // `synthesizing` note above), then reconcile them back afterward.
+        synthesizing = true
+        syncHotkeys()
         post(CGKeyCode(kVK_Space), .maskCommand)
         let gap = (UserDefaults.standard.object(forKey: "panelDelay")
                    as? Double).map { min(max($0, 0), 1) } ?? 0.03
         DispatchQueue.main.asyncAfter(deadline: .now() + gap) { [weak self] in
             self?.post(key, .maskCommand)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + gap + 0.15) { [weak self] in
+            self?.synthesizing = false
+            self?.syncHotkeys()
         }
     }
 
@@ -426,10 +441,20 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             v.addSubview(sub)
 
             let rec = RecorderButton(panel: panel, appDelegate: appDelegate)
-            rec.frame = NSRect(x: w - pad - 170, y: y + 6, width: 170, height: 26)
+            rec.frame = NSRect(x: w - pad - 28 - 150, y: y + 6, width: 150, height: 26)
+            rec.toolTip = "Click, then press a shortcut"
             rec.onChange = { [weak self] in self?.shortcutsChanged() }
             recorders.append(rec)
             v.addSubview(rec)
+
+            let clear = NSButton(title: "✕", target: self, action: #selector(clearShortcut(_:)))
+            clear.tag = i
+            clear.isBordered = false
+            clear.font = .systemFont(ofSize: 12, weight: .medium)
+            clear.contentTintColor = .tertiaryLabelColor
+            clear.toolTip = "Remove shortcut"
+            clear.frame = NSRect(x: w - pad - 24, y: y + 8, width: 24, height: 22)
+            v.addSubview(clear)
         }
 
         // Footer: banner (permission / conflicts / login note) + launch at login.
@@ -456,6 +481,13 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         // A recording may have stolen another row's chord — refresh them all.
         recorders.forEach { $0.refreshTitle() }
         appDelegate?.syncHotkeys()
+    }
+
+    @objc private func clearShortcut(_ sender: NSButton) {
+        RecorderButton.active?.cancelRecording()   // ✕ during a recording aborts it too
+        guard panels.indices.contains(sender.tag) else { return }
+        Shortcut.clear(panels[sender.tag])
+        shortcutsChanged()
     }
 
     /// One line of orange footer text; priority: missing permission, then
