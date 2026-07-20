@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Keylight</string>
+    <string>Spotlight Shortcuts</string>
     <key>CFBundleDisplayName</key>
-    <string>Keylight</string>
+    <string>Spotlight Shortcuts</string>
     <key>CFBundleIdentifier</key>
-    <string>com.ethan.keylight</string>
+    <string>com.ethan.spotlightshortcuts</string>
     <key>CFBundleVersion</key>
     <string>0.1</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1</string>
     <key>CFBundleExecutable</key>
-    <string>Keylight</string>
+    <string>Spotlight Shortcuts</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>

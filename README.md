@@ -1,14 +1,12 @@
-# Keylight
-
-*(working title)*
+# Spotlight Shortcuts
 
 **Give every Spotlight panel its own keyboard shortcut.**
 
 macOS 26 gave Spotlight four panels — **Apps** (⌘1), **Files** (⌘2),
 **Actions** (⌘3), and **Clipboard** (⌘4) — but the only way to reach one is
-to open Spotlight first and press its number. Keylight assigns each panel a
-global shortcut of your own, so the clipboard history (or any other panel) is
-one keystroke away from anywhere.
+to open Spotlight first and press its number. Spotlight Shortcuts assigns
+each panel a global shortcut of your own, so the clipboard history (or any
+other panel) is one keystroke away from anywhere.
 
 - **Apps** opens via the system's own `Apps.app` stub — instant, no
   permissions needed.
@@ -23,7 +21,7 @@ collection. Launch the app to open Settings and record your shortcuts.
 ## Build
 
 ```sh
-bash build.sh    # → ./build/Keylight.app (ad-hoc signed)
+bash build.sh    # → "./build/Spotlight Shortcuts.app" (ad-hoc signed)
 ```
 
 Requires macOS 26+.

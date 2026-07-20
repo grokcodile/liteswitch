@@ -1,7 +1,7 @@
-// Keylight — give every Spotlight panel its own keyboard shortcut.
+// Spotlight Shortcuts — give every Spotlight panel its own keyboard shortcut.
 //
 // macOS 26 gave Spotlight four panels — Apps ⌘1, Files ⌘2, Actions ⌘3,
-// Clipboard ⌘4 — reachable only after opening Spotlight itself. Keylight lets
+// Clipboard ⌘4 — reachable only after opening Spotlight itself. Spotlight Shortcuts lets
 // you assign a global shortcut to each panel directly.
 //
 // How panels open:
@@ -409,7 +409,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable, .miniaturizable],
                    backing: .buffered, defer: false)
-        title = "Keylight"
+        title = "Spotlight Shortcuts"
         isReleasedWhenClosed = false
         center()
 
@@ -506,7 +506,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             if sender.state == .on {
                 try SMAppService.mainApp.register()
                 if SMAppService.mainApp.status == .requiresApproval {
-                    loginNotice = "Approve Keylight in System Settings → General → Login Items."
+                    loginNotice = "Approve Spotlight Shortcuts in System Settings → General → Login Items."
                 }
             } else {
                 try SMAppService.mainApp.unregister()
