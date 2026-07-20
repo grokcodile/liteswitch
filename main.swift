@@ -110,10 +110,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// combo) — surfaced in the settings banner.
     private(set) var conflicted: [String] = []
 
-    /// When we last opened Spotlight ourselves — drives the panel-switch
-    /// heuristic in synthesizeSpotlight().
-    private var lastSpotlightOpen = Date.distantPast
-
     /// True while the recorder is capturing — all hotkeys are parked so the
     /// combo being recorded can't fire the old binding mid-keystroke.
     var recording = false { didSet { syncHotkeys() } }
@@ -232,13 +228,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let config = NSWorkspace.OpenConfiguration()
                 config.addsToRecentItems = false   // a hotkey fires many times a day
                 NSWorkspace.shared.openApplication(at: stub, configuration: config) { [weak self] _, error in
+                    guard error != nil else { return }
                     DispatchQueue.main.async {
-                        guard let self else { return }
-                        if error == nil {
-                            self.lastSpotlightOpen = Date()   // the stub opened Spotlight's Apps panel
-                        } else {
-                            self.synthesizeSpotlight(then: panel.spotlightKey)
-                        }
+                        self?.synthesizeSpotlight(then: panel.spotlightKey)
                     }
                 }
                 return
@@ -261,27 +253,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     kVK_Control, kVK_RightControl, kVK_Function]
             .contains { CGEventSource.keyState(.hidSystemState, key: CGKeyCode($0)) }
         if held {
-            guard attempt < 24 else { return }
+            // Waiting on the user's fingers: people hold a chord for a long
+            // beat when they expect something to appear, so give them 2 s
+            // (80 × 25 ms) before quietly giving up, not a fraction of one.
+            guard attempt < 80 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) { [weak self] in
                 self?.synthesizeSpotlight(then: key, attempt: attempt + 1)
             }
             return
         }
-        // ⌘Space is a TOGGLE, and there is no permission-free way to ask
-        // whether Spotlight is open (it never becomes the frontmost app, the
-        // window list needs Screen Recording, and macOS 27 exposes no
-        // Spotlight UI process). Heuristic: if WE opened it within the last
-        // few seconds, assume it still is and send only the panel key — that
-        // makes the natural hotkey→hotkey panel-switch gesture work instead
-        // of closing Spotlight and leaking a stray ⌘N. The residual risk
-        // (user dismissed Spotlight inside the window, bare ⌘N reaches the
-        // frontmost app) is the rarer gesture by far.
-        if Date().timeIntervalSince(lastSpotlightOpen) < 6 {
-            lastSpotlightOpen = Date()
-            post(key, .maskCommand)
-            return
-        }
-        lastSpotlightOpen = Date()
+        // ⌘Space is a toggle and there is no permission-free way to ask
+        // whether Spotlight is already open (it never becomes the frontmost
+        // app, the window list needs Screen Recording, and macOS 27 exposes
+        // no Spotlight UI process). We deliberately do NOT guess: an earlier
+        // "assume it's still open for a few seconds" heuristic turned every
+        // quick successive press into a silent no-op. Always send the full
+        // sequence; the rare cost is that a hotkey pressed while Spotlight
+        // is already open closes it and the panel key reaches the previous
+        // app. (When Spotlight is open it has focus — just press ⌘1–⌘4.)
         post(CGKeyCode(kVK_Space), .maskCommand)
         let gap = (UserDefaults.standard.object(forKey: "panelDelay")
                    as? Double).map { min(max($0, 0), 1) } ?? 0.03
