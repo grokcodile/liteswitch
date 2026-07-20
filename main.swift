@@ -35,6 +35,11 @@ let panels: [Panel] = [
     Panel(name: "Clipboard", subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
 ]
 
+/// Virtual keycodes for F1–F20 — the one family allowed as modifier-less
+/// hotkeys (they exist to be bare; a bare letter would hijack typing).
+let fKeyCodes: Set<UInt32> = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109,
+                              103, 111, 105, 107, 113, 106, 64, 79, 80, 90]
+
 /// A recorded shortcut: virtual keycode + Carbon modifier mask.
 struct Shortcut: Equatable {
     var keyCode: UInt32
@@ -83,6 +88,8 @@ struct Shortcut: Equatable {
             116: "⇞", 121: "⇟", 115: "↖", 119: "↘", 117: "⌦",
             122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
             98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",
+            105: "F13", 107: "F14", 113: "F15", 106: "F16", 64: "F17", 79: "F18",
+            80: "F19", 90: "F20",
         ]
         return names[code] ?? "key\(code)"
     }
@@ -96,6 +103,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: SettingsWindow?
     private var axPollTimer: Timer?
     private(set) var hasAccessibility = AXIsProcessTrusted()
+
+    /// Panels whose saved shortcut failed to register (another app owns the
+    /// combo) — surfaced in the settings banner.
+    private(set) var conflicted: [String] = []
+
+    /// When we last opened Spotlight ourselves — drives the panel-switch
+    /// heuristic in synthesizeSpotlight().
+    private var lastSpotlightOpen = Date.distantPast
 
     /// True while the recorder is capturing — all hotkeys are parked so the
     /// combo being recorded can't fire the old binding mid-keystroke.
@@ -140,7 +155,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if trusted != self.hasAccessibility {
                 self.hasAccessibility = trusted
                 self.syncHotkeys()
-                self.settings?.refreshBanner()
             }
             self.axPollTimer?.invalidate()
             if !trusted {
@@ -149,7 +163,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.axPollTimer?.invalidate()
                     self.hasAccessibility = true
                     self.syncHotkeys()
-                    self.settings?.refreshBanner()
                 }
             }
         }
@@ -181,11 +194,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// eats its combo system-wide, so only register what can actually work:
     /// Apps always can (it launches a stub app, no permissions); the synthesis
     /// panels only when Accessibility is granted. Nothing while recording.
+    /// Registration failures (another app owns the combo) are collected for
+    /// the settings banner rather than silently ignored.
     func syncHotkeys() {
         for (i, ref) in hotKeys.enumerated() where ref != nil {
             UnregisterEventHotKey(ref!)
             hotKeys[i] = nil
         }
+        conflicted = []
+        defer { settings?.refreshBanner() }
         guard !recording else { return }
         for (i, panel) in panels.enumerated() {
             guard let sc = Shortcut.load(panel) else { continue }
@@ -193,8 +210,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard isApps || hasAccessibility else { continue }
             let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */,
                                    id: UInt32(i + 1))
-            RegisterEventHotKey(sc.keyCode, sc.modifiers, id,
-                                GetEventDispatcherTarget(), 0, &hotKeys[i])
+            let status = RegisterEventHotKey(sc.keyCode, sc.modifiers, id,
+                                             GetEventDispatcherTarget(), 0, &hotKeys[i])
+            if status != noErr {   // e.g. eventHotKeyExistsErr: Raycast/Alfred owns it
+                hotKeys[i] = nil
+                conflicted.append("\(panel.name) (\(sc.label))")
+            }
         }
     }
 
@@ -206,25 +227,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if panel.defaultsKey == "apps" {
             let stub = URL(fileURLWithPath: "/System/Applications/Apps.app")
             if FileManager.default.fileExists(atPath: stub.path) {
-                NSWorkspace.shared.openApplication(at: stub,
-                                                   configuration: NSWorkspace.OpenConfiguration())
+                let config = NSWorkspace.OpenConfiguration()
+                config.addsToRecentItems = false   // a hotkey fires many times a day
+                NSWorkspace.shared.openApplication(at: stub, configuration: config) { [weak self] _, error in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        if error == nil {
+                            self.lastSpotlightOpen = Date()   // the stub opened Spotlight's Apps panel
+                        } else {
+                            self.synthesizeSpotlight(then: panel.spotlightKey)
+                        }
+                    }
+                }
                 return
             }
-            // No stub (older macOS) — fall through to synthesis.
+            // No stub (shouldn't happen on 26+) — fall through to synthesis.
         }
         synthesizeSpotlight(then: panel.spotlightKey)
     }
 
     /// ⌘Space, small gap, ⌘N — waiting first for the user to release the
     /// non-⌘ modifiers of their shortcut (a lingering ⇧ would turn ⌘4 into
-    /// the ⌘⇧4 screenshot shortcut; ⌥/⌃ similarly corrupt the sequence).
-    /// Learnings inherited from Key54's clipboard experiment: Spotlight
-    /// buffers keys behind its ⌘Space, but a ~30 ms gap is needed for cold
-    /// starts (1 ms was observed to miss).
+    /// the ⌘⇧4 screenshot shortcut; ⌥/⌃ similarly corrupt the sequence, and
+    /// fn is held whenever the shortcut used an F-key on a laptop keyboard).
+    /// Timing learnings inherited from Key54's clipboard experiment:
+    /// Spotlight buffers keys behind its ⌘Space, but a ~30 ms gap is needed
+    /// for cold starts (1 ms was observed to miss).
     private func synthesizeSpotlight(then key: CGKeyCode, attempt: Int = 0) {
         guard hasAccessibility else { return }
         let held = [kVK_Shift, kVK_RightShift, kVK_Option, kVK_RightOption,
-                    kVK_Control, kVK_RightControl]
+                    kVK_Control, kVK_RightControl, kVK_Function]
             .contains { CGEventSource.keyState(.hidSystemState, key: CGKeyCode($0)) }
         if held {
             guard attempt < 24 else { return }
@@ -233,6 +265,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // ⌘Space is a TOGGLE, and there is no permission-free way to ask
+        // whether Spotlight is open (it never becomes the frontmost app, the
+        // window list needs Screen Recording, and macOS 27 exposes no
+        // Spotlight UI process). Heuristic: if WE opened it within the last
+        // few seconds, assume it still is and send only the panel key — that
+        // makes the natural hotkey→hotkey panel-switch gesture work instead
+        // of closing Spotlight and leaking a stray ⌘N. The residual risk
+        // (user dismissed Spotlight inside the window, bare ⌘N reaches the
+        // frontmost app) is the rarer gesture by far.
+        if Date().timeIntervalSince(lastSpotlightOpen) < 6 {
+            lastSpotlightOpen = Date()
+            post(key, .maskCommand)
+            return
+        }
+        lastSpotlightOpen = Date()
         post(CGKeyCode(kVK_Space), .maskCommand)
         let gap = (UserDefaults.standard.object(forKey: "panelDelay")
                    as? Double).map { min(max($0, 0), 1) } ?? 0.03
@@ -254,13 +301,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Shortcut recorder control
 
-/// A button that records the next keystroke when clicked. Esc cancels,
-/// Delete clears the binding. No third-party recorder dependency.
+/// A button that records the next keystroke when clicked. Bare Esc cancels,
+/// bare Delete clears the binding (with modifiers they record like any other
+/// key). Only one recorder can capture at a time, and window close / focus
+/// loss cancels it — otherwise the parked hotkeys would stay parked forever.
 final class RecorderButton: NSButton {
     let panel: Panel
     private var monitor: Any?
     weak var appDelegate: AppDelegate?
     var onChange: (() -> Void)?
+
+    /// The one recorder currently capturing, if any.
+    private(set) static weak var active: RecorderButton?
 
     init(panel: Panel, appDelegate: AppDelegate?) {
         self.panel = panel
@@ -279,41 +331,62 @@ final class RecorderButton: NSButton {
     }
 
     @objc private func beginRecording() {
+        RecorderButton.active?.cancelRecording()   // one recorder at a time
         guard monitor == nil else { return }
+        RecorderButton.active = self
         appDelegate?.recording = true
         title = "Type shortcut…"
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            defer { self.endRecording() }
-            switch Int(event.keyCode) {
-            case kVK_Escape:
-                break   // cancel, keep existing
-            case kVK_Delete, kVK_ForwardDelete:
+            defer { self.cancelRecording() }   // shared teardown for every branch
+
+            var mods: UInt32 = 0
+            let f = event.modifierFlags
+            if f.contains(.command) { mods |= UInt32(cmdKey) }
+            if f.contains(.shift) { mods |= UInt32(shiftKey) }
+            if f.contains(.option) { mods |= UInt32(optionKey) }
+            if f.contains(.control) { mods |= UInt32(controlKey) }
+            let bare = mods & ~UInt32(shiftKey) == 0
+            let code = UInt32(event.keyCode)
+
+            // Bare Esc cancels; bare Delete clears. With real modifiers they
+            // fall through and record normally (⌘⌫ is a legitimate chord).
+            if bare && Int(event.keyCode) == kVK_Escape { return nil }
+            if bare && [kVK_Delete, kVK_ForwardDelete].contains(Int(event.keyCode)) {
                 Shortcut.clear(self.panel)
-            default:
-                var mods: UInt32 = 0
-                let f = event.modifierFlags
-                if f.contains(.command) { mods |= UInt32(cmdKey) }
-                if f.contains(.shift) { mods |= UInt32(shiftKey) }
-                if f.contains(.option) { mods |= UInt32(optionKey) }
-                if f.contains(.control) { mods |= UInt32(controlKey) }
-                // Require a real chord — a bare key would hijack normal typing
-                // system-wide. (⇧ alone counts as bare too.)
-                guard mods & ~UInt32(shiftKey) != 0 else { NSSound.beep(); return nil }
-                Shortcut(keyCode: UInt32(event.keyCode), modifiers: mods).save(self.panel)
-                // Synthesis panels need Accessibility — ask the moment the
-                // user records a binding that will require it.
-                if self.panel.defaultsKey != "apps",
-                   let ad = self.appDelegate, !ad.hasAccessibility {
-                    ad.promptForAccessibility()
-                }
+                return nil
+            }
+            // Chords need ⌘/⌥/⌃ so a bare letter can't hijack typing
+            // system-wide — except F-keys, which exist to be pressed bare.
+            guard !bare || fKeyCodes.contains(code) else {
+                NSSound.beep()
+                return nil
+            }
+
+            let sc = Shortcut(keyCode: code, modifiers: mods)
+            // One chord, one panel: recording a combo another panel owns
+            // steals it (System Settings behavior).
+            for other in panels where other.defaultsKey != self.panel.defaultsKey {
+                if Shortcut.load(other) == sc { Shortcut.clear(other) }
+            }
+            sc.save(self.panel)
+            // Synthesis panels need Accessibility — ask the moment the user
+            // records a binding that will require it.
+            if self.panel.defaultsKey != "apps",
+               let ad = self.appDelegate, !ad.hasAccessibility {
+                ad.promptForAccessibility()
             }
             return nil   // swallow the keystroke
         }
     }
 
-    private func endRecording() {
-        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+    /// Stop capturing without saving anything beyond what the monitor block
+    /// already persisted. Safe to call redundantly.
+    func cancelRecording() {
+        guard let m = monitor else { return }
+        NSEvent.removeMonitor(m)
+        monitor = nil
+        if RecorderButton.active === self { RecorderButton.active = nil }
         refreshTitle()
         appDelegate?.recording = false
         onChange?()
@@ -322,9 +395,11 @@ final class RecorderButton: NSButton {
 
 // MARK: - Settings window
 
-final class SettingsWindow: NSWindow {
+final class SettingsWindow: NSWindow, NSWindowDelegate {
     private weak var appDelegate: AppDelegate?
     private var banner: NSTextField?
+    private var recorders: [RecorderButton] = []
+    private var loginNotice: String?
 
     init(delegate: AppDelegate) {
         appDelegate = delegate
@@ -361,11 +436,12 @@ final class SettingsWindow: NSWindow {
 
             let rec = RecorderButton(panel: panel, appDelegate: appDelegate)
             rec.frame = NSRect(x: w - pad - 170, y: y + 6, width: 170, height: 26)
-            rec.onChange = { [weak self] in self?.appDelegate?.syncHotkeys() }
+            rec.onChange = { [weak self] in self?.shortcutsChanged() }
+            recorders.append(rec)
             v.addSubview(rec)
         }
 
-        // Footer: accessibility note + launch at login.
+        // Footer: banner (permission / conflicts / login note) + launch at login.
         let bannerField = NSTextField(wrappingLabelWithString: "")
         bannerField.font = .systemFont(ofSize: 11)
         bannerField.textColor = .systemOrange
@@ -381,22 +457,68 @@ final class SettingsWindow: NSWindow {
         v.addSubview(login)
 
         contentView = v
+        self.delegate = self
         refreshBanner()
     }
 
+    private func shortcutsChanged() {
+        // A recording may have stolen another row's chord — refresh them all.
+        recorders.forEach { $0.refreshTitle() }
+        appDelegate?.syncHotkeys()
+    }
+
+    /// One line of orange footer text; priority: missing permission, then
+    /// hotkey conflicts, then the login-item approval note.
     func refreshBanner() {
-        let trusted = appDelegate?.hasAccessibility ?? false
-        banner?.stringValue = trusted ? "" :
-            "Files, Actions, and Clipboard need Accessibility access "
-            + "(System Settings → Privacy & Security) — Apps works without it."
+        var text = ""
+        if !(appDelegate?.hasAccessibility ?? false) {
+            text = "Files, Actions, and Clipboard need Accessibility access "
+                + "(System Settings → Privacy & Security) — Apps works without it."
+        } else if let conflicts = appDelegate?.conflicted, !conflicts.isEmpty {
+            text = "In use by another app: " + conflicts.joined(separator: ", ")
+        } else if let notice = loginNotice {
+            text = notice
+        }
+        banner?.stringValue = text
+    }
+
+    // Recording must never outlive the window's key status: a local NSEvent
+    // monitor only sees events while we're the active app, so an orphaned
+    // recording would park every hotkey with no way to resume them.
+    func windowWillClose(_ notification: Notification) {
+        RecorderButton.active?.cancelRecording()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        RecorderButton.active?.cancelRecording()
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        // Re-try conflicted registrations (the other app may have released
+        // the combo) and reflect any outside changes.
+        appDelegate?.syncHotkeys()
+        recorders.forEach { $0.refreshTitle() }
     }
 
     @objc private func toggleLogin(_ sender: NSButton) {
-        if sender.state == .on {
-            try? SMAppService.mainApp.register()
-        } else {
-            try? SMAppService.mainApp.unregister()
+        loginNotice = nil
+        do {
+            if sender.state == .on {
+                try SMAppService.mainApp.register()
+                if SMAppService.mainApp.status == .requiresApproval {
+                    loginNotice = "Approve Keylight in System Settings → General → Login Items."
+                }
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            NSSound.beep()
         }
+        // Reflect reality, not the click — registration can fail or need
+        // approval, and try? would leave the checkbox lying about it.
+        let status = SMAppService.mainApp.status
+        sender.state = (status == .enabled || status == .requiresApproval) ? .on : .off
+        refreshBanner()
     }
 }
 
