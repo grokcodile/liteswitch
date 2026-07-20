@@ -1,11 +1,11 @@
 #!/bin/bash
-# Builds "Spotlight Shortcuts.app" into ./build (ad-hoc signed).
+# Builds Lightswitch.app into ./build (ad-hoc signed).
 # Same construction as Key54's build.sh; no icon pipeline yet (TODO).
 set -e
 
 cd "$(dirname "$0")"
 
-APP_NAME="Spotlight Shortcuts"
+APP_NAME="Lightswitch"
 BUILD_DIR="./build/${APP_NAME}.app"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 

@@ -1,7 +1,9 @@
-// Spotlight Shortcuts — give every Spotlight panel its own keyboard shortcut.
+// Lightswitch — flip any Spotlight panel on from anywhere.
+//
+// Lightswitch gives every Spotlight panel its own keyboard shortcut.
 //
 // macOS 26 gave Spotlight four panels — Apps ⌘1, Files ⌘2, Actions ⌘3,
-// Clipboard ⌘4 — reachable only after opening Spotlight itself. Spotlight Shortcuts lets
+// Clipboard ⌘4 — reachable only after opening Spotlight itself. Lightswitch lets
 // you assign a global shortcut to each panel directly.
 //
 // How panels open:
@@ -409,7 +411,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable, .miniaturizable],
                    backing: .buffered, defer: false)
-        title = "Spotlight Shortcuts"
+        title = "Lightswitch"
         isReleasedWhenClosed = false
         center()
 
@@ -506,7 +508,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             if sender.state == .on {
                 try SMAppService.mainApp.register()
                 if SMAppService.mainApp.status == .requiresApproval {
-                    loginNotice = "Approve Spotlight Shortcuts in System Settings → General → Login Items."
+                    loginNotice = "Approve Lightswitch in System Settings → General → Login Items."
                 }
             } else {
                 try SMAppService.mainApp.unregister()

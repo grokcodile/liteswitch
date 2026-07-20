@@ -1,12 +1,13 @@
-# Spotlight Shortcuts
+# Lightswitch
 
-**Give every Spotlight panel its own keyboard shortcut.**
+**Flip any Spotlight panel on from anywhere.**
 
 macOS 26 gave Spotlight four panels — **Apps** (⌘1), **Files** (⌘2),
-**Actions** (⌘3), and **Clipboard** (⌘4) — but the only way to reach one is
-to open Spotlight first and press its number. Spotlight Shortcuts assigns
-each panel a global shortcut of your own, so the clipboard history (or any
-other panel) is one keystroke away from anywhere.
+**Actions** (⌘3), and **Clipboard** (⌘4) — but reaching one means opening
+Spotlight first, then pressing its number. That's walking to the lamp and
+turning the dial. Lightswitch wires each panel to its own global shortcut,
+so the clipboard history (or any other panel) flips on with one chord from
+anywhere.
 
 - **Apps** opens via the system's own `Apps.app` stub — instant, no
   permissions needed.
@@ -21,7 +22,7 @@ collection. Launch the app to open Settings and record your shortcuts.
 ## Build
 
 ```sh
-bash build.sh    # → "./build/Spotlight Shortcuts.app" (ad-hoc signed)
+bash build.sh    # → ./build/Lightswitch.app (ad-hoc signed)
 ```
 
 Requires macOS 26+.
