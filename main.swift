@@ -57,24 +57,42 @@ struct Shortcut: Equatable {
     var keyCode: UInt32
     var modifiers: UInt32   // Carbon mask (cmdKey | shiftKey | optionKey | controlKey)
 
-    static func load(_ panel: Panel) -> Shortcut? {
+    /// Every shortcut bound to a panel — a panel may have several. Migrates a
+    /// legacy single-binding layout (KeyCode/Modifiers) to the array on first read.
+    static func load(_ panel: Panel) -> [Shortcut] {
         let d = UserDefaults.standard
-        guard let code = d.object(forKey: panel.defaultsKey + "KeyCode") as? Int, code >= 0
-        else { return nil }
-        return Shortcut(keyCode: UInt32(code),
-                        modifiers: UInt32(d.integer(forKey: panel.defaultsKey + "Modifiers")))
+        if let arr = d.array(forKey: panel.defaultsKey + "Shortcuts") as? [[String: Int]] {
+            return arr.compactMap {
+                guard let k = $0["k"], let m = $0["m"] else { return nil }
+                return Shortcut(keyCode: UInt32(k), modifiers: UInt32(m))
+            }
+        }
+        if let code = d.object(forKey: panel.defaultsKey + "KeyCode") as? Int, code >= 0 {
+            let sc = Shortcut(keyCode: UInt32(code),
+                              modifiers: UInt32(d.integer(forKey: panel.defaultsKey + "Modifiers")))
+            save([sc], panel)
+            return [sc]
+        }
+        return []
     }
 
-    func save(_ panel: Panel) {
+    static func save(_ shortcuts: [Shortcut], _ panel: Panel) {
         let d = UserDefaults.standard
-        d.set(Int(keyCode), forKey: panel.defaultsKey + "KeyCode")
-        d.set(Int(modifiers), forKey: panel.defaultsKey + "Modifiers")
-    }
-
-    static func clear(_ panel: Panel) {
-        let d = UserDefaults.standard
-        d.removeObject(forKey: panel.defaultsKey + "KeyCode")
+        d.set(shortcuts.map { ["k": Int($0.keyCode), "m": Int($0.modifiers)] },
+              forKey: panel.defaultsKey + "Shortcuts")
+        d.removeObject(forKey: panel.defaultsKey + "KeyCode")     // drop legacy keys
         d.removeObject(forKey: panel.defaultsKey + "Modifiers")
+    }
+
+    static func add(_ sc: Shortcut, to panel: Panel) {
+        var list = load(panel)
+        guard !list.contains(sc) else { return }
+        list.append(sc)
+        save(list, panel)
+    }
+
+    static func remove(_ sc: Shortcut, from panel: Panel) {
+        save(load(panel).filter { $0 != sc }, panel)
     }
 
     /// "⌃⌥⇧⌘X" for display.
@@ -110,7 +128,8 @@ struct Shortcut: Equatable {
 // MARK: - App delegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var hotKeys: [EventHotKeyRef?] = Array(repeating: nil, count: panels.count)
+    private var hotKeyRefs: [EventHotKeyRef] = []
+    private var idToPanel: [UInt32: Int] = [:]   // EventHotKeyID.id → panel index
     private var hotKeyHandler: EventHandlerRef?
     private var settings: SettingsWindow?
     private var axPollTimer: Timer?
@@ -133,6 +152,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // Run at login by default — Lightswitch is a background helper that does
+        // almost nothing until a hotkey fires, so there's no toggle. Anyone who
+        // doesn't want it running can just quit and delete the app.
+        if SMAppService.mainApp.status != .enabled {
+            try? SMAppService.mainApp.register()
+        }
         installHandler()
         syncHotkeys()
         watchAccessibility()
@@ -199,8 +224,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                               EventParamType(typeEventHotKeyID), nil,
                               MemoryLayout<EventHotKeyID>.size, nil, &id)
             let me = Unmanaged<AppDelegate>.fromOpaque(userInfo!).takeUnretainedValue()
-            let index = Int(id.id) - 1
-            DispatchQueue.main.async { me.openPanel(index) }
+            if let index = me.idToPanel[id.id] {
+                DispatchQueue.main.async { me.openPanel(index) }
+            }
             return noErr
         }, 1, &pressed, Unmanaged.passUnretained(self).toOpaque(), &hotKeyHandler)
     }
@@ -212,24 +238,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Registration failures (another app owns the combo) are collected for
     /// the settings banner rather than silently ignored.
     func syncHotkeys() {
-        for (i, ref) in hotKeys.enumerated() where ref != nil {
-            UnregisterEventHotKey(ref!)
-            hotKeys[i] = nil
-        }
+        for ref in hotKeyRefs { UnregisterEventHotKey(ref) }
+        hotKeyRefs = []
+        idToPanel = [:]
         conflicted = []
         defer { settings?.refreshBanner() }
         guard !recording && !synthesizing else { return }
+        var nextId: UInt32 = 1
         for (i, panel) in panels.enumerated() {
-            guard let sc = Shortcut.load(panel) else { continue }
             let isApps = panel.defaultsKey == "apps"
             guard isApps || hasAccessibility else { continue }
-            let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */,
-                                   id: UInt32(i + 1))
-            let status = RegisterEventHotKey(sc.keyCode, sc.modifiers, id,
-                                             GetEventDispatcherTarget(), 0, &hotKeys[i])
-            if status != noErr {   // e.g. eventHotKeyExistsErr: Raycast/Alfred owns it
-                hotKeys[i] = nil
-                conflicted.append("\(panel.name) (\(sc.label))")
+            for sc in Shortcut.load(panel) {
+                let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */, id: nextId)
+                var ref: EventHotKeyRef?
+                let status = RegisterEventHotKey(sc.keyCode, sc.modifiers, id,
+                                                 GetEventDispatcherTarget(), 0, &ref)
+                if status == noErr, let ref {   // else eventHotKeyExistsErr: Raycast/Alfred owns it
+                    hotKeyRefs.append(ref)
+                    idToPanel[nextId] = i
+                } else {
+                    conflicted.append("\(panel.name) (\(sc.label))")
+                }
+                nextId += 1
             }
         }
     }
@@ -315,12 +345,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - Shortcut recorder control
+// MARK: - Shortcut controls
 
-/// A button that records the next keystroke when clicked. Bare Esc cancels,
-/// bare Delete clears the binding (with modifiers they record like any other
-/// key). Only one recorder can capture at a time, and window close / focus
-/// loss cancels it — otherwise the parked hotkeys would stay parked forever.
+/// A recorded shortcut shown as a small pill; click it to remove that binding.
+final class PillButton: NSButton {
+    let panelIndex: Int
+    let shortcut: Shortcut
+    var onRemove: ((Int, Shortcut) -> Void)?
+
+    init(panelIndex: Int, shortcut: Shortcut) {
+        self.panelIndex = panelIndex
+        self.shortcut = shortcut
+        super.init(frame: .zero)
+        bezelStyle = .rounded
+        font = .systemFont(ofSize: 11)
+        title = shortcut.label + "  ✕"
+        toolTip = "Remove " + shortcut.label
+        target = self
+        action = #selector(tapped)
+        sizeToFit()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    @objc private func tapped() { onRemove?(panelIndex, shortcut) }
+}
+
+/// The "＋" button that records the next chord and APPENDS it to a panel (a
+/// panel may hold several). Bare Esc / Delete cancels. Only one recorder can
+/// capture at a time, and window close / focus loss cancels it — otherwise the
+/// parked hotkeys would stay parked forever.
 final class RecorderButton: NSButton {
     let panel: Panel
     private var monitor: Any?
@@ -335,16 +387,14 @@ final class RecorderButton: NSButton {
         self.appDelegate = appDelegate
         super.init(frame: .zero)
         bezelStyle = .rounded
+        font = .systemFont(ofSize: 11)
+        title = "＋"
+        toolTip = "Add a shortcut for " + panel.name
         target = self
         action = #selector(beginRecording)
-        refreshTitle()
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    func refreshTitle() {
-        title = Shortcut.load(panel)?.label ?? "Record Shortcut"
-    }
 
     @objc private func beginRecording() {
         RecorderButton.active?.cancelRecording()   // one recorder at a time
@@ -365,11 +415,8 @@ final class RecorderButton: NSButton {
             let bare = mods & ~UInt32(shiftKey) == 0
             let code = UInt32(event.keyCode)
 
-            // Bare Esc cancels; bare Delete clears. With real modifiers they
-            // fall through and record normally (⌘⌫ is a legitimate chord).
-            if bare && Int(event.keyCode) == kVK_Escape { return nil }
-            if bare && [kVK_Delete, kVK_ForwardDelete].contains(Int(event.keyCode)) {
-                Shortcut.clear(self.panel)
+            // Bare Esc or Delete just cancels the add (removal is via the pills).
+            if bare && [kVK_Escape, kVK_Delete, kVK_ForwardDelete].contains(Int(event.keyCode)) {
                 return nil
             }
             // Chords need ⌘/⌥/⌃ so a bare letter can't hijack typing
@@ -380,12 +427,12 @@ final class RecorderButton: NSButton {
             }
 
             let sc = Shortcut(keyCode: code, modifiers: mods)
-            // One chord, one panel: recording a combo another panel owns
-            // steals it (System Settings behavior).
+            // One chord belongs to one panel: recording a combo another panel
+            // already uses moves it here.
             for other in panels where other.defaultsKey != self.panel.defaultsKey {
-                if Shortcut.load(other) == sc { Shortcut.clear(other) }
+                Shortcut.remove(sc, from: other)
             }
-            sc.save(self.panel)
+            Shortcut.add(sc, to: self.panel)
             // Synthesis panels need Accessibility — ask the moment the user
             // records a binding that will require it.
             if self.panel.defaultsKey != "apps",
@@ -396,14 +443,13 @@ final class RecorderButton: NSButton {
         }
     }
 
-    /// Stop capturing without saving anything beyond what the monitor block
-    /// already persisted. Safe to call redundantly.
+    /// Stop capturing. Safe to call redundantly.
     func cancelRecording() {
         guard let m = monitor else { return }
         NSEvent.removeMonitor(m)
         monitor = nil
         if RecorderButton.active === self { RecorderButton.active = nil }
-        refreshTitle()
+        title = "＋"
         appDelegate?.recording = false
         onChange?()
     }
@@ -414,119 +460,157 @@ final class RecorderButton: NSButton {
 final class SettingsWindow: NSWindow, NSWindowDelegate {
     private weak var appDelegate: AppDelegate?
     private var banner: NSTextField?
-    private var recorders: [RecorderButton] = []
-    private var loginNotice: String?
+
+    // Layout constants.
+    private let winW: CGFloat = 460, pad: CGFloat = 20
+    private let headerH: CGFloat = 48, footerH: CGFloat = 52
+    private let iconSize: CGFloat = 26
+    private let baseRowH: CGFloat = 48
+    private let lineH: CGFloat = 26          // one row of pills
+    private let lineGap: CGFloat = 8, pillGap: CGFloat = 7, rowPadV: CGFloat = 11
+    private var textX: CGFloat { pad + iconSize + 12 }
+    private var pillsX: CGFloat { 198 }      // where the pill region starts
+    private var pillsRight: CGFloat { winW - pad }
 
     init(delegate: AppDelegate) {
         appDelegate = delegate
-        let w: CGFloat = 400, rowH: CGFloat = 46, pad: CGFloat = 20
-        let headerH: CGFloat = 58, footerH: CGFloat = 74
-        let h = headerH + rowH * CGFloat(panels.count) + footerH
-        super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 460, height: 320),
                    styleMask: [.titled, .closable, .miniaturizable],
                    backing: .buffered, defer: false)
         title = "Lightswitch"
         isReleasedWhenClosed = false
+        self.delegate = self
+        rebuild()
         center()
+    }
 
-        let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+    /// Recreate the whole content from the current shortcuts, so rows grow and
+    /// shrink as bindings are added or removed. Called on init and after any
+    /// add/remove.
+    func rebuild() {
+        RecorderButton.active?.cancelRecording()
+
+        // Build each panel's buttons (a pill per shortcut, then the ＋ adder),
+        // measure them, and compute how many wrapped lines each row needs.
+        var rowButtons: [[NSButton]] = []
+        var rowHeights: [CGFloat] = []
+        for (i, panel) in panels.enumerated() {
+            var buttons: [NSButton] = []
+            for sc in Shortcut.load(panel) {
+                let pill = PillButton(panelIndex: i, shortcut: sc)
+                pill.onRemove = { [weak self] pIdx, s in
+                    Shortcut.remove(s, from: panels[pIdx])
+                    self?.appDelegate?.syncHotkeys()
+                    self?.rebuild()
+                }
+                buttons.append(pill)
+            }
+            let add = RecorderButton(panel: panel, appDelegate: appDelegate)
+            add.onChange = { [weak self] in
+                self?.appDelegate?.syncHotkeys()
+                self?.rebuild()
+            }
+            add.sizeToFit()
+            add.frame.size.width = max(40, add.frame.width)
+            buttons.append(add)
+            rowButtons.append(buttons)
+            let lines = lineCount(buttons)
+            rowHeights.append(max(baseRowH, rowPadV * 2 + CGFloat(lines) * lineH + CGFloat(lines - 1) * lineGap))
+        }
+
+        let H = headerH + rowHeights.reduce(0, +) + footerH
+        let keepTop: CGFloat? = isVisible ? frame.maxY : nil
+        setContentSize(NSSize(width: winW, height: H))
+        if let top = keepTop { setFrameTopLeftPoint(NSPoint(x: frame.minX, y: top)) }
+
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: winW, height: H))
 
         let header = NSTextField(labelWithString: "Give every Spotlight panel its own shortcut.")
         header.font = .systemFont(ofSize: 13, weight: .medium)
         header.textColor = .secondaryLabelColor
-        header.frame = NSRect(x: pad, y: h - 40, width: w - pad * 2, height: 20)
+        header.frame = NSRect(x: pad, y: H - 32, width: winW - pad * 2, height: 20)
         v.addSubview(header)
 
-        let iconSize: CGFloat = 26
-        let textX = pad + iconSize + 12   // name/subtitle start to the right of the icon
+        var topY = headerH   // distance from the top edge to the current row's top
         for (i, panel) in panels.enumerated() {
-            let y = h - headerH - rowH * CGFloat(i + 1) + 8
+            let rh = rowHeights[i]
+            let rowBottom = H - topY - rh
+            let firstLineTop = rowBottom + rh - rowPadV   // AppKit y of the first pill line's top
 
-            let icon = NSImageView(frame: NSRect(x: pad, y: y + 5, width: iconSize, height: iconSize))
-            if let gp = panel.glyphPath, let glyph = NSImage(contentsOfFile: gp) {
-                glyph.isTemplate = true                 // tint it like an SF Symbol
-                glyph.size = NSSize(width: 19, height: 19)   // match the symbols' optical size
-                icon.image = glyph
-            } else {
-                icon.image = NSImage(systemSymbolName: panel.symbol, accessibilityDescription: panel.name)?
-                    .withSymbolConfiguration(.init(pointSize: 17, weight: .regular))
-            }
-            icon.contentTintColor = .secondaryLabelColor
-            icon.imageScaling = .scaleProportionallyDown
+            let icon = NSImageView(frame: NSRect(x: pad, y: firstLineTop - lineH + 3, width: iconSize, height: iconSize))
+            configureIcon(icon, panel)
             v.addSubview(icon)
 
             let name = NSTextField(labelWithString: panel.name)
             name.font = .systemFont(ofSize: 13, weight: .semibold)
-            name.frame = NSRect(x: textX, y: y + 16, width: 140, height: 17)
+            name.frame = NSRect(x: textX, y: firstLineTop - 16, width: 150, height: 17)
             v.addSubview(name)
 
             let sub = NSTextField(labelWithString: panel.subtitle)
             sub.font = .systemFont(ofSize: 11)
             sub.textColor = .tertiaryLabelColor
-            sub.frame = NSRect(x: textX, y: y + 1, width: 140, height: 14)
+            sub.frame = NSRect(x: textX, y: firstLineTop - 30, width: 150, height: 14)
             v.addSubview(sub)
 
-            let rec = RecorderButton(panel: panel, appDelegate: appDelegate)
-            rec.frame = NSRect(x: w - pad - 28 - 150, y: y + 6, width: 150, height: 26)
-            rec.toolTip = "Click, then press a shortcut"
-            rec.onChange = { [weak self] in self?.shortcutsChanged() }
-            recorders.append(rec)
-            v.addSubview(rec)
-
-            let clear = NSButton(title: "✕", target: self, action: #selector(clearShortcut(_:)))
-            clear.tag = i
-            clear.isBordered = false
-            clear.font = .systemFont(ofSize: 12, weight: .medium)
-            clear.contentTintColor = .tertiaryLabelColor
-            clear.toolTip = "Remove shortcut"
-            clear.frame = NSRect(x: w - pad - 24, y: y + 8, width: 24, height: 22)
-            v.addSubview(clear)
+            flow(rowButtons[i], firstLineTop: firstLineTop, into: v)
+            topY += rh
         }
 
-        // Footer: banner (permission / conflicts / login note) + launch at login.
         let bannerField = NSTextField(wrappingLabelWithString: "")
         bannerField.font = .systemFont(ofSize: 11)
         bannerField.textColor = .systemOrange
-        bannerField.frame = NSRect(x: pad, y: 36, width: w - pad * 2, height: 28)
+        bannerField.frame = NSRect(x: pad, y: 12, width: winW - pad * 2, height: 30)
         v.addSubview(bannerField)
         banner = bannerField
 
-        let login = NSButton(checkboxWithTitle: "Launch at login",
-                             target: self, action: #selector(toggleLogin(_:)))
-        login.font = .systemFont(ofSize: 12)
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        login.frame = NSRect(x: pad, y: 10, width: 160, height: 18)
-        v.addSubview(login)
-
         contentView = v
-        self.delegate = self
         refreshBanner()
     }
 
-    private func shortcutsChanged() {
-        // A recording may have stolen another row's chord — refresh them all.
-        recorders.forEach { $0.refreshTitle() }
-        appDelegate?.syncHotkeys()
+    private func configureIcon(_ icon: NSImageView, _ panel: Panel) {
+        if let gp = panel.glyphPath, let glyph = NSImage(contentsOfFile: gp) {
+            glyph.isTemplate = true
+            glyph.size = NSSize(width: 19, height: 19)
+            icon.image = glyph
+        } else {
+            icon.image = NSImage(systemSymbolName: panel.symbol, accessibilityDescription: panel.name)?
+                .withSymbolConfiguration(.init(pointSize: 17, weight: .regular))
+        }
+        icon.contentTintColor = .secondaryLabelColor
+        icon.imageScaling = .scaleProportionallyDown
     }
 
-    @objc private func clearShortcut(_ sender: NSButton) {
-        RecorderButton.active?.cancelRecording()   // ✕ during a recording aborts it too
-        guard panels.indices.contains(sender.tag) else { return }
-        Shortcut.clear(panels[sender.tag])
-        shortcutsChanged()
+    /// Number of wrapped lines the buttons need within the pill region.
+    private func lineCount(_ buttons: [NSButton]) -> Int {
+        var lines = 1, x = pillsX
+        for b in buttons {
+            if x > pillsX && x + b.frame.width > pillsRight { lines += 1; x = pillsX }
+            x += b.frame.width + pillGap
+        }
+        return lines
     }
 
-    /// One line of orange footer text; priority: missing permission, then
-    /// hotkey conflicts, then the login-item approval note.
+    /// Place buttons left-to-right within [pillsX, pillsRight], wrapping down,
+    /// each vertically centered in its line.
+    private func flow(_ buttons: [NSButton], firstLineTop: CGFloat, into v: NSView) {
+        var x = pillsX, lineTop = firstLineTop
+        for b in buttons {
+            let bw = b.frame.width, bh = b.frame.height
+            if x > pillsX && x + bw > pillsRight { x = pillsX; lineTop -= (lineH + lineGap) }
+            b.frame = NSRect(x: x, y: lineTop - lineH + (lineH - bh) / 2, width: bw, height: bh)
+            v.addSubview(b)
+            x += bw + pillGap
+        }
+    }
+
+    /// One line of orange footer text: missing permission, then hotkey conflicts.
     func refreshBanner() {
         var text = ""
         if !(appDelegate?.hasAccessibility ?? false) {
             text = "Files, Actions, and Clipboard need Accessibility access "
-                + "(System Settings → Privacy & Security) — Apps works without it."
+                + "(System Settings → Privacy & Security) — Applications works without it."
         } else if let conflicts = appDelegate?.conflicted, !conflicts.isEmpty {
             text = "In use by another app: " + conflicts.joined(separator: ", ")
-        } else if let notice = loginNotice {
-            text = notice
         }
         banner?.stringValue = text
     }
@@ -534,39 +618,13 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     // Recording must never outlive the window's key status: a local NSEvent
     // monitor only sees events while we're the active app, so an orphaned
     // recording would park every hotkey with no way to resume them.
-    func windowWillClose(_ notification: Notification) {
-        RecorderButton.active?.cancelRecording()
-    }
-
-    func windowDidResignKey(_ notification: Notification) {
-        RecorderButton.active?.cancelRecording()
-    }
+    func windowWillClose(_ notification: Notification) { RecorderButton.active?.cancelRecording() }
+    func windowDidResignKey(_ notification: Notification) { RecorderButton.active?.cancelRecording() }
 
     func windowDidBecomeKey(_ notification: Notification) {
-        // Re-try conflicted registrations (the other app may have released
-        // the combo) and reflect any outside changes.
+        // Re-try conflicted registrations (the other app may have released the
+        // combo) and reflect any outside changes.
         appDelegate?.syncHotkeys()
-        recorders.forEach { $0.refreshTitle() }
-    }
-
-    @objc private func toggleLogin(_ sender: NSButton) {
-        loginNotice = nil
-        do {
-            if sender.state == .on {
-                try SMAppService.mainApp.register()
-                if SMAppService.mainApp.status == .requiresApproval {
-                    loginNotice = "Approve Lightswitch in System Settings → General → Login Items."
-                }
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-        } catch {
-            NSSound.beep()
-        }
-        // Reflect reality, not the click — registration can fail or need
-        // approval, and try? would leave the checkbox lying about it.
-        let status = SMAppService.mainApp.status
-        sender.state = (status == .enabled || status == .requiresApproval) ? .on : .off
         refreshBanner()
     }
 }
