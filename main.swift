@@ -25,24 +25,26 @@ import ServiceManagement
 
 struct Panel {
     let name: String
-    let symbol: String            // SF Symbol shown beside the row in Settings
-    let appIconPath: String?      // if set, use this app's real macOS icon instead
+    let symbol: String            // SF Symbol shown beside the row (fallback)
+    let glyphPath: String?        // system template glyph (.icns) to load + tint instead
     let subtitle: String
     let spotlightKey: CGKeyCode   // the ⌘N that selects it inside Spotlight
     let defaultsKey: String
 }
 
-// Icons mirror the glyphs macOS Spotlight shows for each panel. The
-// Applications row uses the real Applications-folder icon macOS composites
-// (the blue folder carrying the tools-"A" glyph), loaded straight from the
-// /Applications path — not the App Store app tile. The other three are SF
-// Symbols: folder, the two-layer Actions stack, and doc.on.doc for
-// Clipboard (Spotlight uses the copy glyph, not a clip).
+// Icons mirror the glyphs macOS Spotlight shows for each panel, all
+// monochrome. The Applications tools-"A" isn't an SF Symbol, but it ships as
+// the Finder-sidebar template glyph in CoreTypes.bundle — loaded from that
+// system path at runtime and tinted like the others (falls back to the
+// square.grid.2x2 symbol if the path ever moves). The other three are SF
+// Symbols: folder, the two-layer Actions stack, and doc.on.doc for Clipboard
+// (Spotlight uses the copy glyph, not a clip).
+let sidebarApplications = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/SidebarApplicationsFolder.icns"
 let panels: [Panel] = [
-    Panel(name: "Applications", symbol: "square.grid.2x2", appIconPath: "/Applications", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
-    Panel(name: "Files", symbol: "folder", appIconPath: nil, subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
-    Panel(name: "Actions", symbol: "square.2.layers.3d", appIconPath: nil, subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
-    Panel(name: "Clipboard", symbol: "doc.on.doc", appIconPath: nil, subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
+    Panel(name: "Applications", symbol: "square.grid.2x2", glyphPath: sidebarApplications, subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
+    Panel(name: "Files", symbol: "folder", glyphPath: nil, subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
+    Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
+    Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
 ]
 
 /// Virtual keycodes for F1–F20 — the one family allowed as modifier-less
@@ -441,13 +443,15 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             let y = h - headerH - rowH * CGFloat(i + 1) + 8
 
             let icon = NSImageView(frame: NSRect(x: pad, y: y + 5, width: iconSize, height: iconSize))
-            if let appPath = panel.appIconPath, FileManager.default.fileExists(atPath: appPath) {
-                icon.image = NSWorkspace.shared.icon(forFile: appPath)   // real app icon, in color
+            if let gp = panel.glyphPath, let glyph = NSImage(contentsOfFile: gp) {
+                glyph.isTemplate = true                 // tint it like an SF Symbol
+                glyph.size = NSSize(width: 19, height: 19)   // match the symbols' optical size
+                icon.image = glyph
             } else {
                 icon.image = NSImage(systemSymbolName: panel.symbol, accessibilityDescription: panel.name)?
                     .withSymbolConfiguration(.init(pointSize: 17, weight: .regular))
-                icon.contentTintColor = .secondaryLabelColor
             }
+            icon.contentTintColor = .secondaryLabelColor
             icon.imageScaling = .scaleProportionallyDown
             v.addSubview(icon)
 
