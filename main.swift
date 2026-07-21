@@ -27,7 +27,7 @@ struct Panel {
     let name: String
     let symbol: String            // SF Symbol shown beside the row (fallback)
     let glyphPath: String?        // system template glyph (.icns) to load + tint instead
-    let subtitle: String
+    let detail: String            // hover tooltip on the icon + title
     let spotlightKey: CGKeyCode   // the ⌘N that selects it inside Spotlight
     let defaultsKey: String
 }
@@ -41,10 +41,10 @@ struct Panel {
 // (Spotlight uses the copy glyph, not a clip).
 let sidebarApplications = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/SidebarApplicationsFolder.icns"
 let panels: [Panel] = [
-    Panel(name: "Applications", symbol: "square.grid.2x2", glyphPath: sidebarApplications, subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
-    Panel(name: "Files", symbol: "folder", glyphPath: nil, subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
-    Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
-    Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
+    Panel(name: "Applications", symbol: "square.grid.2x2", glyphPath: sidebarApplications, detail: "Spotlight's Applications panel — browse and launch any installed app.", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
+    Panel(name: "Files", symbol: "folder", glyphPath: nil, detail: "Spotlight's Files panel — search files and folders across your Mac.", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
+    Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Spotlight's Actions panel — run Shortcuts and quick system actions.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
+    Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Spotlight's Clipboard panel — browse your recent clipboard history.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
 ]
 
 /// Virtual keycodes for F1–F20 — the one family allowed as modifier-less
@@ -485,7 +485,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private let titleH: CGFloat = 40, footerH: CGFloat = 74
     private let boxW: CGFloat = 148, boxGap: CGFloat = 12, innerPad: CGFloat = 11
     private let iconSize: CGFloat = 28
-    private let headerBlockH: CGFloat = 66
+    private let headerBlockH: CGFloat = 52   // icon + title (no visible subtitle)
     private let itemH: CGFloat = 26, itemGap: CGFloat = 6
     private let removeW: CGFloat = 18
     private var colW: CGFloat { boxW - innerPad * 2 }   // field width inside a box
@@ -552,22 +552,19 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             let cx = bx + innerPad
             let top = boxTop - innerPad
 
+            // Icon + title only; the description lives in a hover tooltip on
+            // both, keeping each box clean.
             let icon = NSImageView(frame: NSRect(x: cx + (colW - iconSize) / 2, y: top - iconSize, width: iconSize, height: iconSize))
             configureIcon(icon, panel)
+            icon.toolTip = panel.detail
             v.addSubview(icon)
 
             let name = NSTextField(labelWithString: panel.name)
             name.font = .systemFont(ofSize: 13, weight: .semibold)
             name.alignment = .center
-            name.frame = NSRect(x: cx, y: top - iconSize - 20, width: colW, height: 17)
+            name.toolTip = panel.detail
+            name.frame = NSRect(x: cx, y: top - iconSize - 21, width: colW, height: 17)
             v.addSubview(name)
-
-            let sub = NSTextField(labelWithString: panel.subtitle)
-            sub.font = .systemFont(ofSize: 11)
-            sub.textColor = .tertiaryLabelColor
-            sub.alignment = .center
-            sub.frame = NSRect(x: cx, y: top - iconSize - 35, width: colW, height: 14)
-            v.addSubview(sub)
 
             // A full-width field per shortcut, each with its ✕ tucked inside on
             // the right. Click the field to re-record; click the ✕ to remove.
