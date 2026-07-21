@@ -31,11 +31,14 @@ struct Panel {
     let defaultsKey: String
 }
 
+// Symbols mirror the glyphs macOS Spotlight shows for each panel:
+// compass.drawing = the App Store "A", folder, the two-layer Actions stack,
+// and doc.on.doc for Clipboard (Spotlight uses the copy glyph, not a clip).
 let panels: [Panel] = [
-    Panel(name: "Apps", symbol: "square.grid.2x2", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
+    Panel(name: "Applications", symbol: "compass.drawing", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
     Panel(name: "Files", symbol: "folder", subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
-    Panel(name: "Actions", symbol: "wand.and.stars", subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
-    Panel(name: "Clipboard", symbol: "clipboard", subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
+    Panel(name: "Actions", symbol: "square.2.layers.3d", subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
+    Panel(name: "Clipboard", symbol: "doc.on.doc", subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
 ]
 
 /// Virtual keycodes for F1–F20 — the one family allowed as modifier-less
