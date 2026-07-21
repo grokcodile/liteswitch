@@ -25,16 +25,17 @@ import ServiceManagement
 
 struct Panel {
     let name: String
+    let symbol: String            // SF Symbol shown beside the row in Settings
     let subtitle: String
     let spotlightKey: CGKeyCode   // the ⌘N that selects it inside Spotlight
     let defaultsKey: String
 }
 
 let panels: [Panel] = [
-    Panel(name: "Apps", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
-    Panel(name: "Files", subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
-    Panel(name: "Actions", subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
-    Panel(name: "Clipboard", subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
+    Panel(name: "Apps", symbol: "square.grid.2x2", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
+    Panel(name: "Files", symbol: "folder", subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
+    Panel(name: "Actions", symbol: "wand.and.stars", subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
+    Panel(name: "Clipboard", symbol: "clipboard", subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
 ]
 
 /// Virtual keycodes for F1–F20 — the one family allowed as modifier-less
@@ -427,17 +428,27 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         header.frame = NSRect(x: pad, y: h - 40, width: w - pad * 2, height: 20)
         v.addSubview(header)
 
+        let iconSize: CGFloat = 26
+        let textX = pad + iconSize + 12   // name/subtitle start to the right of the icon
         for (i, panel) in panels.enumerated() {
             let y = h - headerH - rowH * CGFloat(i + 1) + 8
+
+            let icon = NSImageView(frame: NSRect(x: pad, y: y + 5, width: iconSize, height: iconSize))
+            icon.image = NSImage(systemSymbolName: panel.symbol, accessibilityDescription: panel.name)?
+                .withSymbolConfiguration(.init(pointSize: 17, weight: .regular))
+            icon.contentTintColor = .secondaryLabelColor
+            icon.imageScaling = .scaleProportionallyDown
+            v.addSubview(icon)
+
             let name = NSTextField(labelWithString: panel.name)
             name.font = .systemFont(ofSize: 13, weight: .semibold)
-            name.frame = NSRect(x: pad, y: y + 16, width: 150, height: 17)
+            name.frame = NSRect(x: textX, y: y + 16, width: 140, height: 17)
             v.addSubview(name)
 
             let sub = NSTextField(labelWithString: panel.subtitle)
             sub.font = .systemFont(ofSize: 11)
             sub.textColor = .tertiaryLabelColor
-            sub.frame = NSRect(x: pad, y: y + 1, width: 150, height: 14)
+            sub.frame = NSRect(x: textX, y: y + 1, width: 140, height: 14)
             v.addSubview(sub)
 
             let rec = RecorderButton(panel: panel, appDelegate: appDelegate)
