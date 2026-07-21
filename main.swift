@@ -26,19 +26,22 @@ import ServiceManagement
 struct Panel {
     let name: String
     let symbol: String            // SF Symbol shown beside the row in Settings
+    let appIconPath: String?      // if set, use this app's real macOS icon instead
     let subtitle: String
     let spotlightKey: CGKeyCode   // the ⌘N that selects it inside Spotlight
     let defaultsKey: String
 }
 
-// Symbols mirror the glyphs macOS Spotlight shows for each panel:
-// compass.drawing = the App Store "A", folder, the two-layer Actions stack,
-// and doc.on.doc for Clipboard (Spotlight uses the copy glyph, not a clip).
+// Icons mirror the glyphs macOS Spotlight shows for each panel. The
+// Applications "A" is the App Store mark, which isn't exposed as an SF
+// Symbol — so we load the real App Store app icon straight from macOS. The
+// other three are SF Symbols: folder, the two-layer Actions stack, and
+// doc.on.doc for Clipboard (Spotlight uses the copy glyph, not a clip).
 let panels: [Panel] = [
-    Panel(name: "Applications", symbol: "compass.drawing", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
-    Panel(name: "Files", symbol: "folder", subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
-    Panel(name: "Actions", symbol: "square.2.layers.3d", subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
-    Panel(name: "Clipboard", symbol: "doc.on.doc", subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
+    Panel(name: "Applications", symbol: "square.grid.2x2", appIconPath: "/System/Applications/App Store.app", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
+    Panel(name: "Files", symbol: "folder", appIconPath: nil, subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
+    Panel(name: "Actions", symbol: "square.2.layers.3d", appIconPath: nil, subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
+    Panel(name: "Clipboard", symbol: "doc.on.doc", appIconPath: nil, subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
 ]
 
 /// Virtual keycodes for F1–F20 — the one family allowed as modifier-less
@@ -437,9 +440,13 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             let y = h - headerH - rowH * CGFloat(i + 1) + 8
 
             let icon = NSImageView(frame: NSRect(x: pad, y: y + 5, width: iconSize, height: iconSize))
-            icon.image = NSImage(systemSymbolName: panel.symbol, accessibilityDescription: panel.name)?
-                .withSymbolConfiguration(.init(pointSize: 17, weight: .regular))
-            icon.contentTintColor = .secondaryLabelColor
+            if let appPath = panel.appIconPath, FileManager.default.fileExists(atPath: appPath) {
+                icon.image = NSWorkspace.shared.icon(forFile: appPath)   // real app icon, in color
+            } else {
+                icon.image = NSImage(systemSymbolName: panel.symbol, accessibilityDescription: panel.name)?
+                    .withSymbolConfiguration(.init(pointSize: 17, weight: .regular))
+                icon.contentTintColor = .secondaryLabelColor
+            }
             icon.imageScaling = .scaleProportionallyDown
             v.addSubview(icon)
 
