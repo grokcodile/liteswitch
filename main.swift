@@ -33,12 +33,13 @@ struct Panel {
 }
 
 // Icons mirror the glyphs macOS Spotlight shows for each panel. The
-// Applications "A" is the App Store mark, which isn't exposed as an SF
-// Symbol — so we load the real App Store app icon straight from macOS. The
-// other three are SF Symbols: folder, the two-layer Actions stack, and
-// doc.on.doc for Clipboard (Spotlight uses the copy glyph, not a clip).
+// Applications row uses the real Applications-folder icon macOS composites
+// (the blue folder carrying the tools-"A" glyph), loaded straight from the
+// /Applications path — not the App Store app tile. The other three are SF
+// Symbols: folder, the two-layer Actions stack, and doc.on.doc for
+// Clipboard (Spotlight uses the copy glyph, not a clip).
 let panels: [Panel] = [
-    Panel(name: "Applications", symbol: "square.grid.2x2", appIconPath: "/System/Applications/App Store.app", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
+    Panel(name: "Applications", symbol: "square.grid.2x2", appIconPath: "/Applications", subtitle: "App launcher", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
     Panel(name: "Files", symbol: "folder", appIconPath: nil, subtitle: "File search", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
     Panel(name: "Actions", symbol: "square.2.layers.3d", appIconPath: nil, subtitle: "Shortcuts & actions", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
     Panel(name: "Clipboard", symbol: "doc.on.doc", appIconPath: nil, subtitle: "Clipboard history", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
