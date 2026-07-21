@@ -467,17 +467,16 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private weak var appDelegate: AppDelegate?
     private var banner: NSTextField?
 
-    // Layout constants.
-    private let winW: CGFloat = 400, pad: CGFloat = 20
-    private let headerH: CGFloat = 46, footerH: CGFloat = 50
-    private let iconSize: CGFloat = 26
-    private let baseRowH: CGFloat = 46
-    private let itemH: CGFloat = 26, itemGap: CGFloat = 6, rowPadV: CGFloat = 10
+    // Layout constants — the four panels sit side by side, one column each.
+    private let pad: CGFloat = 20
+    private let titleH: CGFloat = 40, footerH: CGFloat = 74
+    private let colW: CGFloat = 132, colGap: CGFloat = 16
+    private let iconSize: CGFloat = 28
+    private let headerBlockH: CGFloat = 68
+    private let itemH: CGFloat = 26, itemGap: CGFloat = 6
     private let removeW: CGFloat = 18
-    private var textX: CGFloat { pad + iconSize + 12 }
-    private var fieldW: CGFloat { 112 }
-    private var removeX: CGFloat { winW - pad - removeW }
-    private var fieldX: CGFloat { removeX - 3 - fieldW }
+    private var winW: CGFloat { pad * 2 + colW * CGFloat(panels.count) + colGap * CGFloat(panels.count - 1) }
+    private func colX(_ i: Int) -> CGFloat { pad + CGFloat(i) * (colW + colGap) }
 
     init(delegate: AppDelegate) {
         appDelegate = delegate
@@ -497,16 +496,15 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     func rebuild() {
         RecorderButton.active?.cancelRecording()
 
-        // Each panel's right column stacks a field per shortcut, then a ＋
-        // adder underneath — so row height grows with the number of bindings.
-        var rowHeights: [CGFloat] = []
+        // Each panel is a column: a centered header (icon/name/subtitle), then
+        // a field per shortcut, then a ＋ adder. Column height grows with the
+        // binding count; the window is as tall as the busiest column.
+        var colHeights: [CGFloat] = []
         for panel in panels {
             let items = Shortcut.load(panel).count + 1   // fields + adder
-            let stack = CGFloat(items) * itemH + CGFloat(items - 1) * itemGap
-            rowHeights.append(max(baseRowH, rowPadV * 2 + stack))
+            colHeights.append(headerBlockH + CGFloat(items) * itemH + CGFloat(items - 1) * itemGap)
         }
-
-        let H = headerH + rowHeights.reduce(0, +) + footerH
+        let H = titleH + (colHeights.max() ?? headerBlockH) + footerH
         let keepTop: CGFloat? = isVisible ? frame.maxY : nil
         setContentSize(NSSize(width: winW, height: H))
         if let top = keepTop { setFrameTopLeftPoint(NSPoint(x: frame.minX, y: top)) }
@@ -516,74 +514,93 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let header = NSTextField(labelWithString: "Give every Spotlight panel its own shortcut.")
         header.font = .systemFont(ofSize: 13, weight: .medium)
         header.textColor = .secondaryLabelColor
-        header.frame = NSRect(x: pad, y: H - 31, width: winW - pad * 2, height: 20)
+        header.alignment = .center
+        header.frame = NSRect(x: pad, y: H - 30, width: winW - pad * 2, height: 20)
         v.addSubview(header)
 
         let onChange: () -> Void = { [weak self] in self?.appDelegate?.syncHotkeys(); self?.rebuild() }
-        var topY = headerH
-        for (i, panel) in panels.enumerated() {
-            let rh = rowHeights[i]
-            let rowBottom = H - topY - rh
-            let firstTop = rowBottom + rh - rowPadV   // AppKit y of the first item's top
+        let colTop = H - titleH   // AppKit y of the top of every column
+        let fieldW = colW - removeW - 4
 
-            let icon = NSImageView(frame: NSRect(x: pad, y: firstTop - itemH + 2, width: iconSize, height: iconSize))
+        for (i, panel) in panels.enumerated() {
+            let cx = colX(i)
+
+            let icon = NSImageView(frame: NSRect(x: cx + (colW - iconSize) / 2, y: colTop - iconSize, width: iconSize, height: iconSize))
             configureIcon(icon, panel)
             v.addSubview(icon)
 
-            let labelW = fieldX - textX - 8
             let name = NSTextField(labelWithString: panel.name)
             name.font = .systemFont(ofSize: 13, weight: .semibold)
-            name.frame = NSRect(x: textX, y: firstTop - 15, width: labelW, height: 17)
+            name.alignment = .center
+            name.frame = NSRect(x: cx, y: colTop - iconSize - 21, width: colW, height: 17)
             v.addSubview(name)
 
             let sub = NSTextField(labelWithString: panel.subtitle)
             sub.font = .systemFont(ofSize: 11)
             sub.textColor = .tertiaryLabelColor
-            sub.frame = NSRect(x: textX, y: firstTop - 29, width: labelW, height: 14)
+            sub.alignment = .center
+            sub.frame = NSRect(x: cx, y: colTop - iconSize - 37, width: colW, height: 14)
             v.addSubview(sub)
 
-            // A field + ✕ per existing shortcut, stacked downward.
+            // Field + ✕ per existing shortcut, stacked below the header.
             let shortcuts = Shortcut.load(panel)
-            var lineTop = firstTop
+            var lineTop = colTop - headerBlockH
             for sc in shortcuts {
                 let field = RecorderButton(panel: panel, appDelegate: appDelegate,
                                            replacing: sc, restingTitle: sc.label)
                 field.onChange = onChange
-                field.frame = NSRect(x: fieldX, y: lineTop - itemH, width: fieldW, height: itemH)
+                field.frame = NSRect(x: cx, y: lineTop - itemH, width: fieldW, height: itemH)
                 v.addSubview(field)
 
                 let rm = RemoveButton(panelIndex: i, shortcut: sc)
                 rm.onRemove = { [weak self] pIdx, s in
                     Shortcut.remove(s, from: panels[pIdx]); self?.appDelegate?.syncHotkeys(); self?.rebuild()
                 }
-                rm.frame = NSRect(x: removeX, y: lineTop - itemH, width: removeW, height: itemH)
+                rm.frame = NSRect(x: cx + fieldW + 4, y: lineTop - itemH, width: removeW, height: itemH)
                 v.addSubview(rm)
                 lineTop -= (itemH + itemGap)
             }
 
-            // The ＋ adder sits under the field(s). When empty it reads
-            // "Record Shortcut" and spans the field width, like a plain entry.
+            // The ＋ adder sits under the field(s). Empty column shows a wide
+            // "Record Shortcut" entry, like a plain field.
             let empty = shortcuts.isEmpty
             let adder = RecorderButton(panel: panel, appDelegate: appDelegate,
                                        restingTitle: empty ? "Record Shortcut" : "＋")
             adder.onChange = onChange
-            let aw: CGFloat = empty ? (fieldW + 3 + removeW) : 40
-            adder.frame = NSRect(x: fieldX, y: lineTop - itemH, width: aw, height: itemH)
+            adder.frame = NSRect(x: empty ? cx : cx + (colW - 40) / 2,
+                                 y: lineTop - itemH, width: empty ? colW : 40, height: itemH)
             v.addSubview(adder)
-
-            topY += rh
         }
 
+        // Footer: banner across the top, Force Quit (left) + Save (right).
         let bannerField = NSTextField(wrappingLabelWithString: "")
         bannerField.font = .systemFont(ofSize: 11)
         bannerField.textColor = .systemOrange
-        bannerField.frame = NSRect(x: pad, y: 12, width: winW - pad * 2, height: 30)
+        bannerField.alignment = .center
+        bannerField.frame = NSRect(x: pad, y: 44, width: winW - pad * 2, height: 26)
         v.addSubview(bannerField)
         banner = bannerField
+
+        let quit = NSButton(title: "Force Quit", target: self, action: #selector(forceQuit))
+        quit.bezelStyle = .rounded
+        quit.contentTintColor = .systemRed
+        quit.toolTip = "Quit Lightswitch — its shortcuts stop working until you launch it again."
+        quit.frame = NSRect(x: pad, y: 12, width: 104, height: 28)
+        v.addSubview(quit)
+
+        let save = NSButton(title: "Save", target: self, action: #selector(saveAndClose))
+        save.bezelStyle = .rounded
+        save.keyEquivalent = "\r"
+        save.toolTip = "Close this window (shortcuts are saved as you set them)."
+        save.frame = NSRect(x: winW - pad - 76, y: 12, width: 76, height: 28)
+        v.addSubview(save)
 
         contentView = v
         refreshBanner()
     }
+
+    @objc private func forceQuit() { NSApp.terminate(nil) }
+    @objc private func saveAndClose() { close() }
 
     private func configureIcon(_ icon: NSImageView, _ panel: Panel) {
         if let gp = panel.glyphPath, let glyph = NSImage(contentsOfFile: gp) {
