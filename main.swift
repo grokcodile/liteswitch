@@ -347,8 +347,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Shortcut controls
 
-/// A recorded shortcut shown as a small pill; click it to remove that binding.
-final class PillButton: NSButton {
+/// The small "✕" beside a recorded shortcut; removes that one binding.
+final class RemoveButton: NSButton {
     let panelIndex: Int
     let shortcut: Shortcut
     var onRemove: ((Int, Shortcut) -> Void)?
@@ -357,24 +357,26 @@ final class PillButton: NSButton {
         self.panelIndex = panelIndex
         self.shortcut = shortcut
         super.init(frame: .zero)
-        bezelStyle = .rounded
-        font = .systemFont(ofSize: 11)
-        title = shortcut.label + "  ✕"
+        isBordered = false
+        font = .systemFont(ofSize: 11, weight: .medium)
+        title = "✕"
+        contentTintColor = .tertiaryLabelColor
         toolTip = "Remove " + shortcut.label
         target = self
         action = #selector(tapped)
-        sizeToFit()
     }
     required init?(coder: NSCoder) { fatalError() }
     @objc private func tapped() { onRemove?(panelIndex, shortcut) }
 }
 
-/// The "＋" button that records the next chord and APPENDS it to a panel (a
-/// panel may hold several). Bare Esc / Delete cancels. Only one recorder can
-/// capture at a time, and window close / focus loss cancels it — otherwise the
-/// parked hotkeys would stay parked forever.
+/// A shortcut entry field. In "add" mode (replacing == nil) it appends a new
+/// binding to the panel; bound to an existing shortcut it re-records that one.
+/// Bare Esc / Delete cancels. Only one recorder captures at a time, and window
+/// close / focus loss cancels it — otherwise the parked hotkeys stay parked.
 final class RecorderButton: NSButton {
     let panel: Panel
+    let replacing: Shortcut?          // non-nil = re-record this existing binding
+    var restingTitle: String
     private var monitor: Any?
     weak var appDelegate: AppDelegate?
     var onChange: (() -> Void)?
@@ -382,14 +384,17 @@ final class RecorderButton: NSButton {
     /// The one recorder currently capturing, if any.
     private(set) static weak var active: RecorderButton?
 
-    init(panel: Panel, appDelegate: AppDelegate?) {
+    init(panel: Panel, appDelegate: AppDelegate?, replacing: Shortcut? = nil, restingTitle: String) {
         self.panel = panel
         self.appDelegate = appDelegate
+        self.replacing = replacing
+        self.restingTitle = restingTitle
         super.init(frame: .zero)
         bezelStyle = .rounded
         font = .systemFont(ofSize: 11)
-        title = "＋"
-        toolTip = "Add a shortcut for " + panel.name
+        title = restingTitle
+        toolTip = replacing == nil ? "Add a shortcut for " + panel.name
+                                   : "Click to change this shortcut"
         target = self
         action = #selector(beginRecording)
     }
@@ -415,7 +420,7 @@ final class RecorderButton: NSButton {
             let bare = mods & ~UInt32(shiftKey) == 0
             let code = UInt32(event.keyCode)
 
-            // Bare Esc or Delete just cancels the add (removal is via the pills).
+            // Bare Esc or Delete just cancels (removal is via the ✕ buttons).
             if bare && [kVK_Escape, kVK_Delete, kVK_ForwardDelete].contains(Int(event.keyCode)) {
                 return nil
             }
@@ -432,6 +437,7 @@ final class RecorderButton: NSButton {
             for other in panels where other.defaultsKey != self.panel.defaultsKey {
                 Shortcut.remove(sc, from: other)
             }
+            if let old = self.replacing { Shortcut.remove(old, from: self.panel) }
             Shortcut.add(sc, to: self.panel)
             // Synthesis panels need Accessibility — ask the moment the user
             // records a binding that will require it.
@@ -449,7 +455,7 @@ final class RecorderButton: NSButton {
         NSEvent.removeMonitor(m)
         monitor = nil
         if RecorderButton.active === self { RecorderButton.active = nil }
-        title = "＋"
+        title = restingTitle
         appDelegate?.recording = false
         onChange?()
     }
@@ -462,15 +468,16 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var banner: NSTextField?
 
     // Layout constants.
-    private let winW: CGFloat = 460, pad: CGFloat = 20
-    private let headerH: CGFloat = 48, footerH: CGFloat = 52
+    private let winW: CGFloat = 400, pad: CGFloat = 20
+    private let headerH: CGFloat = 46, footerH: CGFloat = 50
     private let iconSize: CGFloat = 26
-    private let baseRowH: CGFloat = 48
-    private let lineH: CGFloat = 26          // one row of pills
-    private let lineGap: CGFloat = 8, pillGap: CGFloat = 7, rowPadV: CGFloat = 11
+    private let baseRowH: CGFloat = 46
+    private let itemH: CGFloat = 26, itemGap: CGFloat = 6, rowPadV: CGFloat = 10
+    private let removeW: CGFloat = 18
     private var textX: CGFloat { pad + iconSize + 12 }
-    private var pillsX: CGFloat { 198 }      // where the pill region starts
-    private var pillsRight: CGFloat { winW - pad }
+    private var fieldW: CGFloat { 112 }
+    private var removeX: CGFloat { winW - pad - removeW }
+    private var fieldX: CGFloat { removeX - 3 - fieldW }
 
     init(delegate: AppDelegate) {
         appDelegate = delegate
@@ -490,32 +497,13 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     func rebuild() {
         RecorderButton.active?.cancelRecording()
 
-        // Build each panel's buttons (a pill per shortcut, then the ＋ adder),
-        // measure them, and compute how many wrapped lines each row needs.
-        var rowButtons: [[NSButton]] = []
+        // Each panel's right column stacks a field per shortcut, then a ＋
+        // adder underneath — so row height grows with the number of bindings.
         var rowHeights: [CGFloat] = []
-        for (i, panel) in panels.enumerated() {
-            var buttons: [NSButton] = []
-            for sc in Shortcut.load(panel) {
-                let pill = PillButton(panelIndex: i, shortcut: sc)
-                pill.onRemove = { [weak self] pIdx, s in
-                    Shortcut.remove(s, from: panels[pIdx])
-                    self?.appDelegate?.syncHotkeys()
-                    self?.rebuild()
-                }
-                buttons.append(pill)
-            }
-            let add = RecorderButton(panel: panel, appDelegate: appDelegate)
-            add.onChange = { [weak self] in
-                self?.appDelegate?.syncHotkeys()
-                self?.rebuild()
-            }
-            add.sizeToFit()
-            add.frame.size.width = max(40, add.frame.width)
-            buttons.append(add)
-            rowButtons.append(buttons)
-            let lines = lineCount(buttons)
-            rowHeights.append(max(baseRowH, rowPadV * 2 + CGFloat(lines) * lineH + CGFloat(lines - 1) * lineGap))
+        for panel in panels {
+            let items = Shortcut.load(panel).count + 1   // fields + adder
+            let stack = CGFloat(items) * itemH + CGFloat(items - 1) * itemGap
+            rowHeights.append(max(baseRowH, rowPadV * 2 + stack))
         }
 
         let H = headerH + rowHeights.reduce(0, +) + footerH
@@ -528,31 +516,61 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let header = NSTextField(labelWithString: "Give every Spotlight panel its own shortcut.")
         header.font = .systemFont(ofSize: 13, weight: .medium)
         header.textColor = .secondaryLabelColor
-        header.frame = NSRect(x: pad, y: H - 32, width: winW - pad * 2, height: 20)
+        header.frame = NSRect(x: pad, y: H - 31, width: winW - pad * 2, height: 20)
         v.addSubview(header)
 
-        var topY = headerH   // distance from the top edge to the current row's top
+        let onChange: () -> Void = { [weak self] in self?.appDelegate?.syncHotkeys(); self?.rebuild() }
+        var topY = headerH
         for (i, panel) in panels.enumerated() {
             let rh = rowHeights[i]
             let rowBottom = H - topY - rh
-            let firstLineTop = rowBottom + rh - rowPadV   // AppKit y of the first pill line's top
+            let firstTop = rowBottom + rh - rowPadV   // AppKit y of the first item's top
 
-            let icon = NSImageView(frame: NSRect(x: pad, y: firstLineTop - lineH + 3, width: iconSize, height: iconSize))
+            let icon = NSImageView(frame: NSRect(x: pad, y: firstTop - itemH + 2, width: iconSize, height: iconSize))
             configureIcon(icon, panel)
             v.addSubview(icon)
 
+            let labelW = fieldX - textX - 8
             let name = NSTextField(labelWithString: panel.name)
             name.font = .systemFont(ofSize: 13, weight: .semibold)
-            name.frame = NSRect(x: textX, y: firstLineTop - 16, width: 150, height: 17)
+            name.frame = NSRect(x: textX, y: firstTop - 15, width: labelW, height: 17)
             v.addSubview(name)
 
             let sub = NSTextField(labelWithString: panel.subtitle)
             sub.font = .systemFont(ofSize: 11)
             sub.textColor = .tertiaryLabelColor
-            sub.frame = NSRect(x: textX, y: firstLineTop - 30, width: 150, height: 14)
+            sub.frame = NSRect(x: textX, y: firstTop - 29, width: labelW, height: 14)
             v.addSubview(sub)
 
-            flow(rowButtons[i], firstLineTop: firstLineTop, into: v)
+            // A field + ✕ per existing shortcut, stacked downward.
+            let shortcuts = Shortcut.load(panel)
+            var lineTop = firstTop
+            for sc in shortcuts {
+                let field = RecorderButton(panel: panel, appDelegate: appDelegate,
+                                           replacing: sc, restingTitle: sc.label)
+                field.onChange = onChange
+                field.frame = NSRect(x: fieldX, y: lineTop - itemH, width: fieldW, height: itemH)
+                v.addSubview(field)
+
+                let rm = RemoveButton(panelIndex: i, shortcut: sc)
+                rm.onRemove = { [weak self] pIdx, s in
+                    Shortcut.remove(s, from: panels[pIdx]); self?.appDelegate?.syncHotkeys(); self?.rebuild()
+                }
+                rm.frame = NSRect(x: removeX, y: lineTop - itemH, width: removeW, height: itemH)
+                v.addSubview(rm)
+                lineTop -= (itemH + itemGap)
+            }
+
+            // The ＋ adder sits under the field(s). When empty it reads
+            // "Record Shortcut" and spans the field width, like a plain entry.
+            let empty = shortcuts.isEmpty
+            let adder = RecorderButton(panel: panel, appDelegate: appDelegate,
+                                       restingTitle: empty ? "Record Shortcut" : "＋")
+            adder.onChange = onChange
+            let aw: CGFloat = empty ? (fieldW + 3 + removeW) : 40
+            adder.frame = NSRect(x: fieldX, y: lineTop - itemH, width: aw, height: itemH)
+            v.addSubview(adder)
+
             topY += rh
         }
 
@@ -578,29 +596,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         }
         icon.contentTintColor = .secondaryLabelColor
         icon.imageScaling = .scaleProportionallyDown
-    }
-
-    /// Number of wrapped lines the buttons need within the pill region.
-    private func lineCount(_ buttons: [NSButton]) -> Int {
-        var lines = 1, x = pillsX
-        for b in buttons {
-            if x > pillsX && x + b.frame.width > pillsRight { lines += 1; x = pillsX }
-            x += b.frame.width + pillGap
-        }
-        return lines
-    }
-
-    /// Place buttons left-to-right within [pillsX, pillsRight], wrapping down,
-    /// each vertically centered in its line.
-    private func flow(_ buttons: [NSButton], firstLineTop: CGFloat, into v: NSView) {
-        var x = pillsX, lineTop = firstLineTop
-        for b in buttons {
-            let bw = b.frame.width, bh = b.frame.height
-            if x > pillsX && x + bw > pillsRight { x = pillsX; lineTop -= (lineH + lineGap) }
-            b.frame = NSRect(x: x, y: lineTop - lineH + (lineH - bh) / 2, width: bw, height: bh)
-            v.addSubview(b)
-            x += bw + pillGap
-        }
     }
 
     /// One line of orange footer text: missing permission, then hotkey conflicts.
