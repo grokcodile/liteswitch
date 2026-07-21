@@ -158,6 +158,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if SMAppService.mainApp.status != .enabled {
             try? SMAppService.mainApp.register()
         }
+        // First launch: seed each panel with its ⌘1–⌘4 default (matching the
+        // key Spotlight itself uses for that panel). Runs once.
+        if !UserDefaults.standard.bool(forKey: "didSeedDefaults") {
+            UserDefaults.standard.set(true, forKey: "didSeedDefaults")
+            for panel in panels where Shortcut.load(panel).isEmpty {
+                Shortcut.save([Shortcut(keyCode: UInt32(panel.spotlightKey),
+                                        modifiers: UInt32(cmdKey))], panel)
+            }
+        }
         installHandler()
         syncHotkeys()
         watchAccessibility()
@@ -380,6 +389,8 @@ final class RecorderButton: NSButton {
     private var monitor: Any?
     weak var appDelegate: AppDelegate?
     var onChange: (() -> Void)?
+    var restingFrame: NSRect = .zero    // frame when idle
+    var recordingFrame: NSRect?         // grow to this while capturing (the ＋ adder)
 
     /// The one recorder currently capturing, if any.
     private(set) static weak var active: RecorderButton?
@@ -407,6 +418,7 @@ final class RecorderButton: NSButton {
         RecorderButton.active = self
         appDelegate?.recording = true
         title = "Type shortcut…"
+        if let rf = recordingFrame { frame = rf }   // grow so the message fits
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             defer { self.cancelRecording() }   // shared teardown for every branch
@@ -456,6 +468,7 @@ final class RecorderButton: NSButton {
         monitor = nil
         if RecorderButton.active === self { RecorderButton.active = nil }
         title = restingTitle
+        if restingFrame != .zero { frame = restingFrame }
         appDelegate?.recording = false
         onChange?()
     }
@@ -467,16 +480,17 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private weak var appDelegate: AppDelegate?
     private var banner: NSTextField?
 
-    // Layout constants — the four panels sit side by side, one column each.
+    // Layout constants — the four panels sit side by side, each in its own box.
     private let pad: CGFloat = 20
     private let titleH: CGFloat = 40, footerH: CGFloat = 74
-    private let colW: CGFloat = 132, colGap: CGFloat = 16
+    private let boxW: CGFloat = 148, boxGap: CGFloat = 12, innerPad: CGFloat = 11
     private let iconSize: CGFloat = 28
-    private let headerBlockH: CGFloat = 68
+    private let headerBlockH: CGFloat = 66
     private let itemH: CGFloat = 26, itemGap: CGFloat = 6
     private let removeW: CGFloat = 18
-    private var winW: CGFloat { pad * 2 + colW * CGFloat(panels.count) + colGap * CGFloat(panels.count - 1) }
-    private func colX(_ i: Int) -> CGFloat { pad + CGFloat(i) * (colW + colGap) }
+    private var colW: CGFloat { boxW - innerPad * 2 }   // field width inside a box
+    private var winW: CGFloat { pad * 2 + boxW * CGFloat(panels.count) + boxGap * CGFloat(panels.count - 1) }
+    private func boxX(_ i: Int) -> CGFloat { pad + CGFloat(i) * (boxW + boxGap) }
 
     init(delegate: AppDelegate) {
         appDelegate = delegate
@@ -496,15 +510,16 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     func rebuild() {
         RecorderButton.active?.cancelRecording()
 
-        // Each panel is a column: a centered header (icon/name/subtitle), then
-        // a field per shortcut, then a ＋ adder. Column height grows with the
-        // binding count; the window is as tall as the busiest column.
-        var colHeights: [CGFloat] = []
+        // Each panel is a boxed column: a centered header (icon/name/subtitle),
+        // then a field per shortcut, then a ＋ adder. Every box is the same
+        // height (the busiest column's), so the four read as equal panels.
+        var contentHeights: [CGFloat] = []
         for panel in panels {
             let items = Shortcut.load(panel).count + 1   // fields + adder
-            colHeights.append(headerBlockH + CGFloat(items) * itemH + CGFloat(items - 1) * itemGap)
+            contentHeights.append(headerBlockH + CGFloat(items) * itemH + CGFloat(items - 1) * itemGap)
         }
-        let H = titleH + (colHeights.max() ?? headerBlockH) + footerH
+        let boxH = (contentHeights.max() ?? headerBlockH) + innerPad * 2
+        let H = titleH + boxH + footerH
         let keepTop: CGFloat? = isVisible ? frame.maxY : nil
         setContentSize(NSSize(width: winW, height: H))
         if let top = keepTop { setFrameTopLeftPoint(NSPoint(x: frame.minX, y: top)) }
@@ -519,56 +534,78 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         v.addSubview(header)
 
         let onChange: () -> Void = { [weak self] in self?.appDelegate?.syncHotkeys(); self?.rebuild() }
-        let colTop = H - titleH   // AppKit y of the top of every column
-        let fieldW = colW - removeW - 4
+        let boxTop = H - titleH
+        let boxBottom = boxTop - boxH
 
         for (i, panel) in panels.enumerated() {
-            let cx = colX(i)
+            let bx = boxX(i)
 
-            let icon = NSImageView(frame: NSRect(x: cx + (colW - iconSize) / 2, y: colTop - iconSize, width: iconSize, height: iconSize))
+            // The box (its own "panel").
+            let box = NSView(frame: NSRect(x: bx, y: boxBottom, width: boxW, height: boxH))
+            box.wantsLayer = true
+            box.layer?.cornerRadius = 10
+            box.layer?.borderWidth = 1
+            box.layer?.borderColor = NSColor.separatorColor.cgColor
+            box.layer?.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.4).cgColor
+            v.addSubview(box)
+
+            let cx = bx + innerPad
+            let top = boxTop - innerPad
+
+            let icon = NSImageView(frame: NSRect(x: cx + (colW - iconSize) / 2, y: top - iconSize, width: iconSize, height: iconSize))
             configureIcon(icon, panel)
             v.addSubview(icon)
 
             let name = NSTextField(labelWithString: panel.name)
             name.font = .systemFont(ofSize: 13, weight: .semibold)
             name.alignment = .center
-            name.frame = NSRect(x: cx, y: colTop - iconSize - 21, width: colW, height: 17)
+            name.frame = NSRect(x: cx, y: top - iconSize - 20, width: colW, height: 17)
             v.addSubview(name)
 
             let sub = NSTextField(labelWithString: panel.subtitle)
             sub.font = .systemFont(ofSize: 11)
             sub.textColor = .tertiaryLabelColor
             sub.alignment = .center
-            sub.frame = NSRect(x: cx, y: colTop - iconSize - 37, width: colW, height: 14)
+            sub.frame = NSRect(x: cx, y: top - iconSize - 35, width: colW, height: 14)
             v.addSubview(sub)
 
-            // Field + ✕ per existing shortcut, stacked below the header.
+            // A full-width field per shortcut, each with its ✕ tucked inside on
+            // the right. Click the field to re-record; click the ✕ to remove.
             let shortcuts = Shortcut.load(panel)
-            var lineTop = colTop - headerBlockH
+            var lineTop = top - headerBlockH
             for sc in shortcuts {
+                let frameRect = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
                 let field = RecorderButton(panel: panel, appDelegate: appDelegate,
                                            replacing: sc, restingTitle: sc.label)
+                field.alignment = .left
                 field.onChange = onChange
-                field.frame = NSRect(x: cx, y: lineTop - itemH, width: fieldW, height: itemH)
+                field.frame = frameRect
+                field.restingFrame = frameRect
                 v.addSubview(field)
 
                 let rm = RemoveButton(panelIndex: i, shortcut: sc)
                 rm.onRemove = { [weak self] pIdx, s in
                     Shortcut.remove(s, from: panels[pIdx]); self?.appDelegate?.syncHotkeys(); self?.rebuild()
                 }
-                rm.frame = NSRect(x: cx + fieldW + 4, y: lineTop - itemH, width: removeW, height: itemH)
+                // Placed after the field → on top → sits inside its right edge.
+                rm.frame = NSRect(x: cx + colW - removeW - 6, y: lineTop - itemH, width: removeW, height: itemH)
                 v.addSubview(rm)
                 lineTop -= (itemH + itemGap)
             }
 
-            // The ＋ adder sits under the field(s). Empty column shows a wide
-            // "Record Shortcut" entry, like a plain field.
+            // The ＋ adder under the field(s). It's compact until clicked, then
+            // grows to full field width so "Type shortcut…" is readable. An
+            // empty column starts at full width reading "Record Shortcut".
             let empty = shortcuts.isEmpty
+            let fullFrame = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
+            let restFrame = empty ? fullFrame
+                : NSRect(x: cx + (colW - 40) / 2, y: lineTop - itemH, width: 40, height: itemH)
             let adder = RecorderButton(panel: panel, appDelegate: appDelegate,
                                        restingTitle: empty ? "Record Shortcut" : "＋")
             adder.onChange = onChange
-            adder.frame = NSRect(x: empty ? cx : cx + (colW - 40) / 2,
-                                 y: lineTop - itemH, width: empty ? colW : 40, height: itemH)
+            adder.frame = restFrame
+            adder.restingFrame = restFrame
+            adder.recordingFrame = fullFrame
             v.addSubview(adder)
         }
 
