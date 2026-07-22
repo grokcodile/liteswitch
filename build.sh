@@ -1,11 +1,10 @@
 #!/bin/bash
-# Builds Lightswitch.app into ./build (ad-hoc signed).
-# Same construction as Key54's build.sh; no icon pipeline yet (TODO).
+# Builds LiteSwitch.app into ./build (ad-hoc signed).
 set -e
 
 cd "$(dirname "$0")"
 
-APP_NAME="Lightswitch"
+APP_NAME="LiteSwitch"
 BUILD_DIR="./build/${APP_NAME}.app"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 
@@ -22,9 +21,11 @@ swiftc -O main.swift \
     -framework Cocoa \
     -framework Carbon \
     -framework ServiceManagement \
+    -framework Vision \
     -o "${BUILD_DIR}/Contents/MacOS/${APP_NAME}"
 
 cp Info.plist "${BUILD_DIR}/Contents/Info.plist"
+cp icon/AppIcon.icns "${BUILD_DIR}/Contents/Resources/AppIcon.icns"
 
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "Signing with: ${SIGN_IDENTITY}"

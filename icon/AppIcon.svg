@@ -1,0 +1,129 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <clipPath id="squircle">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+
+    <!-- Command glyph: c=512, a=104, r=74, one closed path -->
+    <path id="cmd" d="M 616,690 L 616,334 A 74,74 0 1 1 690,408 L 334,408 A 74,74 0 1 1 408,334 L 408,690 A 74,74 0 1 1 334,616 L 690,616 A 74,74 0 1 1 616,690 Z"/>
+
+    <!-- The glyph stroke as a paint mask -->
+    <mask id="mGlyph" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <use xlink:href="#cmd" fill="none" stroke="#ffffff" stroke-width="62" stroke-linejoin="round"/>
+    </mask>
+
+    <!-- Deep charcoal-navy ground with a subtle radial vignette (from mono) -->
+    <radialGradient id="ground" gradientUnits="userSpaceOnUse" cx="512" cy="430" r="620">
+      <stop offset="0"    stop-color="#273146"/>
+      <stop offset="0.52" stop-color="#1A2132"/>
+      <stop offset="1"    stop-color="#0C101D"/>
+    </radialGradient>
+
+    <!-- Quadrant hues, brightened to mono's more vibrant palette -->
+    <radialGradient id="hOrange" gradientUnits="userSpaceOnUse" cx="365" cy="268" r="290">
+      <stop offset="0" stop-color="#FFA928"/>
+      <stop offset="0.55" stop-color="#FF8E00" stop-opacity="0.96"/>
+      <stop offset="0.8" stop-color="#FF8E00" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FF8E00" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hCoral" gradientUnits="userSpaceOnUse" cx="505" cy="295" r="190">
+      <stop offset="0" stop-color="#FF5A48" stop-opacity="0.9"/>
+      <stop offset="0.6" stop-color="#FF4E48" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FF4E48" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hPink" gradientUnits="userSpaceOnUse" cx="620" cy="300" r="360">
+      <stop offset="0" stop-color="#FF3380"/>
+      <stop offset="0.65" stop-color="#F51E78" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#F51E78" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hMagenta" gradientUnits="userSpaceOnUse" cx="770" cy="505" r="330">
+      <stop offset="0" stop-color="#EE33B8"/>
+      <stop offset="0.65" stop-color="#DE1FA8" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#DE1FA8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hPurple" gradientUnits="userSpaceOnUse" cx="645" cy="760" r="345">
+      <stop offset="0" stop-color="#AC70FF"/>
+      <stop offset="0.65" stop-color="#9550FF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#9550FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hIndigo" gradientUnits="userSpaceOnUse" cx="395" cy="782" r="325">
+      <stop offset="0" stop-color="#7768FF"/>
+      <stop offset="0.65" stop-color="#6558F5" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#6558F5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hBlue" gradientUnits="userSpaceOnUse" cx="262" cy="618" r="330">
+      <stop offset="0" stop-color="#1E82FF"/>
+      <stop offset="0.65" stop-color="#0A6EF5" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#0A6EF5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hCyan" gradientUnits="userSpaceOnUse" cx="272" cy="558" r="265">
+      <stop offset="0" stop-color="#4FC8FF"/>
+      <stop offset="0.45" stop-color="#38B8F8" stop-opacity="0.95"/>
+      <stop offset="0.72" stop-color="#38B8F8" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#38B8F8" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Floating orb glows: opposite-corner color, offset outward from each loop -->
+    <radialGradient id="orbViolet" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8B45F5" stop-opacity="0.9"/>
+      <stop offset="0.55" stop-color="#8B45F5" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#8B45F5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="orbBlue" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#0A6EF5" stop-opacity="0.9"/>
+      <stop offset="0.55" stop-color="#0A6EF5" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#0A6EF5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="orbGold" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#FF9500" stop-opacity="0.9"/>
+      <stop offset="0.55" stop-color="#FF9500" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#FF9500" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="orbPink" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#F5217E" stop-opacity="0.9"/>
+      <stop offset="0.55" stop-color="#F5217E" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#F5217E" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Top inner highlight / bottom inner shade (from mono) -->
+    <linearGradient id="topLight" gradientUnits="userSpaceOnUse" x1="512" y1="100" x2="512" y2="390">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bottomShade" gradientUnits="userSpaceOnUse" x1="512" y1="640" x2="512" y2="924">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.20"/>
+    </linearGradient>
+
+    <filter id="orbBlur" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="30"/>
+    </filter>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <!-- ground -->
+    <rect x="100" y="100" width="824" height="824" fill="url(#ground)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#bottomShade)"/>
+
+    <!-- floating orbs: opposite-corner color, scattered organically within each quadrant -->
+    <circle cx="295" cy="192" r="210" fill="url(#orbViolet)" filter="url(#orbBlur)" opacity="0.24"/>
+    <circle cx="815" cy="300" r="190" fill="url(#orbBlue)" filter="url(#orbBlur)" opacity="0.21"/>
+    <circle cx="685" cy="815" r="240" fill="url(#orbGold)" filter="url(#orbBlur)" opacity="0.26"/>
+    <circle cx="200" cy="610" r="200" fill="url(#orbPink)" filter="url(#orbBlur)" opacity="0.22"/>
+
+    <!-- command glyph: quadrant hues through the stroke mask, flat and crisp -->
+    <g mask="url(#mGlyph)">
+      <rect width="1024" height="1024" fill="url(#hPink)"/>
+      <rect width="1024" height="1024" fill="url(#hMagenta)"/>
+      <rect width="1024" height="1024" fill="url(#hPurple)"/>
+      <rect width="1024" height="1024" fill="url(#hIndigo)"/>
+      <rect width="1024" height="1024" fill="url(#hBlue)"/>
+      <rect width="1024" height="1024" fill="url(#hOrange)"/>
+      <rect width="1024" height="1024" fill="url(#hCyan)"/>
+      <rect width="1024" height="1024" fill="url(#hCoral)"/>
+    </g>
+
+    <!-- top inner highlight stroke -->
+    <rect x="103.25" y="103.25" width="817.5" height="817.5" rx="181.75"
+          fill="none" stroke="url(#topLight)" stroke-width="2.5"/>
+  </g>
+</svg>
