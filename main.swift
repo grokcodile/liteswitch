@@ -59,10 +59,11 @@ let panels: [Panel] = [
     Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Browse macOS's clipboard history to paste something you copied earlier.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
     Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Open System Settings — with Smart Toggle, press again to return to where you were.", spotlightKey: 0, defaultsKey: "settings"),
     Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
-    Panel(name: "Text Capture", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor and copy its code in the format you choose.", spotlightKey: 0, defaultsKey: "colorpicker"),
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
+    Panel(name: "Text Capture", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
+    Panel(name: "Push to Talk", symbol: "mic", glyphPath: nil, detail: "Hold a key to dictate, release to stop — the push-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
 /// The long-form help each group's sheet shows: what a tool does, a couple of
@@ -119,6 +120,11 @@ let panelInfo: [String: PanelInfo] = [
         examples: ["Keep a long render or download alive.",
                    "Stop the screen sleeping during a presentation."],
         suggestion: "⌃⌘K — a deliberate chord for a toggle you leave on."),
+    "dictation": PanelInfo(
+        body: "Hold a key and talk; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so the push-to-talk pattern that dictation apps are built around is the one thing it doesn't offer. Transcription is macOS's, running on-device: with the offline model installed for your language (Apple Intelligence handles this on supported Macs), your audio never leaves the Mac. The bar meter shows green while it's listening, then amber for a moment after you let go, because dictation keeps catching up for a beat — press the key again during that to carry straight on.",
+        examples: ["Get a long reply down without typing it all out.",
+                   "Talk out a rough paragraph, then tidy it up by hand."],
+        suggestion: "Hold Right ⌥ — a key nothing else claims, and easy to find without looking."),
     "speakclipboard": PanelInfo(
         body: "Mirrors macOS's built-in “Speak selection” rather than re-implementing it. The field shows the shortcut macOS has assigned; Set Up… opens Spoken Content, where you enable it and choose the voice.",
         examples: ["Have a long article read while you do something else.",
@@ -128,7 +134,7 @@ let panelInfo: [String: PanelInfo] = [
 
 /// Panels shown in the "System Tools" group rather than the "Spotlight" group,
 /// and — like Applications — driven without needing Accessibility.
-let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "speakclipboard"]
+let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "dictation", "speakclipboard"]
 func isUtility(_ panel: Panel) -> Bool { utilityKeys.contains(panel.defaultsKey) }
 /// Rows of option controls a card shows below its shortcut field: every System
 /// Tool has one (a checkbox or select menu); Spotlight panels have none.
@@ -141,6 +147,48 @@ func worksWithoutAX(_ panel: Panel) -> Bool {
 /// selection" hotkey — so it registers nothing and its card shows a read-only
 /// field plus a button into Spoken Content settings.
 func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
+/// Dictation is push-to-talk: it needs the key's release as well as its press,
+/// which a Carbon hotkey never reports, so it watches a modifier instead of
+/// registering a shortcut.
+func usesHoldKey(_ panel: Panel) -> Bool { panel.defaultsKey == "dictation" }
+
+extension Array {
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
+}
+
+/// The modifier held down to talk. Only the right-hand ⌘ and ⌥ are offered:
+/// Apple keyboards have no right Control, and Fn/Globe is claimed by the system
+/// before it reaches us. Raw values are persisted — only append.
+enum HoldKey: Int, CaseIterable {
+    case off = 0, rightCommand = 1, rightOption = 2
+
+    /// Menu order — deliberately not the raw order, which is fixed by what's
+    /// already stored in defaults.
+    static let menuOrder: [HoldKey] = [.off, .rightOption, .rightCommand]
+
+    var label: String {
+        switch self {
+        case .off:           return "Off"
+        case .rightCommand:  return "Right ⌘"
+        case .rightOption:   return "Right ⌥"
+        }
+    }
+    /// The physical key, and the flag that tells press from release.
+    var keyCode: UInt16? {
+        switch self {
+        case .off: return nil
+        case .rightCommand: return 54
+        case .rightOption: return 61
+        }
+    }
+    var flag: NSEvent.ModifierFlags? {
+        switch self {
+        case .off: return nil
+        case .rightCommand: return .command
+        case .rightOption: return .option
+        }
+    }
+}
 
 extension UserDefaults {
     var settingsToggle: Bool {
@@ -160,6 +208,11 @@ extension UserDefaults {
     var keepAwakeAllowDisplaySleep: Bool {
         get { object(forKey: "keepAwakeAllowDisplaySleep") as? Bool ?? false }
         set { set(newValue, forKey: "keepAwakeAllowDisplaySleep") }
+    }
+    /// Dictation: which modifier is held to talk (Off = the tool is idle).
+    var dictationHoldKey: HoldKey {
+        get { HoldKey(rawValue: integer(forKey: "dictationHoldKey")) ?? .off }
+        set { set(newValue.rawValue, forKey: "dictationHoldKey") }
     }
 }
 
@@ -438,6 +491,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var colorHistoryPanel: ColorHistoryPanel?
     private let hud = HUD()
     private var keepAwakeAssertion: IOPMAssertionID = 0
+    // Push-to-talk dictation: monitors on the chosen modifier, and whether we
+    // have dictation running right now.
+    private var holdMonitors: [Any] = []
+    private var dictating = false
+    /// Dictation lags speech, so the stop is deferred — this is the pending one,
+    /// cancelled if the key goes back down within the grace period.
+    private var pendingDictationStop: DispatchWorkItem?
     private var keepAwakeStatusItem: NSStatusItem?
     private var axPollTimer: Timer?
     private(set) var hasAccessibility = AXIsProcessTrusted()
@@ -502,6 +562,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setAppEnabled(_ on: Bool) {
         appEnabled = on
+        defer { syncDictationMonitor() }
         if on {
             if SMAppService.mainApp.status != .enabled {
                 try? SMAppService.mainApp.register()
@@ -542,6 +603,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(axChanged),
             name: NSNotification.Name("com.apple.accessibility.api"), object: nil)
         axChanged()
+        syncDictationMonitor()
     }
 
     @objc private func axChanged() {
@@ -605,6 +667,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var nextId: UInt32 = 1
         for (i, panel) in panels.enumerated() {
             if mirrorsMacOSHotkey(panel) { continue }   // macOS owns Speak Text's hotkey
+            if usesHoldKey(panel) { continue }          // watched by a monitor, not a hotkey
             guard worksWithoutAX(panel) || hasAccessibility else { continue }
             guard let sc = Shortcut.load(panel) else { continue }
             let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */, id: nextId)
@@ -679,6 +742,124 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         synthesizeSpotlight(then: panel.spotlightKey)
+    }
+
+    // MARK: Push-to-talk dictation
+
+    /// Watch the chosen modifier so dictation runs only while it's held. Carbon
+    /// hotkeys never report a release, so this uses flagsChanged monitors — the
+    /// global one covers other apps, the local one covers our own windows.
+    func syncDictationMonitor() {
+        for m in holdMonitors { NSEvent.removeMonitor(m) }
+        holdMonitors = []
+        if dictating { stopDictation() }
+
+        let hold = UserDefaults.standard.dictationHoldKey
+        guard appEnabled, hold != .off, let code = hold.keyCode, let flag = hold.flag else { return }
+
+        let handle: (NSEvent) -> Void = { [weak self] event in
+            guard let self, event.keyCode == code else { return }
+            // The flag is set while the key is down, clear once it's released.
+            let down = event.modifierFlags.contains(flag)
+            if down {
+                // Pressing again while we're still finishing just carries on.
+                if let pending = self.pendingDictationStop {
+                    pending.cancel()
+                    self.pendingDictationStop = nil
+                    self.hud.showWaveform(tint: .systemGreen)
+                    return
+                }
+                if !self.dictating { self.startDictation() }
+            } else if self.dictating {
+                self.scheduleDictationStop()
+            }
+        }
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged], handler: handle) {
+            holdMonitors.append(g)
+        }
+        if let l = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged], handler: { e in handle(e); return e }) {
+            holdMonitors.append(l)
+        }
+    }
+
+    /// Press the frontmost app's Edit ▸ Start/Stop Dictation item over the
+    /// Accessibility API. The mic key itself can't be synthesized — macOS takes it
+    /// at the HID layer, so it never becomes an event we can post — and by default
+    /// dictation has no ordinary shortcut to send either. Driving the menu item
+    /// leaves your own dictation setup exactly as it is.
+    @discardableResult
+    private func pressDictationMenuItem(starting: Bool) -> Bool {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return false }
+        let ax = AXUIElementCreateApplication(app.processIdentifier)
+        var menuBarRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(ax, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
+              let menuBar = menuBarRef else { return false }
+
+        // Depth-first through the menu bar for the dictation item. Matching on a
+        // "dictation" substring keeps it working when the wording shifts.
+        func search(_ element: AXUIElement, depth: Int) -> AXUIElement? {
+            if depth > 4 { return nil }
+            var childrenRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+                  let children = childrenRef as? [AXUIElement] else { return nil }
+            for child in children {
+                var titleRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(child, kAXTitleAttribute as CFString, &titleRef)
+                let title = (titleRef as? String)?.lowercased() ?? ""
+                if title.contains("dictation") {
+                    let wantsStop = title.contains("stop")
+                    if wantsStop != starting { return child }
+                }
+                if let hit = search(child, depth: depth + 1) { return hit }
+            }
+            return nil
+        }
+        guard let item = search(menuBar as! AXUIElement, depth: 0) else { return false }
+        return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+    }
+
+    private func startDictation() {
+        // Distinguish the two failures: without Accessibility we can't read any
+        // app's menus at all (a rebuild silently drops that trust), which looks
+        // identical to an app that simply has no Dictation item.
+        guard AXIsProcessTrusted() else {
+            promptForAccessibility()   // macOS offers to open the pane
+            hud.showMessage("Needs Accessibility", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
+            return
+        }
+        guard pressDictationMenuItem(starting: true) else {
+            hud.showMessage("No Dictation menu here", symbol: "mic.slash.fill", tint: .systemRed)
+            return
+        }
+        dictating = true
+        hud.showWaveform(tint: .systemGreen)
+    }
+
+    /// macOS keeps transcribing for a beat after you stop speaking, so stopping
+    /// the instant the key comes up clips the last few words. Wait out that lag
+    /// first — and if the key goes back down meanwhile, carry on as if it never
+    /// let up. (Whether the trailing punctuation survives is macOS's business: it
+    /// varies by app, and no amount of waiting here changes it.)
+    private func scheduleDictationStop(after grace: TimeInterval = 1.5) {
+        pendingDictationStop?.cancel()
+        hud.showWaveform(tint: .systemOrange, mode: .processing)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingDictationStop = nil
+            self.stopDictation()
+        }
+        pendingDictationStop = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + grace, execute: work)
+    }
+
+    private func stopDictation() {
+        dictating = false
+        pendingDictationStop?.cancel()
+        pendingDictationStop = nil
+        hud.hide()
+        // Prefer the app's own Stop item; fall back to Escape, which ends
+        // dictation while keeping whatever has already been transcribed.
+        if !pressDictationMenuItem(starting: false) { post(CGKeyCode(kVK_Escape), []) }
     }
 
     /// Show the system color loupe (`NSColorSampler`), copy the picked color's
@@ -866,7 +1047,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Spotlight buffers keys behind its ⌘Space, but a ~30 ms gap is needed
     /// for cold starts (1 ms was observed to miss).
     private func synthesizeSpotlight(then key: CGKeyCode, attempt: Int = 0) {
-        guard hasAccessibility else { return }
+        guard hasAccessibility else {
+            // Rather than silently doing nothing, ask — macOS shows the dialog
+            // that leads straight to the setting.
+            if attempt == 0 { promptForAccessibility() }
+            return
+        }
         let held = [kVK_Shift, kVK_RightShift, kVK_Option, kVK_RightOption,
                     kVK_Control, kVK_RightControl, kVK_Function]
             .contains { CGEventSource.keyState(.hidSystemState, key: CGKeyCode($0)) }
@@ -1247,8 +1433,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             let cx = bx + innerPad
             let top = cardTop - innerPad
 
-            // Icon + title only; the description lives in a hover tooltip on
-            // both, keeping each box clean.
+            // Icon + title only; what each tool does is spelled out in the
+            // group's help sheet, keeping each box clean.
             let icon = NSImageView(frame: NSRect(x: cx + (colW - iconSize) / 2, y: top - iconSize, width: iconSize, height: iconSize))
             configureIcon(icon, panel, dimmed: !enabled)
 
@@ -1271,7 +1457,19 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
             var lineTop = top - headerBlockH
 
-            if mirrorsMacOSHotkey(panel) {
+            if usesHoldKey(panel) {
+                // No shortcut to record: this tool is driven by holding the
+                // modifier the menu below picks, so the field just reports it.
+                let hold = UserDefaults.standard.dictationHoldKey
+                let readout = NSButton(title: hold == .off ? "Not Set Up" : "Hold " + hold.label,
+                                       target: nil, action: nil)
+                readout.bezelStyle = .rounded
+                readout.font = .systemFont(ofSize: 11)
+                readout.alignment = .center
+                readout.isEnabled = false     // display only — set with the menu
+                readout.frame = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
+                v.addSubview(readout)
+            } else if mirrorsMacOSHotkey(panel) {
                 // Read-only mirror of the macOS "Speak selection" shortcut, in the
                 // same rounded field style as the other cards — but dimmed on
                 // purpose: unlike the editable recorders it's set in Spoken Content
@@ -1357,6 +1555,20 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 let w = ceil(btn.frame.width)
                 btn.frame = NSRect(x: cx + (colW - w) / 2, y: lineTop - itemH, width: w, height: itemH)
                 v.addSubview(btn)
+            }
+            if panel.defaultsKey == "dictation" {
+                let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+                popup.addItems(withTitles: HoldKey.menuOrder.map(\.label))
+                popup.selectItem(at: HoldKey.menuOrder.firstIndex(of: UserDefaults.standard.dictationHoldKey) ?? 0)
+                popup.isEnabled = enabled
+                popup.controlSize = .small
+                popup.font = .systemFont(ofSize: 11)
+                popup.target = self
+                popup.action = #selector(dictationHoldChanged(_:))
+                popup.sizeToFit()
+                let pw = min(ceil(popup.frame.width), colW)
+                popup.frame = NSRect(x: cx + (colW - pw) / 2, y: lineTop - itemH, width: pw, height: itemH)
+                v.addSubview(popup)
             }
             if panel.defaultsKey == "colorpicker" {
                 let popup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -1659,6 +1871,13 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         UserDefaults.standard.settingsToggle = sender.state == .on
     }
 
+    @objc private func dictationHoldChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.dictationHoldKey =
+            HoldKey.menuOrder[safe: sender.indexOfSelectedItem] ?? .off
+        appDelegate?.syncDictationMonitor()
+        rebuild()   // the field above reports the new choice
+    }
+
     @objc private func colorFormatChanged(_ sender: NSPopUpButton) {
         UserDefaults.standard.colorFormat = ColorFormat(rawValue: sender.indexOfSelectedItem) ?? .hex
     }
@@ -1728,6 +1947,90 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 }
 
+// MARK: - Waveform
+
+/// The little bar meter the dictation pill shows. It's a motion cue, not a real
+/// level meter — reading actual input would mean asking for the microphone, which
+/// this app has no reason to hold — so the bars move on their own. Two motions:
+/// a slow symmetric breathing while it listens, and a pulse travelling along the
+/// row while it catches up, so the two states don't just differ by colour.
+final class WaveformView: NSView {
+    enum Mode { case listening, processing }
+
+    private var bars: [CALayer] = []
+    private var heights: [CGFloat] = []      // eased toward the target each tick
+    private var t: Double = 0
+    private var timer: Timer?
+    private let barW: CGFloat = 3, barGap: CGFloat = 3
+    private let minH: CGFloat = 3
+
+    var mode: Mode = .listening
+    var tint: NSColor = .systemGreen {
+        didSet { bars.forEach { $0.backgroundColor = tint.cgColor } }
+    }
+
+    init(barCount: Int = 7, height: CGFloat = 18) {
+        let w = CGFloat(barCount) * barW + CGFloat(barCount - 1) * barGap
+        super.init(frame: NSRect(x: 0, y: 0, width: w, height: height))
+        wantsLayer = true
+        for i in 0..<barCount {
+            let bar = CALayer()
+            bar.backgroundColor = tint.cgColor
+            bar.cornerRadius = barW / 2
+            bar.frame = NSRect(x: CGFloat(i) * (barW + barGap), y: (height - minH) / 2,
+                               width: barW, height: minH)
+            layer?.addSublayer(bar)
+            bars.append(bar)
+            heights.append(minH)
+        }
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func start() {
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+            self?.step()
+        }
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func step() {
+        t += 1.0 / 30
+        let h = bounds.height, span = h - minH
+        let n = bars.count
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)   // the easing below does the smoothing
+        for i in 0..<n {
+            let target: CGFloat
+            switch mode {
+            case .listening:
+                // A wave travelling along the row — each bar lags the one before
+                // it, which is what makes it read as a waveform rather than bars
+                // bouncing independently.
+                let phase = t * 5.2 - Double(i) * 0.85
+                let wave = abs(sin(phase))
+                target = minH + span * CGFloat(0.12 + 0.88 * wave)
+            case .processing:
+                // A single pulse travelling along the row and wrapping round.
+                let pos = (t * 4.2).truncatingRemainder(dividingBy: Double(n) + 1.5) - 0.75
+                let d = Double(i) - pos
+                target = minH + span * CGFloat(0.85 * exp(-d * d / 0.5))
+            }
+            heights[i] += (target - heights[i]) * 0.30   // ease toward it
+            let barH = heights[i]
+            bars[i].frame = NSRect(x: bars[i].frame.minX, y: (h - barH) / 2, width: barW, height: barH)
+        }
+        CATransaction.commit()
+    }
+
+    deinit { timer?.invalidate() }
+}
+
 // MARK: - HUD
 
 /// A brief, non-interactive pill that flashes at the top-center of the active
@@ -1738,6 +2041,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 final class HUD {
     private var panel: NSPanel?
     private var hideTimer: Timer?
+    private weak var waveform: WaveformView?
     private let panelH: CGFloat = 42, padH: CGFloat = 18, gap: CGFloat = 10
 
     /// Swatch dot in the sampled color + the copied code (Color Picker).
@@ -1765,8 +2069,32 @@ final class HUD {
         present(content, width: width)
     }
 
+    /// A pill that's just the animated bar meter — the dictation indicator.
+    func showWaveform(tint: NSColor, mode: WaveformView.Mode = .listening) {
+        let meter = WaveformView()
+        meter.tint = tint
+        meter.mode = mode
+        let width = padH + meter.frame.width + padH
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
+        meter.frame.origin = NSPoint(x: padH, y: (panelH - meter.frame.height) / 2)
+        content.addSubview(meter)
+        waveform?.stop()
+        waveform = meter
+        present(content, width: width, sticky: true)
+        meter.start()
+    }
+
+    /// Take down a sticky pill.
+    func hide() {
+        waveform?.stop()
+        hideTimer?.invalidate()
+        dismiss()
+    }
+
     /// SF Symbol + message (Text Capture confirmations), styled like the color pill.
-    func showMessage(_ message: String, symbol: String, tint: NSColor) {
+    /// `sticky` leaves the pill up until `hide()` — for states that last as long
+    /// as you hold a key, rather than momentary confirmations.
+    func showMessage(_ message: String, symbol: String, tint: NSColor, sticky: Bool = false) {
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
         let measured = ceil((message as NSString).size(withAttributes: [.font: font]).width)
         let textW = measured, textH = ceil(font.ascender - font.descender)
@@ -1786,11 +2114,11 @@ final class HUD {
         label.textColor = .white
         label.frame = NSRect(x: padH + iconD + gap, y: (panelH - textH) / 2, width: textW, height: textH)
         content.addSubview(label)
-        present(content, width: width)
+        present(content, width: width, sticky: sticky)
     }
 
     /// Shared chrome: frost the pill, center it at the top, fade in, auto-hide.
-    private func present(_ content: NSView, width: CGFloat) {
+    private func present(_ content: NSView, width: CGFloat, sticky: Bool = false) {
         hideTimer?.invalidate()
         let p = panel ?? makePanel()
         panel = p
@@ -1817,12 +2145,14 @@ final class HUD {
             ctx.duration = 0.14
             p.animator().alphaValue = 1
         }
+        guard !sticky else { return }
         hideTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: false) { [weak self] _ in
             self?.dismiss()
         }
     }
 
     private func dismiss() {
+        waveform?.stop()
         guard let p = panel else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.35
