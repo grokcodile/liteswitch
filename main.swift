@@ -53,16 +53,16 @@ struct Panel {
 // (Spotlight uses the copy glyph, not a clip).
 let sidebarApplications = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/SidebarApplicationsFolder.icns"
 let panels: [Panel] = [
-    Panel(name: "Applications", symbol: "square.grid.2x2", glyphPath: sidebarApplications, detail: "Spotlight's Applications panel — browse and launch any installed app.", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
-    Panel(name: "Files", symbol: "folder", glyphPath: nil, detail: "Spotlight's Files panel — search files and folders across your Mac.", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
-    Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Spotlight's Actions panel — run Shortcuts and quick system actions.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
-    Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Spotlight's Clipboard panel — browse your recent clipboard history.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
-    Panel(name: "Settings", symbol: "gear", glyphPath: nil, detail: "Open the System Settings app.", spotlightKey: 0, defaultsKey: "settings"),
-    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Toggle a system assertion that stops your Mac and its display from sleeping.", spotlightKey: 0, defaultsKey: "keepawake"),
-    Panel(name: "Text Capture", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen; its text is recognized and copied to the clipboard.", spotlightKey: 0, defaultsKey: "textcapture"),
-    Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor with the system loupe and copy its hex to the clipboard.", spotlightKey: 0, defaultsKey: "colorpicker"),
-    Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Open a palette of your recently picked colors — click to copy, hover for actions, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
-    Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Reflects macOS's built-in “Speak selection.” Its shortcut is set in System Settings → Accessibility → Spoken Content.", spotlightKey: 0, defaultsKey: "speakclipboard"),
+    Panel(name: "Applications", symbol: "square.grid.2x2", glyphPath: sidebarApplications, detail: "Browse and launch any installed app, through Spotlight's Applications panel.", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
+    Panel(name: "Files", symbol: "folder", glyphPath: nil, detail: "Search files and folders across your Mac, without the app and web results.", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
+    Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Run a Shortcut or quick system action by name.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
+    Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Browse macOS's clipboard history to paste something you copied earlier.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
+    Panel(name: "System", symbol: "gear", glyphPath: nil, detail: "Open System Settings — with Smart Toggle, press again to return to where you were.", spotlightKey: 0, defaultsKey: "settings"),
+    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
+    Panel(name: "Text Capture", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
+    Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor and copy its code in the format you choose.", spotlightKey: 0, defaultsKey: "colorpicker"),
+    Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
+    Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
 ]
 
 /// Panels shown in the "System Tools" group rather than the "Spotlight" group,
