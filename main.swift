@@ -13,7 +13,7 @@
 //   • Files / Actions / Clipboard — synthesizes ⌘Space then ⌘2/⌘3/⌘4, the
 //                 documented gesture. Needs Accessibility to post keystrokes.
 //
-// A group of "System Tools" ride alongside the panels, none needing any
+// A group of "System Utilities" ride alongside the panels, none needing any
 // permission: open System Settings (with a smart toggle back); a Color Picker
 // (NSColorSampler → clipboard); Capture Text (screencapture -i region → Vision
 // OCR → clipboard); Keep Awake (an IOKit power assertion that blocks sleep); and
@@ -59,13 +59,13 @@ let panels: [Panel] = [
     Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Run a Shortcut or quick system action by name.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
     Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Browse macOS's clipboard history to paste something you copied earlier.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
     Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Open System Settings — with Smart Toggle, press again to return to where you were.", spotlightKey: 0, defaultsKey: "settings"),
-    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor and copy its code in the format you choose.", spotlightKey: 0, defaultsKey: "colorpicker"),
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
+    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
+    Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
     Panel(name: "Tidy Text", symbol: "checkmark.seal.text.page", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
-    Panel(name: "Hold to Dictate", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-dictate macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
 /// The long-form help each group's sheet shows: what a tool does, a couple of
@@ -78,66 +78,76 @@ struct PanelInfo {
 
 let panelInfo: [String: PanelInfo] = [
     "apps": PanelInfo(
-        body: "Opens Spotlight's Applications panel — a grid of everything installed, ready to filter by name. It launches through the system's own Apps stub, so it's instant and needs no permissions.",
+        body: "Spotlight's Applications panel — a grid of everything installed, ready to filter by name. It opens through the system's own Apps stub rather than by faking keystrokes, so it's instant and the one panel that needs no Accessibility permission at all.",
         examples: ["Launch an app without hunting the Dock or Launchpad.",
-                   "Browse what's installed when you can't recall the name."],
-        suggestion: "⌘1 — the same number Spotlight uses, now from anywhere."),
+                   "Browse what's installed when the name won't come to you."],
+        suggestion: "⌃A — A for Apps. The whole set is ⌃ plus a letter that stands for something."),
     "files": PanelInfo(
-        body: "Opens Spotlight's Files panel, scoped to documents and folders — the same search, minus the apps, web results, and definitions.",
-        examples: ["Jump to a document you were editing yesterday.",
-                   "Find a folder buried deep without opening Finder."],
-        suggestion: "⌘2 — matches its number inside Spotlight."),
+        body: "Spotlight's Files panel: the same index Finder searches, scoped to documents and folders. No apps, web results, definitions or conversions in the way — just the file you're after, which is the difference between this and hitting ⌘Space.",
+        examples: ["Jump to a document you had open yesterday.",
+                   "Open a folder buried deep without walking Finder down to it."],
+        suggestion: "⌃/ — the search key, beside the other panel chords."),
     "actions": PanelInfo(
-        body: "Opens Spotlight's Actions panel: Shortcuts and quick system actions you can run by name, without leaving the keyboard.",
-        examples: ["Run a Shortcut you built, by typing its name.",
-                   "Trigger a system action mid-task."],
-        suggestion: "⌘3 — matches its number inside Spotlight."),
+        body: "Spotlight's Actions panel — the Shortcuts you've built and macOS's own quick actions, run by typing their name. It's the closest thing the Mac has to a built-in command palette, and it never leaves the keyboard.",
+        examples: ["Run a Shortcut by name instead of finding it in the app.",
+                   "Fire off a system action in the middle of something else."],
+        suggestion: "⌃X — X for eXecute."),
     "clipboard": PanelInfo(
-        body: "Opens Spotlight's Clipboard panel — macOS's own clipboard history, so you can paste something you copied a while back.",
-        examples: ["Recover a link you copied over an hour ago.",
-                   "Grab the second-to-last thing you copied."],
-        suggestion: "⌘4 — matches its number inside Spotlight."),
+        body: "Spotlight's Clipboard panel — macOS keeps a clipboard history of its own, so you can paste something from a while back. Nothing to install or leave running: this is the system's own store, not a third-party one watching your clipboard.",
+        examples: ["Recover a link you copied an hour ago.",
+                   "Grab the second-to-last thing you copied, without redoing the work."],
+        suggestion: "⌃V — the paste key, for the paste history."),
     "settings": PanelInfo(
-        body: "Opens System Settings. With Smart Toggle on, pressing the shortcut again hides it and returns you to the app you came from — so it works like a peek rather than a detour.",
-        examples: ["Check a toggle mid-task and bounce straight back.",
-                   "Reach Wi-Fi or Sound without leaving the keyboard."],
-        suggestion: "⌥⌘, — next to the ⌘, most apps use for preferences."),
+        body: "Opens System Settings from anywhere. With Smart Toggle on, pressing the shortcut again hides it and puts you back in the app you came from — so checking a setting is a peek rather than a detour you have to navigate out of.",
+        examples: ["Flip a toggle mid-task and land straight back where you were.",
+                   "Reach Wi-Fi, Sound or Displays without touching the menu bar."],
+        suggestion: "⌃` — tucked out of the way of anything you'd actually type."),
     "colorpicker": PanelInfo(
-        body: "Pops the system color loupe, then copies the pixel under your cursor as a code in the format you choose. Every pick is also saved to Color History.",
-        examples: ["Lift a hex from a screenshot straight into CSS.",
+        body: "Pops the system's color loupe and copies the pixel under your cursor, in Hex, RGB, HSL or SwiftUI form — plus the color itself, so it drops into a color well. The sampling happens in Apple's own process, which is why this needs no Screen Recording permission. Every pick is saved to Color History.",
+        examples: ["Lift a hex out of a screenshot and straight into CSS.",
                    "Match a brand color you can only see on screen."],
-        suggestion: "⌃⌘C — near ⌘C, and unlikely to be taken."),
+        suggestion: "⌃L — L for loupe."),
     "colorhistory": PanelInfo(
-        body: "A window of the colors you've picked — click a swatch to copy its code again, drag one out to save it as a PNG, and pin the ones worth keeping. Recents roll off after 20; pins stay.",
-        examples: ["Recover a color you sampled earlier this morning.",
-                   "Keep a palette pinned while you design."],
-        suggestion: "⌃⌘H — sits beside your Color Picker chord."),
-    "textcapture": PanelInfo(
-        body: "Drag a region of the screen and its text is recognized on-device and copied — a native TextSniper. Choose whether to keep the line breaks or flow it onto one line.",
-        examples: ["Copy text out of a screenshot, PDF, or video.",
-                   "Grab an error message that won't let you select it."],
-        suggestion: "⌃⌘T — an easy chord for a frequent grab."),
+        body: "A window of the colors you've picked. Click a swatch to copy its code again, drag one out to save it as a PNG, and pin the ones worth keeping. Labels show the hex and can be renamed to something you'll recognize. The last 20 are kept; pins sit at the top and stay.",
+        examples: ["Recover a color you sampled earlier without picking it again.",
+                   "Keep a palette pinned beside you while you design."],
+        suggestion: "⌃H — H for history, next to the picker's ⌃L."),
     "keepawake": PanelInfo(
-        body: "Holds a power assertion so your Mac won't sleep, the same mechanism caffeinate uses. A cup appears in the menu bar while it's on — click it to stop — and it releases automatically if LiteSwitch quits.",
-        examples: ["Keep a long render or download alive.",
-                   "Stop the screen sleeping during a presentation."],
-        suggestion: "⌃⌘K — a deliberate chord for a toggle you leave on."),
+        body: "Holds a power assertion so your Mac won't sleep — the same mechanism the caffeinate command uses, not a fake mouse jiggle. A cup appears in the menu bar while it's on, and clicking it turns it off. Screen Sleep lets the display sleep while the system stays up, and quitting always releases the assertion, so it can't strand your Mac awake.",
+        examples: ["Keep a long render, download or backup alive.",
+                   "Stop the screen sleeping halfway through a presentation."],
+        suggestion: "⌃K — K for Keep Awake."),
+    "textcapture": PanelInfo(
+        body: "Drag a box around anything on screen and its text is recognized and copied — a screenshot you can paste as words. Recognition uses Apple's Vision framework on-device, so it works offline and nothing is uploaded. Remove Breaks flows the result onto one line when the original line wrapping isn't worth keeping.",
+        examples: ["Copy text out of a screenshot, a PDF, or a paused video.",
+                   "Grab an error message from a dialog that won't let you select it."],
+        suggestion: "⌃O — O for OCR."),
+    "speakclipboard": PanelInfo(
+        body: "Mirrors macOS's own Speak selection rather than adding a second voice engine. The field shows the shortcut macOS has assigned it, so this card is a window onto that setting rather than a competing one; Set Up… opens Spoken Content, where you switch it on and choose the voice and speed.",
+        examples: ["Have a long article read to you while you do something else.",
+                   "Proofread by ear — the mistakes you skim past are audible."],
+        suggestion: "Set in System Settings, not here — macOS owns this shortcut."),
     "dictation": PanelInfo(
-        body: "Hold a key and it transcribes what you say; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so hold-to-dictate — the pattern dictation apps are built around — is the one thing it doesn't offer. Transcription is macOS's, running on-device: with the offline model installed for your language (Apple Intelligence handles this on supported Macs), your audio never leaves the Mac. The bar meter shows green while it's listening, then amber for a moment after you let go, because dictation keeps catching up for a beat — press the key again during that to carry straight on.",
+        body: "Hold a key and it transcribes what you say; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so hold-to-talk is the one thing it doesn't offer, and the only thing this adds. Transcription is macOS's, running on-device with the offline model for your language (Apple Intelligence manages it on supported Macs), so your audio never leaves the Mac. The meter reads green while listening, then amber for a beat while dictation catches up — press again during the amber to carry straight on.",
         examples: ["Get a long reply down without typing it all out.",
                    "Talk out a rough paragraph, then tidy it up by hand."],
-        suggestion: "Hold Right ⌥ — a key nothing else claims, and easy to find without looking."),
-    "speakclipboard": PanelInfo(
-        body: "Mirrors macOS's built-in “Speak selection” rather than re-implementing it. The field shows the shortcut macOS has assigned; Set Up… opens Spoken Content, where you enable it and choose the voice.",
-        examples: ["Have a long article read while you do something else.",
-                   "Proofread by ear — mistakes are easier to hear."],
-        suggestion: "Set in System Settings, not here."),
+        suggestion: "Hold Right ⌥ — nothing else claims it, and it's easy to find without looking."),
+    "polish": PanelInfo(
+        body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone; switch on Auto-Tidy on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
+        examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
+                   "Turn a rambling dictation into something you'd actually send."],
+        suggestion: "⌃P — P for polish, beside the other text chords."),
 ]
 
-/// Panels shown in the "System Tools" group rather than the "Spotlight" group,
+/// Panels shown in the "System Utilities" group rather than the "Spotlight" group,
 /// and — like Applications — driven without needing Accessibility.
 let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "dictation", "speakclipboard", "polish"]
 func isUtility(_ panel: Panel) -> Bool { utilityKeys.contains(panel.defaultsKey) }
+/// The tools that work on text, grouped apart from the system ones — they read
+/// as a set (capture it, speak it, dictate it, tidy it) and it keeps each group
+/// to a single row.
+let textKeys: Set<String> = ["textcapture", "speakclipboard", "dictation", "polish"]
+func isTextTool(_ panel: Panel) -> Bool { textKeys.contains(panel.defaultsKey) }
 /// Rows of option controls a card shows below its shortcut field: every System
 /// Tool has one (a checkbox or select menu); Spotlight panels have none.
 func optionRows(_ panel: Panel) -> Int { isUtility(panel) ? 1 : 0 }
@@ -149,6 +159,24 @@ func worksWithoutAX(_ panel: Panel) -> Bool {
 /// selection" hotkey — so it registers nothing and its card shows a read-only
 /// field plus a button into Spoken Content settings.
 func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
+
+/// What a fresh install starts with: ⌃ plus a letter that stands for something,
+/// which keeps the set memorable and leaves ⌘-chords to whatever app you're in.
+/// Only ever applied to a tool with no shortcut of its own — see
+/// `seedDefaultShortcutsIfNeeded`.
+let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃
+    "apps": 0,            // ⌃A — Apps
+    "files": 44,          // ⌃/ — search
+    "actions": 7,         // ⌃X — eXecute
+    "clipboard": 9,       // ⌃V — the paste key, for the paste history
+    "settings": 50,       // ⌃` — clear of anything you'd actually type
+    "colorpicker": 37,    // ⌃L — Loupe
+    "colorhistory": 4,    // ⌃H — History
+    "keepawake": 40,      // ⌃K — Keep awake
+    "textcapture": 31,    // ⌃O — OCR
+    "polish": 35,         // ⌃P — Polish
+]
+
 /// Dictation is push-to-talk: it needs the key's release as well as its press,
 /// which a Carbon hotkey never reports, so it watches a modifier instead of
 /// registering a shortcut.
@@ -202,13 +230,17 @@ extension UserDefaults {
         set { set(newValue.rawValue, forKey: "colorFormat") }
     }
     /// Capture Text: keep the OCR line breaks, or flow it onto one line.
+    /// Off by default — captured text is usually wanted as prose, not with the
+    /// wrapping of wherever it was scraped from.
     var ocrKeepLineBreaks: Bool {
-        get { object(forKey: "ocrKeepLineBreaks") as? Bool ?? true }
+        get { object(forKey: "ocrKeepLineBreaks") as? Bool ?? false }
         set { set(newValue, forKey: "ocrKeepLineBreaks") }
     }
-    /// Keep Awake: let the display sleep while the system stays awake.
+    /// Keep Awake: let the display sleep while the system stays awake. On by
+    /// default — the usual reason to block sleep is to let work finish, not to
+    /// burn the screen.
     var keepAwakeAllowDisplaySleep: Bool {
-        get { object(forKey: "keepAwakeAllowDisplaySleep") as? Bool ?? false }
+        get { object(forKey: "keepAwakeAllowDisplaySleep") as? Bool ?? true }
         set { set(newValue, forKey: "keepAwakeAllowDisplaySleep") }
     }
     /// Tidy Text: what to tell the on-device model. Two sets, because tidying
@@ -225,7 +257,7 @@ extension UserDefaults {
 
         Add capitalisation and punctuation, and break run-on speech into \
         sentences and paragraphs where the sense changes. Fix obvious \
-        misrecognised words only when the intended word is unmistakable from \
+        misrecognized words only when the intended word is unmistakable from \
         context.
 
         Keep the speaker's own words, voice and meaning. Do not summarise, \
@@ -240,14 +272,17 @@ extension UserDefaults {
         get { string(forKey: "dictationInstructions") ?? UserDefaults.defaultDictationInstructions }
         set { set(newValue, forKey: "dictationInstructions") }
     }
-    /// Tidy Text: run dictated text through the model as soon as it lands.
+    /// Tidy Text: run dictated text through the model as soon as it lands. On by
+    /// default — speech nearly always wants the filler stripped.
     var polishDictation: Bool {
-        get { object(forKey: "polishDictation") as? Bool ?? false }
+        get { object(forKey: "polishDictation") as? Bool ?? true }
         set { set(newValue, forKey: "polishDictation") }
     }
     /// Dictation: which modifier is held to talk (Off = the tool is idle).
+    /// Right ⌥ by default — nothing else claims it, so the tool works out of the
+    /// box rather than sitting inert until someone finds the menu.
     var dictationHoldKey: HoldKey {
-        get { HoldKey(rawValue: integer(forKey: "dictationHoldKey")) ?? .off }
+        get { HoldKey(rawValue: object(forKey: "dictationHoldKey") as? Int ?? HoldKey.rightOption.rawValue) ?? .rightOption }
         set { set(newValue.rawValue, forKey: "dictationHoldKey") }
     }
 }
@@ -566,6 +601,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        seedDefaultShortcutsIfNeeded()
         // Tooltips here are quick labels, not asides — show them promptly rather
         // than after AppKit's ~1.5 s dwell.
         UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 150])
@@ -600,6 +636,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return event?.eventID == AEEventID(kAEOpenApplication)
             && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?
                 .enumCodeValue == keyAELaunchedAsLogInItem
+    }
+
+    /// Give a fresh install the default set. Runs once, and skips any tool that
+    /// already has a shortcut, so it can never overwrite something you chose.
+    private func seedDefaultShortcutsIfNeeded() {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: "didSeedShortcuts") else { return }
+        d.set(true, forKey: "didSeedShortcuts")
+        for panel in panels where Shortcut.load(panel) == nil {
+            guard let code = defaultShortcuts[panel.defaultsKey] else { continue }
+            Shortcut.save(Shortcut(keyCode: code, modifiers: UInt32(controlKey)), panel)
+        }
     }
 
     func setAppEnabled(_ on: Bool) {
@@ -1130,7 +1178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         tint: on ? .systemGreen : .secondaryLabelColor)
     }
 
-    /// Re-create the assertion with the current type if Keep Awake is on — used
+    /// Re-create the assertion with the current type if sleep is blocked — used
     /// when the "Screen Sleep" option is toggled while it's running.
     func reapplyKeepAwake() {
         guard keepAwakeAssertion != 0 else { return }
@@ -1150,7 +1198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// A menu-bar cup that appears only while Keep Awake is on (LiteSwitch is
+    /// A menu-bar cup that appears only while sleep is blocked (LiteSwitch is
     /// otherwise menu-bar-less) — a persistent indicator, click it to turn off.
     private func updateKeepAwakeIndicator() {
         if keepAwakeAssertion != 0 {
@@ -1407,33 +1455,26 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private let iconSize: CGFloat = 28
     private let headerBlockH: CGFloat = 52   // icon + title (no visible subtitle)
     private let itemH: CGFloat = 26, itemGap: CGFloat = 6
-    // Grouping: Spotlight panels in one titled outline box, System Tools in a
+    // Grouping: Spotlight panels in one titled outline box, System Utilities in a
     // second one (same width) stacked below, its cards wrapping into rows.
     private let groupTitleH: CGFloat = 18, groupTitleGap: CGFloat = 6
-    private let groupPad: CGFloat = 12, utilRowGap: CGFloat = 12
+    private let groupPad: CGFloat = 12
     private func groupWidth(_ w: CGFloat, _ count: Int) -> CGFloat {
         groupPad * 2 + w * CGFloat(count) + boxGap * CGFloat(count - 1)
     }
     private var group1W: CGFloat { groupWidth(boxW, spotlightPanels.count) }
-    // The window is as wide as the Spotlight group; the System Tools box matches.
+    // The window is as wide as the Spotlight group; the other boxes match.
     private var winW: CGFloat { pad * 2 + group1W }
     private var contentW: CGFloat { winW - pad * 2 }
-    // How the System Tools cards wrap: as many per row as fit the box width,
-    // split into balanced rows (e.g. 5 tools → 3 + 2).
-    private var utilPerRowMax: Int { max(1, Int((group1W - groupPad * 2 + boxGap) / (boxW + boxGap))) }
-    private var utilRowCount: Int {
-        let n = utilityPanels.count
-        return max(1, (n + utilPerRowMax - 1) / utilPerRowMax)
-    }
-    private var utilPerRow: Int {
-        let n = utilityPanels.count
-        return max(1, (n + utilRowCount - 1) / utilRowCount)
-    }
     private var spotlightPanels: [(index: Int, panel: Panel)] {
         panels.enumerated().filter { !isUtility($0.element) }.map { ($0.offset, $0.element) }
     }
     private var utilityPanels: [(index: Int, panel: Panel)] {
-        panels.enumerated().filter { isUtility($0.element) }.map { ($0.offset, $0.element) }
+        panels.enumerated().filter { isUtility($0.element) && !isTextTool($0.element) }
+            .map { ($0.offset, $0.element) }
+    }
+    private var textPanels: [(index: Int, panel: Panel)] {
+        panels.enumerated().filter { isTextTool($0.element) }.map { ($0.offset, $0.element) }
     }
     /// Permission / Spoken Content state the current content was built for, so
     /// returning from System Settings rebuilds (and re-lights the strip) when any
@@ -1467,7 +1508,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         RecorderButton.active?.cancelRecording()
 
         // ── Measure ────────────────────────────────────────────────────────
-        // Spotlight cards are a header over a single shortcut field. System Tools
+        // Spotlight cards are a header over a single shortcut field. The tool
         // cards add a self-labeled option menu below the field. Cards in a group
         // share a height; the two stacked groups size to their own tallest column.
         var columnHeights: [CGFloat] = []
@@ -1479,13 +1520,15 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             list.map { columnHeights[$0.index] }.max() ?? headerBlockH
         }
         let spotCardH = maxColumn(spotlightPanels) + innerPad * 2
-        let utilCardH = maxColumn(utilityPanels) + innerPad * 2
+        // System and text cards share a height, so the two boxes line up.
+        let toolCardH = max(maxColumn(utilityPanels), maxColumn(textPanels)) + innerPad * 2
         let spotGroupBoxH = groupPad * 2 + spotCardH
-        let utilGroupBoxH = groupPad * 2 + CGFloat(utilRowCount) * utilCardH
-                          + CGFloat(utilRowCount - 1) * utilRowGap
+        let utilGroupBoxH = groupPad * 2 + toolCardH
+        let textGroupBoxH = groupPad * 2 + toolCardH
         let spotGroupH = groupTitleH + groupTitleGap + spotGroupBoxH
         let utilGroupH = groupTitleH + groupTitleGap + utilGroupBoxH
-        let groupsH = spotGroupH + sectionGap + utilGroupH   // stacked, gap between
+        let textGroupH = groupTitleH + groupTitleGap + textGroupBoxH
+        let groupsH = spotGroupH + sectionGap + utilGroupH + sectionGap + textGroupH
 
         // Both permissions just light the bottom strip; neither blocks the
         // controls — macOS prompts for each on demand when a shortcut first
@@ -1546,7 +1589,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let onChange: () -> Void = { [weak self] in self?.appDelegate?.syncHotkeys(); self?.rebuild() }
         let contentTop = H - hdrH
 
-        // ── Two titled outlines, stacked: Spotlight Panels over System Tools ──
+        // ── Three titled outlines, stacked: Spotlight, System, Text ──
         // Lay out one panel's card at the given left edge / top.
         func layoutCard(_ i: Int, _ panel: Panel, cardX: CGFloat, cardTop: CGFloat, cardH: CGFloat) {
             let bx = cardX
@@ -1734,25 +1777,32 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         addGroupHelp(key: "spotlight", title: "Spotlight Panels", box: g1Box, titleTop: contentTop,
                      entries: spotlightPanels, dimmed: !enabled, in: v)
 
-        // System Tools — same width as Spotlight, cards wrapped into balanced,
-        // centered rows so the group grows down as tools are added.
-        let g2Top = contentTop - spotGroupH - sectionGap
-        let g2Box = addGroup("System Tools", x: pad, width: group1W,
-                             top: g2Top, boxH: utilGroupBoxH, dimmed: !enabled, in: v)
-        let utilTop = g2Box.maxY - groupPad
-        for (i, entry) in utilityPanels.enumerated() {
-            let row = i / utilPerRow
-            let posInRow = i % utilPerRow
-            let cardsInRow = min(utilPerRow, utilityPanels.count - row * utilPerRow)
-            let clusterW = CGFloat(cardsInRow) * boxW + CGFloat(cardsInRow - 1) * boxGap
-            let startX = g2Box.minX + (group1W - clusterW) / 2
-            layoutCard(entry.index, entry.panel,
-                       cardX: startX + CGFloat(posInRow) * (boxW + boxGap),
-                       cardTop: utilTop - CGFloat(row) * (utilCardH + utilRowGap),
-                       cardH: utilCardH)
+        // Each group is one centred row of cards, stacked with a gap between.
+        func layoutRow(_ entries: [(index: Int, panel: Panel)], in box: NSRect, cardH: CGFloat) {
+            let clusterW = CGFloat(entries.count) * boxW + CGFloat(entries.count - 1) * boxGap
+            let startX = box.minX + (group1W - clusterW) / 2
+            for (i, entry) in entries.enumerated() {
+                layoutCard(entry.index, entry.panel,
+                           cardX: startX + CGFloat(i) * (boxW + boxGap),
+                           cardTop: box.maxY - groupPad, cardH: cardH)
+            }
         }
-        addGroupHelp(key: "utilities", title: "System Tools", box: g2Box, titleTop: g2Top,
+
+        // System Utilities.
+        let g2Top = contentTop - spotGroupH - sectionGap
+        let g2Box = addGroup("System Utilities", x: pad, width: group1W,
+                             top: g2Top, boxH: utilGroupBoxH, dimmed: !enabled, in: v)
+        layoutRow(utilityPanels, in: g2Box, cardH: toolCardH)
+        addGroupHelp(key: "utilities", title: "System Utilities", box: g2Box, titleTop: g2Top,
                      entries: utilityPanels, dimmed: !enabled, in: v)
+
+        // Text Tools.
+        let g3Top = g2Top - utilGroupH - sectionGap
+        let g3Box = addGroup("Text Tools", x: pad, width: group1W,
+                             top: g3Top, boxH: textGroupBoxH, dimmed: !enabled, in: v)
+        layoutRow(textPanels, in: g3Box, cardH: toolCardH)
+        addGroupHelp(key: "text", title: "Text Tools", box: g3Box, titleTop: g3Top,
+                     entries: textPanels, dimmed: !enabled, in: v)
 
         // Footer: the conflict banner across the top, Quit (left) + Done (right).
         let bannerField = NSTextField(wrappingLabelWithString: "")
@@ -2038,7 +2088,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
     @objc private func screenSleepChanged(_ sender: NSButton) {
         UserDefaults.standard.keepAwakeAllowDisplaySleep = sender.state == .on
-        appDelegate?.reapplyKeepAwake()   // take effect now if Keep Awake is running
+        appDelegate?.reapplyKeepAwake()   // take effect now if sleep is blocked
     }
 
     @objc private func openSpokenContent() {
@@ -2149,7 +2199,7 @@ final class InstructionsWindow: NSWindow {
         section("Typed Text Instructions", "Used when you run the shortcut on text you've selected.",
                 selectionView, text: UserDefaults.standard.polishInstructions,
                 y: 356, boxH: 74, resetAction: #selector(restoreSelection))
-        section("Dictated Text Instructions", "Used by Auto-Tidy, on what Hold to Dictate just typed.",
+        section("Dictated Text Instructions", "Used by Auto-Tidy, on what Dictate Text just typed.",
                 dictationView, text: UserDefaults.standard.dictationInstructions,
                 y: 80, boxH: 216, resetAction: #selector(restoreDictation))
 
@@ -2192,7 +2242,7 @@ final class InstructionsWindow: NSWindow {
 /// level meter — reading actual input would mean asking for the microphone, which
 /// this app has no reason to hold — so the bars move on their own. Two motions:
 /// a slow symmetric breathing while it listens, and a pulse travelling along the
-/// row while it catches up, so the two states don't just differ by colour.
+/// row while it catches up, so the two states don't just differ by color.
 final class WaveformView: NSView {
     enum Mode { case listening, processing }
 

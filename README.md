@@ -93,14 +93,22 @@ Nothing needs setting up in advance: macOS prompts the first time a shortcut nee
 
 ## Shortcuts
 
-A fresh install ships with **no shortcuts** — you assign the ones you want. Click a field to record, or press **Delete** while recording to clear it. A natural set is ⌘1–⌘4 for the panels (the numbers Spotlight itself uses, now working from anywhere).
+A fresh install comes with a working set already assigned — **⌃ plus a letter that stands for something**, which keeps it memorable and leaves ⌘-chords to whatever app you're in:
+
+| | | | |
+|---|---|---|---|
+| ⌃A Applications | ⌃/ Files | ⌃X Actions | ⌃V Clipboard |
+| ⌃` System Settings | ⌃L Color Picker | ⌃H Color History | ⌃K Keep Awake |
+| ⌃O Capture Text | ⌃P Tidy Text | Hold **Right ⌥** to dictate | Speak Text: macOS's own |
+
+Change any of them by clicking the field and recording, or press **Delete** while recording to clear it. Defaults are only ever applied to a tool that has no shortcut yet, so they can't overwrite something you've set.
 
 Two tools work differently, because a recorded chord isn't the right control for them:
 
 - **Hold to Dictate** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
 - **Speak Text** has no LiteSwitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
 
-Each card carries one option: the copy **format** for Color Picker, **View…** for Color History, **Smart Toggle** for System Settings, **Remove Breaks** for Capture Text, **Screen Sleep** for Keep Awake, **Auto-Tidy** for Hold to Dictate, and **Instructions…** for Tidy Text.
+Each card carries one option: the copy **format** for Color Picker (Hex), **View…** for Color History, **Smart Toggle** for System Settings (on), **Remove Breaks** for Capture Text (on), **Screen Sleep** for Keep Awake (on), **Auto-Tidy** for Dictate Text (on), and **Instructions…** for Tidy Text.
 
 ## How it works
 
