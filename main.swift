@@ -32,6 +32,7 @@ import Vision
 import IOKit.pwr_mgt
 import CoreGraphics
 import UniformTypeIdentifiers
+import FoundationModels
 
 // MARK: - Panels
 
@@ -63,7 +64,8 @@ let panels: [Panel] = [
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Text Capture", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Push to Talk", symbol: "mic", glyphPath: nil, detail: "Hold a key to dictate, release to stop — the push-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
+    Panel(name: "Polish Text", symbol: "checkmark.seal.text.page", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Hold to Dictate", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-dictate macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
 /// The long-form help each group's sheet shows: what a tool does, a couple of
@@ -121,7 +123,7 @@ let panelInfo: [String: PanelInfo] = [
                    "Stop the screen sleeping during a presentation."],
         suggestion: "⌃⌘K — a deliberate chord for a toggle you leave on."),
     "dictation": PanelInfo(
-        body: "Hold a key and talk; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so the push-to-talk pattern that dictation apps are built around is the one thing it doesn't offer. Transcription is macOS's, running on-device: with the offline model installed for your language (Apple Intelligence handles this on supported Macs), your audio never leaves the Mac. The bar meter shows green while it's listening, then amber for a moment after you let go, because dictation keeps catching up for a beat — press the key again during that to carry straight on.",
+        body: "Hold a key and it transcribes what you say; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so hold-to-dictate — the pattern dictation apps are built around — is the one thing it doesn't offer. Transcription is macOS's, running on-device: with the offline model installed for your language (Apple Intelligence handles this on supported Macs), your audio never leaves the Mac. The bar meter shows green while it's listening, then amber for a moment after you let go, because dictation keeps catching up for a beat — press the key again during that to carry straight on.",
         examples: ["Get a long reply down without typing it all out.",
                    "Talk out a rough paragraph, then tidy it up by hand."],
         suggestion: "Hold Right ⌥ — a key nothing else claims, and easy to find without looking."),
@@ -134,7 +136,7 @@ let panelInfo: [String: PanelInfo] = [
 
 /// Panels shown in the "System Tools" group rather than the "Spotlight" group,
 /// and — like Applications — driven without needing Accessibility.
-let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "dictation", "speakclipboard"]
+let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "dictation", "speakclipboard", "polish"]
 func isUtility(_ panel: Panel) -> Bool { utilityKeys.contains(panel.defaultsKey) }
 /// Rows of option controls a card shows below its shortcut field: every System
 /// Tool has one (a checkbox or select menu); Spotlight panels have none.
@@ -169,8 +171,8 @@ enum HoldKey: Int, CaseIterable {
     var label: String {
         switch self {
         case .off:           return "Off"
-        case .rightCommand:  return "Right ⌘"
-        case .rightOption:   return "Right ⌥"
+        case .rightCommand:  return "Hold Right ⌘"
+        case .rightOption:   return "Hold Right ⌥"
         }
     }
     /// The physical key, and the flag that tells press from release.
@@ -208,6 +210,40 @@ extension UserDefaults {
     var keepAwakeAllowDisplaySleep: Bool {
         get { object(forKey: "keepAwakeAllowDisplaySleep") as? Bool ?? false }
         set { set(newValue, forKey: "keepAwakeAllowDisplaySleep") }
+    }
+    /// Polish Text: what to tell the on-device model. Two sets, because tidying
+    /// text you typed and cleaning up speech are different jobs.
+    static let defaultPolishInstructions =
+        "Correct spelling, grammar, capitalisation and punctuation. Keep the original wording, tone and meaning — do not rephrase, shorten, or add anything."
+    static let defaultDictationInstructions = """
+        Turn dictated speech into clean written text.
+
+        Remove filler words and vocalised pauses — um, uh, er, like, you know, \
+        I mean, sort of, and trailing "so yeah". Drop false starts, repeated \
+        words, and self-corrections, keeping only what the speaker settled on \
+        ("I went to the— I drove to the office" becomes "I drove to the office").
+
+        Add capitalisation and punctuation, and break run-on speech into \
+        sentences and paragraphs where the sense changes. Fix obvious \
+        misrecognised words only when the intended word is unmistakable from \
+        context.
+
+        Keep the speaker's own words, voice and meaning. Do not summarise, \
+        expand, reorder the ideas, make it more formal, or add anything that \
+        wasn't said.
+        """
+    var polishInstructions: String {
+        get { string(forKey: "polishInstructions") ?? UserDefaults.defaultPolishInstructions }
+        set { set(newValue, forKey: "polishInstructions") }
+    }
+    var dictationInstructions: String {
+        get { string(forKey: "dictationInstructions") ?? UserDefaults.defaultDictationInstructions }
+        set { set(newValue, forKey: "dictationInstructions") }
+    }
+    /// Polish Text: run dictated text through the model as soon as it lands.
+    var polishDictation: Bool {
+        get { object(forKey: "polishDictation") as? Bool ?? false }
+        set { set(newValue, forKey: "polishDictation") }
     }
     /// Dictation: which modifier is held to talk (Off = the tool is idle).
     var dictationHoldKey: HoldKey {
@@ -498,6 +534,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
     /// cancelled if the key goes back down within the grace period.
     private var pendingDictationStop: DispatchWorkItem?
+    /// When dictation started, so Auto-Polish can guess how many words to select.
+    private var dictationStartedAt: Date?
+    private var dictatedWordEstimate: Int {
+        guard let start = dictationStartedAt else { return 0 }
+        return Int(Date().timeIntervalSince(start) * 2.5)   // ~150 wpm
+    }
     private var keepAwakeStatusItem: NSStatusItem?
     private var axPollTimer: Timer?
     private(set) var hasAccessibility = AXIsProcessTrusted()
@@ -700,6 +742,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if panel.defaultsKey == "polish" {
+            polishSelection()
+            return
+        }
+
         if panel.defaultsKey == "textcapture" {
             captureText()
             return
@@ -742,6 +789,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         synthesizeSpotlight(then: panel.spotlightKey)
+    }
+
+    // MARK: Polish Text
+
+    /// Rewrite the selection in place: copy it, run it through the on-device
+    /// model with the user's instructions, and paste the result back. The
+    /// clipboard is borrowed for the round trip and put back afterwards.
+    func polishSelection(dictated: Bool = false) {
+        guard hasAccessibility else { promptForAccessibility(); return }
+        let pb = NSPasteboard.general
+        let saved = pb.string(forType: .string)
+        let before = pb.changeCount
+
+        post(CGKeyCode(kVK_ANSI_C), .maskCommand)      // copy the selection
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self else { return }
+            guard pb.changeCount != before, let text = pb.string(forType: .string),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                self.hud.showMessage("Select some text first", symbol: "text.badge.xmark", tint: .systemRed)
+                if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
+                return
+            }
+            self.hud.showWaveform(tint: .systemOrange, mode: .processing)
+            self.polish(text, dictated: dictated) { result in
+                guard let result else {
+                    self.hud.showMessage("Couldn't rewrite that", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
+                    if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
+                    return
+                }
+                pb.clearContents()
+                pb.setString(result, forType: .string)
+                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
+                self.hud.showMessage("Polished", symbol: "checkmark.circle.fill", tint: .systemGreen)
+                // Give the paste a moment to land before handing the clipboard back.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
+                }
+            }
+        }
+    }
+
+    /// Run `text` through Apple Intelligence's on-device model with the saved
+    /// instructions. Nothing leaves the Mac. `done` is called on the main queue,
+    /// with nil if the model is unavailable or refuses.
+    func polish(_ text: String, dictated: Bool = false, done: @escaping (String?) -> Void) {
+        let instructions = dictated ? UserDefaults.standard.dictationInstructions
+                                    : UserDefaults.standard.polishInstructions
+        guard case .available = SystemLanguageModel.default.availability else {
+            DispatchQueue.main.async { done(nil) }
+            return
+        }
+        Task {
+            var output: String?
+            do {
+                // Firm framing: without it the model tends to answer the text
+                // rather than rewrite it.
+                let session = LanguageModelSession(instructions: instructions +
+                    "\n\nOutput only the rewritten text. Do not answer it, explain, or comment on it.")
+                output = try await session.respond(to: "Rewrite this text:\n\n" + text).content
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            } catch {
+                output = nil
+            }
+            let result = output
+            await MainActor.run { done(result?.isEmpty == false ? result : nil) }
+        }
     }
 
     // MARK: Push-to-talk dictation
@@ -832,6 +945,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         dictating = true
+        dictationStartedAt = Date()
         hud.showWaveform(tint: .systemGreen)
     }
 
@@ -856,10 +970,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictating = false
         pendingDictationStop?.cancel()
         pendingDictationStop = nil
-        hud.hide()
         // Prefer the app's own Stop item; fall back to Escape, which ends
         // dictation while keeping whatever has already been transcribed.
         if !pressDictationMenuItem(starting: false) { post(CGKeyCode(kVK_Escape), []) }
+
+        guard UserDefaults.standard.polishDictation else { hud.hide(); return }
+        // Auto-Polish: select what was just dictated and rewrite it in place.
+        // Dictation leaves the caret at the end of its insertion, so shift-select
+        // back over it — that's the only handle we have on "the dictated text",
+        // since it lands in the app, not in us.
+        hud.showWaveform(tint: .systemOrange, mode: .processing)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self else { return }
+            self.selectDictatedRun()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.polishSelection(dictated: true) }
+        }
+    }
+
+    /// Select the text dictation just inserted, so it can be rewritten. Uses
+    /// shift-⌥← word by word: dictation ends at the caret, so walking back over
+    /// the run it added selects it without touching what was there before.
+    private func selectDictatedRun() {
+        let words = min(max(dictatedWordEstimate, 1), 120)
+        for _ in 0..<words { post(CGKeyCode(kVK_LeftArrow), [.maskShift, .maskAlternate]) }
     }
 
     /// Show the system color loupe (`NSColorSampler`), copy the picked color's
@@ -1313,6 +1446,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var builtSpoken = SpokenSelection.current
     /// Group keys whose help overlay is currently covering their box.
     private var helpShown: Set<String> = []
+    private var instructionsWindow: InstructionsWindow?
 
     init(delegate: AppDelegate) {
         appDelegate = delegate
@@ -1458,17 +1592,19 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             var lineTop = top - headerBlockH
 
             if usesHoldKey(panel) {
-                // No shortcut to record: this tool is driven by holding the
-                // modifier the menu below picks, so the field just reports it.
-                let hold = UserDefaults.standard.dictationHoldKey
-                let readout = NSButton(title: hold == .off ? "Not Set Up" : "Hold " + hold.label,
-                                       target: nil, action: nil)
-                readout.bezelStyle = .rounded
-                readout.font = .systemFont(ofSize: 11)
-                readout.alignment = .center
-                readout.isEnabled = false     // display only — set with the menu
-                readout.frame = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
-                v.addSubview(readout)
+                // There's no shortcut to record — the tool is driven by holding a
+                // modifier — so the key menu takes the field's place rather than
+                // sitting under a readout that says the same thing.
+                let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+                popup.addItems(withTitles: HoldKey.menuOrder.map(\.label))
+                popup.selectItem(at: HoldKey.menuOrder.firstIndex(of: UserDefaults.standard.dictationHoldKey) ?? 0)
+                popup.isEnabled = enabled
+                popup.controlSize = .small
+                popup.font = .systemFont(ofSize: 11)
+                popup.target = self
+                popup.action = #selector(dictationHoldChanged(_:))
+                popup.frame = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
+                v.addSubview(popup)
             } else if mirrorsMacOSHotkey(panel) {
                 // Read-only mirror of the macOS "Speak selection" shortcut, in the
                 // same rounded field style as the other cards — but dimmed on
@@ -1556,19 +1692,21 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 btn.frame = NSRect(x: cx + (colW - w) / 2, y: lineTop - itemH, width: w, height: itemH)
                 v.addSubview(btn)
             }
+            if panel.defaultsKey == "polish" {
+                let btn = NSButton(title: "Instructions…", target: self,
+                                   action: #selector(editPolishInstructions))
+                btn.bezelStyle = .rounded
+                btn.controlSize = .small
+                btn.font = .systemFont(ofSize: 11)
+                btn.isEnabled = enabled
+                btn.sizeToFit()
+                let w = min(ceil(btn.frame.width), colW)
+                btn.frame = NSRect(x: cx + (colW - w) / 2, y: lineTop - itemH, width: w, height: itemH)
+                v.addSubview(btn)
+            }
             if panel.defaultsKey == "dictation" {
-                let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-                popup.addItems(withTitles: HoldKey.menuOrder.map(\.label))
-                popup.selectItem(at: HoldKey.menuOrder.firstIndex(of: UserDefaults.standard.dictationHoldKey) ?? 0)
-                popup.isEnabled = enabled
-                popup.controlSize = .small
-                popup.font = .systemFont(ofSize: 11)
-                popup.target = self
-                popup.action = #selector(dictationHoldChanged(_:))
-                popup.sizeToFit()
-                let pw = min(ceil(popup.frame.width), colW)
-                popup.frame = NSRect(x: cx + (colW - pw) / 2, y: lineTop - itemH, width: pw, height: itemH)
-                v.addSubview(popup)
+                centeredCheckbox("Auto-Polish", on: UserDefaults.standard.polishDictation,
+                                 action: #selector(polishDictationChanged(_:)))
             }
             if panel.defaultsKey == "colorpicker" {
                 let popup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -1878,6 +2016,17 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         rebuild()   // the field above reports the new choice
     }
 
+    @objc private func polishDictationChanged(_ sender: NSButton) {
+        UserDefaults.standard.polishDictation = sender.state == .on
+    }
+
+    @objc private func editPolishInstructions() {
+        if instructionsWindow == nil { instructionsWindow = InstructionsWindow() }
+        instructionsWindow?.center()
+        NSApp.activate(ignoringOtherApps: true)
+        instructionsWindow?.makeKeyAndOrderFront(nil)
+    }
+
     @objc private func colorFormatChanged(_ sender: NSPopUpButton) {
         UserDefaults.standard.colorFormat = ColorFormat(rawValue: sender.indexOfSelectedItem) ?? .hex
     }
@@ -1944,6 +2093,97 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         // System Settings while we were away.
         if CGPreflightScreenCaptureAccess() != builtScreenRec
             || SpokenSelection.current != builtSpoken { rebuild() }
+    }
+}
+
+/// The editor for what Polish Text tells the on-device model. Two sets, because
+/// the tool does two different jobs: tidying text you selected, and cleaning up
+/// what you just dictated.
+final class InstructionsWindow: NSWindow {
+    private let selectionView = NSTextView()
+    private let dictationView = NSTextView()
+
+    init() {
+        let w: CGFloat = 520, h: CGFloat = 520
+        super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
+                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        title = "Polish Text Instructions"
+        isReleasedWhenClosed = false
+
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        /// One labelled box of instructions.
+        func section(_ title: String, _ caption: String, _ tv: NSTextView,
+                     text: String, y: CGFloat, boxH: CGFloat, resetAction: Selector) {
+            let head = NSTextField(labelWithString: title)
+            head.font = .systemFont(ofSize: 13, weight: .semibold)
+            head.frame = NSRect(x: 20, y: y + boxH + 26, width: w - 160, height: 20)
+            v.addSubview(head)
+
+            let sub = NSTextField(labelWithString: caption)
+            sub.font = .systemFont(ofSize: 11)
+            sub.textColor = .secondaryLabelColor
+            sub.frame = NSRect(x: 20, y: y + boxH + 8, width: w - 160, height: 16)
+            v.addSubview(sub)
+
+            let reset = NSButton(title: "Restore Default", target: self, action: resetAction)
+            reset.bezelStyle = .rounded
+            reset.controlSize = .small
+            reset.font = .systemFont(ofSize: 11)
+            reset.sizeToFit()
+            let rw = ceil(reset.frame.width) + 10
+            reset.frame = NSRect(x: w - 20 - rw, y: y + boxH + 8, width: rw, height: 20)
+            v.addSubview(reset)
+
+            let scroll = NSScrollView(frame: NSRect(x: 20, y: y, width: w - 40, height: boxH))
+            scroll.hasVerticalScroller = true
+            scroll.borderType = .bezelBorder
+            tv.string = text
+            tv.font = .systemFont(ofSize: 12)
+            tv.isRichText = false
+            tv.isVerticallyResizable = true
+            tv.autoresizingMask = [.width]
+            tv.textContainer?.widthTracksTextView = true
+            scroll.documentView = tv
+            v.addSubview(scroll)
+        }
+
+        section("Typed Text Instructions", "Used when you run the shortcut on text you've selected.",
+                selectionView, text: UserDefaults.standard.polishInstructions,
+                y: 356, boxH: 74, resetAction: #selector(restoreSelection))
+        section("Dictated Text Instructions", "Used by Auto-Polish, on what Hold to Dictate just typed.",
+                dictationView, text: UserDefaults.standard.dictationInstructions,
+                y: 80, boxH: 216, resetAction: #selector(restoreDictation))
+
+        let save = NSButton(title: "Save", target: self, action: #selector(save))
+        save.bezelStyle = .rounded
+        save.keyEquivalent = "\r"
+        save.frame = NSRect(x: w - 110, y: 22, width: 90, height: 30)
+        v.addSubview(save)
+
+        let note = NSTextField(labelWithString:
+            "Instructions for built-in AI — nothing leaves your computer.")
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.lineBreakMode = .byTruncatingTail
+        note.frame = NSRect(x: 20, y: 30, width: w - 140, height: 16)
+        v.addSubview(note)
+
+        contentView = v
+    }
+
+    @objc private func restoreSelection() { selectionView.string = UserDefaults.defaultPolishInstructions }
+    @objc private func restoreDictation() { dictationView.string = UserDefaults.defaultDictationInstructions }
+
+    @objc private func save() {
+        func clean(_ s: String, fallback: String) -> String {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? fallback : t
+        }
+        UserDefaults.standard.polishInstructions =
+            clean(selectionView.string, fallback: UserDefaults.defaultPolishInstructions)
+        UserDefaults.standard.dictationInstructions =
+            clean(dictationView.string, fallback: UserDefaults.defaultDictationInstructions)
+        close()
     }
 }
 

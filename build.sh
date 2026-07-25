@@ -23,6 +23,7 @@ swiftc -O main.swift \
     -framework ServiceManagement \
     -framework Vision \
     -framework IOKit \
+    -framework FoundationModels \
     -o "${BUILD_DIR}/Contents/MacOS/${APP_NAME}"
 
 cp Info.plist "${BUILD_DIR}/Contents/Info.plist"
