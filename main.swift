@@ -835,7 +835,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + gap) { [weak self] in
             self?.post(key, .maskCommand)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + gap + 0.15) { [weak self] in
+        // Spotlight reopens holding — and selecting — your last query, so a bare
+        // Delete lands on that selection and empties the field. Deliberately NOT
+        // ⌘A + Delete: if this sequence ever misfires into the frontmost app
+        // (Spotlight was already open, so ⌘Space closed it), select-all + delete
+        // would wipe that app's document. A stray Delete costs one character.
+        DispatchQueue.main.asyncAfter(deadline: .now() + gap + 0.12) { [weak self] in
+            self?.post(CGKeyCode(kVK_Delete), [])
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + gap + 0.3) { [weak self] in
             self?.synthesizing = false
             self?.syncHotkeys()
         }
