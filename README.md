@@ -96,7 +96,7 @@ Nothing needs setting up in advance: macOS prompts the first time a shortcut nee
 
 ## Shortcuts
 
-A fresh install comes with a working set already assigned — **⌃ plus a letter that stands for something**, which keeps it memorable and leaves ⌘-chords to whatever app you're in:
+A fresh install comes with a working set already assigned — **⌃ plus a letter that stands for something**:
 
 | | | | |
 |---|---|---|---|
@@ -104,7 +104,7 @@ A fresh install comes with a working set already assigned — **⌃ plus a lette
 | ⌃` System Settings | ⌃L Color Picker | ⌃H Color History | ⌃K Keep Awake |
 | Speak Text: macOS's own | ⌃O Capture Text | Hold **Right ⌥** to dictate | ⌃T Tidy Text |
 
-Change any of them by clicking the field and recording, or press **Delete** while recording to clear it. Defaults are only ever applied to a tool that has no shortcut yet, so they can't overwrite something you've set.
+One modifier keeps every chord inside one hand, and ⌃ is the one that doesn't eat anything people type: ⌥-letter produces å, ø and the accent dead keys, while ⌘ chords belong to whatever app you're in. It does override the emacs-style text bindings (⌃A start of paragraph, ⌃K delete to end, ⌃H backspace) — real, but little-known, and any shortcut here can be rebound. Change any of them by clicking the field and recording, or press **Delete** while recording to clear it. Defaults are only ever applied to a tool that has no shortcut yet, so they can't overwrite something you've set.
 
 Two tools work differently, because a recorded chord isn't the right control for them:
 

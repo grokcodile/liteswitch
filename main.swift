@@ -160,8 +160,12 @@ func worksWithoutAX(_ panel: Panel) -> Bool {
 /// field plus a button into Spoken Content settings.
 func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
 
-/// What a fresh install starts with: ⌃ plus a letter that stands for something,
-/// which keeps the set memorable and leaves ⌘-chords to whatever app you're in.
+/// What a fresh install starts with: ⌃ plus a letter that stands for something.
+/// One modifier keeps every chord inside one hand, and ⌃ is the one that doesn't
+/// eat anything people type — ⌥-letter produces å, ø and the accent dead keys,
+/// while ⌘ and ⇧⌘ chords are claimed by the app you're in. It does override the
+/// emacs-style text bindings (⌃A start of paragraph, ⌃K delete to end, ⌃H
+/// backspace), which are real but little-known; anyone who uses them can rebind.
 /// Only ever applied to a tool with no shortcut of its own — see
 /// `seedDefaultShortcutsIfNeeded`.
 let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃
