@@ -9,8 +9,6 @@
 
 macOS ships the hard part and leaves out the key. Screen OCR, color sampling, sleep prevention, dictation, on-device text cleanup — the engines are all in the box, on-device, already paid for, and mostly a menu dive or a Settings pane away. That gap is a whole category of paid utilities: apps that bundle their own engine, or their own subscription, to sell you a keystroke. LiteSwitch is a dozen of those keystrokes in one background agent — one Swift file, no dependencies, no menu bar item, no account, no subscription, nothing leaving your Mac.
 
-Spotlight is the plainest case. macOS 26 gave it four panels — **Apps** (⌘1), **Files** (⌘2), **Actions** (⌘3), **Clipboard** (⌘4) — but reaching one means opening Spotlight first, then pressing its number. That's walking to the lamp to turn the dial. Each panel gets its own chord instead.
-
 It's also built to be temporary wherever it can be. Each tool covers a convenience macOS misses by a hair, so when a future release closes that gap, the tool comes out. **The app getting smaller as the system gets better is a success, not a regression** — simplicity here is the point of the thing, not a marketing line.
 
 ## What it leverages instead of reinventing
@@ -19,7 +17,10 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 
 | Tool | What macOS does the work | Instead of |
 |---|---|---|
-| **Spotlight panels** | Spotlight's own panels, via `Apps.app` + the documented ⌘Space gesture | — |
+| **Apps** | Spotlight's Applications panel, opened via the system `Apps.app` stub | Alfred, Raycast, LaunchBar (paid tiers) |
+| **Files** | Spotlight's Files panel — the same index Finder searches | Alfred / Raycast file search, Find Any File |
+| **Actions** | Spotlight's Actions panel — Shortcuts and system actions by name | Raycast commands, Alfred workflows |
+| **Clipboard** | Spotlight's own clipboard history | Paste, Copy'em, Raycast clipboard history |
 | **System Settings** | `NSWorkspace`, with a remembered "toggle back" | — |
 | **Color Picker** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
 | **Color History** | LiteSwitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
@@ -29,7 +30,9 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **Hold to Dictate** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
 | **Polish Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
 
-The two that make the point best:
+The four Spotlight panels are the starkest case: an app launcher, a file searcher, a command runner and a clipboard history are four separate paid utilities in most people's setups, and macOS 26 ships all four — behind one keystroke and a number. They just needed keys of their own.
+
+Two more that make the point:
 
 - **Hold to Dictate** — dictation apps sell push-to-talk with their own speech model and a monthly bill. Your Mac already transcribes on-device, for free, at least as well. The *only* thing it lacks is hold-to-talk: macOS dictation is toggle-only. So that's all this adds — the missing key, on top of Apple's transcription.
 - **Polish Text** — cleaning up dictated speech is exactly what an on-device LLM is for, and macOS 26 ships one. No API key, no per-token cost, no text uploaded anywhere.
