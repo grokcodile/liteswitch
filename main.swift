@@ -1436,29 +1436,29 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     // under the transparent titlebar, fixed title/switch/description gaps, one
     // consistent section gap before and after the box row, and a Key54-sized
     // button bar.
-    private let topMargin: CGFloat = 44
+    private let topMargin: CGFloat = 34
     private let titleTextH: CGFloat = 33
     private let titleSwitchGap: CGFloat = 10
     private let switchRowH: CGFloat = 28
-    private let unitGap: CGFloat = 26
+    private let unitGap: CGFloat = 14
     private let descH: CGFloat = 20
-    private let sectionGap: CGFloat = 28
+    private let sectionGap: CGFloat = 18
     private let btnW: CGFloat = 100, btnH: CGFloat = 32
     private let bottomMargin: CGFloat = 20
     /// Gap between the groups and the button row; the (usually empty)
     /// conflict banner floats inside it rather than reserving its own band.
-    private let footerGap: CGFloat = 36
+    private let footerGap: CGFloat = 22
     private var footerH: CGFloat { footerGap + btnH + bottomMargin }
     // Every card — Spotlight panel or System Tool — is the same width.
     private let boxW: CGFloat = 128
     private let boxGap: CGFloat = 12, innerPad: CGFloat = 11
-    private let iconSize: CGFloat = 28
-    private let headerBlockH: CGFloat = 52   // icon + title (no visible subtitle)
-    private let itemH: CGFloat = 26, itemGap: CGFloat = 6
+    private let iconSize: CGFloat = 24
+    private let headerBlockH: CGFloat = 46   // icon + title (no visible subtitle)
+    private let itemH: CGFloat = 24, itemGap: CGFloat = 6
     // Grouping: Spotlight panels in one titled outline box, System Utilities in a
     // second one (same width) stacked below, its cards wrapping into rows.
     private let groupTitleH: CGFloat = 18, groupTitleGap: CGFloat = 6
-    private let groupPad: CGFloat = 12
+    private let groupPad: CGFloat = 10
     private func groupWidth(_ w: CGFloat, _ count: Int) -> CGFloat {
         groupPad * 2 + w * CGFloat(count) + boxGap * CGFloat(count - 1)
     }
@@ -1626,7 +1626,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             name.font = .systemFont(ofSize: titleSize, weight: .semibold)
             name.alignment = .center
             name.textColor = enabled ? .labelColor : .tertiaryLabelColor
-            name.frame = NSRect(x: cx, y: top - iconSize - 21, width: colW, height: 17)
+            name.frame = NSRect(x: cx, y: top - iconSize - 20, width: colW, height: 17)
             v.addSubview(name)
 
             var lineTop = top - headerBlockH

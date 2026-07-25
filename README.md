@@ -24,41 +24,44 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **System Settings** | `NSWorkspace`, with a remembered "toggle back" | — |
 | **Color Picker** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
 | **Color History** | LiteSwitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
-| **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
 | **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
+| **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
 | **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its voices, its shortcut | text-to-speech utilities |
-| **Hold to Dictate** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
+| **Dictate Text** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
 | **Tidy Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
 
 The four Spotlight panels are the starkest case: an app launcher, a file searcher, a command runner and a clipboard history are four separate paid utilities in most people's setups, and macOS 26 ships all four — behind one keystroke and a number. They just needed keys of their own.
 
 Two more that make the point:
 
-- **Hold to Dictate** — dictation apps sell push-to-talk with their own speech model and a monthly bill. Your Mac already transcribes on-device, for free, at least as well. The *only* thing it lacks is hold-to-talk: macOS dictation is toggle-only. So that's all this adds — the missing key, on top of Apple's transcription.
+- **Dictate Text** — dictation apps sell push-to-talk with their own speech model and a monthly bill. Your Mac already transcribes on-device, for free, at least as well. The *only* thing it lacks is hold-to-talk: macOS dictation is toggle-only. So that's all this adds — the missing key, on top of Apple's transcription.
 - **Tidy Text** — cleaning up dictated speech is exactly what an on-device LLM is for, and macOS 26 ships one. No API key, no per-token cost, no text uploaded anywhere.
 
 ## Features
 
-**Spotlight panels**
+**Spotlight Panels**
 
 - A global shortcut for each of **Apps, Files, Actions, Clipboard**. One shortcut per panel; recording a combo another panel owns moves it over.
 - **Apps** opens through the system's own `Apps.app` stub — instant, no permissions (with a synthesized fallback if the stub ever moves).
 - **Files / Actions / Clipboard** open by synthesizing the documented Spotlight gesture, then clearing the leftover query so you always start typing into an empty field.
 
-**System tools**
+**System Utilities**
 
 - **System Settings** — with **Smart Toggle**, pressing the shortcut again hides it and returns you to the app you came from.
-- **Color Picker** — pops the system loupe and copies the pixel under your cursor as **Hex, RGB, HSL, or SwiftUI**, plus the raw color for dropping into a color well. A pill flashes the swatch and code.
+- **Color Picker** — pops the system loupe and copies the pixel under your cursor as **Hex, RGB, HSL, or SwiftUI**, plus the raw color for dropping into a color well. A pill flashes the swatch and code, and every pick is saved to Color History.
 - **Color History** — a window of everything you've picked. **Click** a swatch to re-copy its code, **drag** it out to save the swatch as a PNG, **pin** the keepers. Labels default to the hex and can be renamed. Keeps the last 20; pins persist at the top.
-- **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
 - **Keep Awake** — stops your Mac sleeping; a cup appears in the menu bar while it's on (click to stop), and **Screen Sleep** lets the display sleep while the system stays up. The assertion releases automatically if LiteSwitch quits, so it can't strand your Mac awake.
+
+**Text Tools**
+
+- **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
 - **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. LiteSwitch reflects that state; macOS does the talking.
-- **Hold to Dictate** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
-- **Tidy Text** — rewrites the selected text with Apple Intelligence's on-device model, following instructions you set. Two sets, for two jobs: light proofreading for text you typed, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Hold to Dictate card runs the dictated set automatically on what you just spoke.
+- **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
+- **Tidy Text** — rewrites text with Apple Intelligence's on-device model, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Dictate Text card runs the dictated set automatically on what you just spoke.
 
 **Throughout**
 
-- Every group has a **ⓘ** that lays a help sheet over it, explaining each tool with examples and a suggested shortcut.
+- Each of the three groups has a **ⓘ** that lays a help sheet over it, explaining each tool with examples and a suggested shortcut.
 - Shortcut conflicts with other apps are surfaced in the settings window rather than failing silently.
 - Runs as a background agent — no Dock icon, no menu bar item — and starts at login. Opening it again brings up settings.
 
@@ -77,7 +80,7 @@ The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the v
 ## Requirements
 
 - **macOS 26 or later** (the four-panel Spotlight).
-- **Accessibility** — for anything that synthesizes keystrokes or reads another app's menus: Files, Actions, Clipboard, the System Settings shortcut, Hold to Dictate, and Tidy Text.
+- **Accessibility** — for anything that synthesizes keystrokes or reads another app's menus: Files, Actions, Clipboard, the System Settings shortcut, Dictate Text, and Tidy Text.
 - **Screen Recording** — for **Capture Text** only (macOS 26 gates the region selector behind it).
 - **Apple Intelligence** — for **Tidy Text**, which uses the on-device model. Without it that one tool is unavailable; everything else is unaffected.
 
@@ -99,13 +102,13 @@ A fresh install comes with a working set already assigned — **⌃ plus a lette
 |---|---|---|---|
 | ⌃A Applications | ⌃/ Files | ⌃X Actions | ⌃V Clipboard |
 | ⌃` System Settings | ⌃L Color Picker | ⌃H Color History | ⌃K Keep Awake |
-| ⌃O Capture Text | ⌃P Tidy Text | Hold **Right ⌥** to dictate | Speak Text: macOS's own |
+| ⌃O Capture Text | Speak Text: macOS's own | Hold **Right ⌥** to dictate | ⌃P Tidy Text |
 
 Change any of them by clicking the field and recording, or press **Delete** while recording to clear it. Defaults are only ever applied to a tool that has no shortcut yet, so they can't overwrite something you've set.
 
 Two tools work differently, because a recorded chord isn't the right control for them:
 
-- **Hold to Dictate** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
+- **Dictate Text** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
 - **Speak Text** has no LiteSwitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
 
 Each card carries one option: the copy **format** for Color Picker (Hex), **View…** for Color History, **Smart Toggle** for System Settings (on), **Remove Breaks** for Capture Text (on), **Screen Sleep** for Keep Awake (on), **Auto-Tidy** for Dictate Text (on), and **Instructions…** for Tidy Text.
@@ -120,7 +123,7 @@ Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) �
 
 **Keep Awake** holds an **IOKit power assertion** (`IOPMAssertionCreateWithName`) — the same mechanism `caffeinate` uses — choosing the display-sleep or system-sleep variant to match the Screen Sleep option. Assertions die with the process, so quitting always releases it.
 
-**Hold to Dictate** watches the chosen modifier with `flagsChanged` monitors, since Carbon hotkeys report presses but never releases. Starting dictation took some ruling out: the mic key on F5 can't be synthesized — macOS takes it at the HID layer, so it never becomes an event an app can post — and by default dictation has no ordinary shortcut to send either. So LiteSwitch presses the frontmost app's **Edit ▸ Start / Stop Dictation** item through the **Accessibility API**, which leaves your own dictation setup untouched. The stop is deferred ~1.5 s because dictation keeps transcribing after you stop speaking; pressing the key again inside that window carries on rather than restarting.
+**Dictate Text** watches the chosen modifier with `flagsChanged` monitors, since Carbon hotkeys report presses but never releases. Starting dictation took some ruling out: the mic key on F5 can't be synthesized — macOS takes it at the HID layer, so it never becomes an event an app can post — and by default dictation has no ordinary shortcut to send either. So LiteSwitch presses the frontmost app's **Edit ▸ Start / Stop Dictation** item through the **Accessibility API**, which leaves your own dictation setup untouched. The stop is deferred ~1.5 s because dictation keeps transcribing after you stop speaking; pressing the key again inside that window carries on rather than restarting.
 
 **Tidy Text** runs the text through **`FoundationModels`**, Apple Intelligence's on-device model, with your instructions. Nothing is sent anywhere and there's no API key. The selection is copied, rewritten, and pasted back, with the clipboard borrowed and restored around the round trip.
 
@@ -128,7 +131,7 @@ Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) �
 
 LiteSwitch targets **macOS 26** and deliberately uses what that release ships — the four-panel Spotlight, on-device Vision OCR, Spoken Content, macOS Dictation, Apple Intelligence's local model. That's the point of the app, and also its exposure: it is a thin layer over Apple's own behaviour, so when that behaviour moves, this moves with it.
 
-Some of what's here already rests on things Apple never promised to keep still — the Spotlight ⌘Space gesture and its panel numbers, the **Edit ▸ Start Dictation** menu item that Hold to Dictate presses, the Spoken Content preference that Speak Text reads. Those work today. A future macOS could rename a menu item, restructure a pane, or change how a panel opens, and the tool that leans on it would need adjusting. Where a behaviour is undocumented or was arrived at by testing rather than by the docs, [How it works](#how-it-works) says so.
+Some of what's here already rests on things Apple never promised to keep still — the Spotlight ⌘Space gesture and its panel numbers, the **Edit ▸ Start Dictation** menu item that Dictate Text presses, the Spoken Content preference that Speak Text reads. Those work today. A future macOS could rename a menu item, restructure a pane, or change how a panel opens, and the tool that leans on it would need adjusting. Where a behaviour is undocumented or was arrived at by testing rather than by the docs, [How it works](#how-it-works) says so.
 
 **The better outcome is that Apple absorbs some of this.** Several of these tools exist purely because a convenience is missing by a hair: dictation transcribes beautifully but is toggle-only; the Spotlight panels have numbers but no global keys; the loupe samples a color but keeps no history. If macOS grows push-to-talk dictation, or lets you bind a panel directly, then that card has served its purpose and should be removed rather than defended. LiteSwitch is meant to be scaffolding over the gaps, not a permanent parallel implementation.
 
