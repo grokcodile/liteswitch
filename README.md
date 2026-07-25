@@ -7,9 +7,9 @@
 
 **LiteSwitch puts a global shortcut on things your Mac already knows how to do.**
 
-It started with Spotlight. macOS 26 gave it four panels — **Apps** (⌘1), **Files** (⌘2), **Actions** (⌘3), **Clipboard** (⌘4) — but reaching one means opening Spotlight first, then pressing its number. That's walking to the lamp to turn the dial. LiteSwitch wires each panel to its own chord.
+macOS ships the hard part and leaves out the key. Screen OCR, color sampling, sleep prevention, dictation, on-device text cleanup — the engines are all in the box, on-device, already paid for, and mostly a menu dive or a Settings pane away. That gap is a whole category of paid utilities: apps that bundle their own engine, or their own subscription, to sell you a keystroke. LiteSwitch is a dozen of those keystrokes in one background agent — one Swift file, no dependencies, no menu bar item, no account, no subscription, nothing leaving your Mac.
 
-Then it kept going, because the same pattern kept showing up: **macOS ships the hard part, and a paid app sells you the shortcut to it.** Screen OCR, color sampling, sleep prevention, dictation, text cleanup — the engines are all in the box, on-device, already paid for. What's missing is a key to press. So LiteSwitch is one Swift file, no dependencies, no menu bar item, no account, no subscription, no data leaving your Mac.
+Spotlight is the plainest case. macOS 26 gave it four panels — **Apps** (⌘1), **Files** (⌘2), **Actions** (⌘3), **Clipboard** (⌘4) — but reaching one means opening Spotlight first, then pressing its number. That's walking to the lamp to turn the dial. Each panel gets its own chord instead.
 
 It's also built to be temporary wherever it can be. Each tool covers a convenience macOS misses by a hair, so when a future release closes that gap, the tool comes out. **The app getting smaller as the system gets better is a success, not a regression** — simplicity here is the point of the thing, not a marketing line.
 
@@ -119,7 +119,7 @@ LiteSwitch targets **macOS 26** and deliberately uses what that release ships �
 
 Some of what's here already rests on things Apple never promised to keep still — the Spotlight ⌘Space gesture and its panel numbers, the **Edit ▸ Start Dictation** menu item that Hold to Dictate presses, the Spoken Content preference that Speak Text reads. Those work today. A future macOS could rename a menu item, restructure a pane, or change how a panel opens, and the tool that leans on it would need adjusting. Where a behaviour is undocumented or was arrived at by testing rather than by the docs, [How it works](#how-it-works) says so.
 
-**The better outcome is that Apple absorbs some of this.** Several of these tools exist purely because a convenience is missing by a hair: dictation transcribes beautifully but is toggle-only; the Spotlight panels have numbers but no global keys; the loupe samples a colour but keeps no history. If macOS grows push-to-talk dictation, or lets you bind a panel directly, then that card has served its purpose and should be removed rather than defended. LiteSwitch is meant to be scaffolding over the gaps, not a permanent parallel implementation.
+**The better outcome is that Apple absorbs some of this.** Several of these tools exist purely because a convenience is missing by a hair: dictation transcribes beautifully but is toggle-only; the Spotlight panels have numbers but no global keys; the loupe samples a color but keeps no history. If macOS grows push-to-talk dictation, or lets you bind a panel directly, then that card has served its purpose and should be removed rather than defended. LiteSwitch is meant to be scaffolding over the gaps, not a permanent parallel implementation.
 
 So: expect this to track macOS releases, expect the occasional fix when Apple shifts something underneath, and expect features to retire when the system makes them unnecessary.
 
