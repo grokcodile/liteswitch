@@ -13,12 +13,13 @@
 //   • Files / Actions / Clipboard — synthesizes ⌘Space then ⌘2/⌘3/⌘4, the
 //                 documented gesture. Needs Accessibility to post keystrokes.
 //
-// Three "System Tools" ride alongside the panels: a shortcut that opens System
-// Settings (with a smart toggle back); a Color Picker that shows the system
-// loupe (NSColorSampler) and copies the sampled color; and Text Capture, which
-// selects a screen region (via /usr/sbin/screencapture -i), OCRs it with Vision,
-// and copies the text. Like Apps, these need no Accessibility permission — the
-// system does the screen reading out of process.
+// A group of "System Tools" ride alongside the panels, none needing any
+// permission: open System Settings (with a smart toggle back); a Color Picker
+// (NSColorSampler → clipboard); Text Capture (screencapture -i region → Vision
+// OCR → clipboard); Keep Awake (an IOKit power assertion that blocks sleep); and
+// Speak Text — which doesn't re-implement speech at all: it mirrors macOS's own
+// "Speak selection" (Accessibility → Spoken Content), showing the shortcut that
+// feature is assigned and offering a button to enable or change it.
 //
 // Same construction as Key54 (github.com/grokcodile/key54): one file, no
 // dependencies, compiled with swiftc. Runs as a background agent — launching
@@ -28,6 +29,9 @@ import Cocoa
 import Carbon.HIToolbox
 import ServiceManagement
 import Vision
+import IOKit.pwr_mgt
+import CoreGraphics
+import UniformTypeIdentifiers
 
 // MARK: - Panels
 
@@ -54,21 +58,28 @@ let panels: [Panel] = [
     Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Spotlight's Actions panel — run Shortcuts and quick system actions.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
     Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Spotlight's Clipboard panel — browse your recent clipboard history.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
     Panel(name: "Settings", symbol: "gear", glyphPath: nil, detail: "Open the System Settings app.", spotlightKey: 0, defaultsKey: "settings"),
-    Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor with the system loupe and copy its hex to the clipboard.", spotlightKey: 0, defaultsKey: "colorpicker"),
+    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Toggle a system assertion that stops your Mac and its display from sleeping.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Text Capture", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen; its text is recognized and copied to the clipboard.", spotlightKey: 0, defaultsKey: "textcapture"),
+    Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor with the system loupe and copy its hex to the clipboard.", spotlightKey: 0, defaultsKey: "colorpicker"),
+    Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Open a palette of your recently picked colors — click to copy, hover for actions, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
+    Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Reflects macOS's built-in “Speak selection.” Its shortcut is set in System Settings → Accessibility → Spoken Content.", spotlightKey: 0, defaultsKey: "speakclipboard"),
 ]
 
 /// Panels shown in the "System Tools" group rather than the "Spotlight" group,
 /// and — like Applications — driven without needing Accessibility.
-let utilityKeys: Set<String> = ["settings", "colorpicker", "textcapture"]
+let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "speakclipboard"]
 func isUtility(_ panel: Panel) -> Bool { utilityKeys.contains(panel.defaultsKey) }
-/// Rows of option controls a card shows below its shortcut field: each System
-/// Tool has one (a checkbox or a select menu); Spotlight panels have none.
+/// Rows of option controls a card shows below its shortcut field: every System
+/// Tool has one (a checkbox or select menu); Spotlight panels have none.
 func optionRows(_ panel: Panel) -> Int { isUtility(panel) ? 1 : 0 }
 /// Panels that work without Accessibility (no keystroke synthesis).
 func worksWithoutAX(_ panel: Panel) -> Bool {
-    ["apps", "colorpicker", "textcapture"].contains(panel.defaultsKey)
+    ["apps", "colorpicker", "colorhistory", "textcapture", "keepawake"].contains(panel.defaultsKey)
 }
+/// Speak Text owns no LiteSwitch shortcut — it mirrors macOS's built-in "Speak
+/// selection" hotkey — so it registers nothing and its card shows a read-only
+/// field plus a button into Spoken Content settings.
+func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
 
 extension UserDefaults {
     var settingsToggle: Bool {
@@ -83,6 +94,11 @@ extension UserDefaults {
     var ocrKeepLineBreaks: Bool {
         get { object(forKey: "ocrKeepLineBreaks") as? Bool ?? true }
         set { set(newValue, forKey: "ocrKeepLineBreaks") }
+    }
+    /// Keep Awake: let the display sleep while the system stays awake.
+    var keepAwakeAllowDisplaySleep: Bool {
+        get { object(forKey: "keepAwakeAllowDisplaySleep") as? Bool ?? false }
+        set { set(newValue, forKey: "keepAwakeAllowDisplaySleep") }
     }
 }
 
@@ -133,6 +149,129 @@ enum ColorFormat: Int, CaseIterable {
     }
 }
 
+// MARK: - Color history
+
+/// A remembered color: an sRGB hex plus whether it's a pinned keeper.
+struct ColorEntry: Equatable {
+    var hex: String
+    var pinned: Bool
+    var color: NSColor { NSColor.fromSrgbHex(hex) ?? .gray }
+}
+
+/// The Color History store — the last `maxRecent` picks plus any pinned keepers,
+/// persisted in UserDefaults. Every color pick records here (fast picker too).
+enum ColorHistory {
+    private static let key = "colorHistory"
+    static let maxRecent = 20
+
+    static func load() -> [ColorEntry] {
+        guard let arr = UserDefaults.standard.array(forKey: key) as? [[String: Any]] else { return [] }
+        return arr.compactMap {
+            guard let hex = $0["hex"] as? String else { return nil }
+            return ColorEntry(hex: hex, pinned: ($0["pinned"] as? Bool) ?? false)
+        }
+    }
+
+    private static func save(_ entries: [ColorEntry]) {
+        UserDefaults.standard.set(entries.map { ["hex": $0.hex, "pinned": $0.pinned] }, forKey: key)
+    }
+
+    /// Record a pick: it lands at the END (newest last). An existing unpinned
+    /// match is refreshed to the end; a pinned match is left where it is. Then the
+    /// oldest unpinned beyond the cap are evicted. Pinned entries stay grouped at
+    /// the front, so the display reads pinned-first, then recents oldest→newest.
+    static func add(_ color: NSColor) {
+        let hex = color.srgbHexString
+        var entries = load()
+        if let i = entries.firstIndex(where: { $0.hex == hex }) {
+            if !entries[i].pinned { entries.append(entries.remove(at: i)) }
+        } else {
+            entries.append(ColorEntry(hex: hex, pinned: false))
+        }
+        while entries.filter({ !$0.pinned }).count > maxRecent,
+              let i = entries.firstIndex(where: { !$0.pinned }) {
+            entries.remove(at: i)
+        }
+        save(entries)
+    }
+
+    /// Pinning moves a color to the TOP; unpinning drops it to the bottom as a
+    /// fresh recent — keeping pinned entries grouped above the recents.
+    static func togglePin(_ hex: String) {
+        var entries = load()
+        guard let i = entries.firstIndex(where: { $0.hex == hex }) else { return }
+        var e = entries.remove(at: i)
+        e.pinned.toggle()
+        if e.pinned { entries.insert(e, at: 0) } else { entries.append(e) }
+        save(entries)
+    }
+
+    /// Clear the unpinned recents; pinned keepers stay.
+    static func clearRecents() { save(load().filter { $0.pinned }) }
+}
+
+extension NSColor {
+    /// "#RRGGBB" in sRGB — the canonical form Color History stores.
+    var srgbHexString: String {
+        let c = usingColorSpace(.sRGB) ?? self
+        return String(format: "#%02X%02X%02X",
+                      Int((c.redComponent * 255).rounded()),
+                      Int((c.greenComponent * 255).rounded()),
+                      Int((c.blueComponent * 255).rounded()))
+    }
+    static func fromSrgbHex(_ hex: String) -> NSColor? {
+        var s = hex
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
+        return NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255,
+                       green: CGFloat((v >> 8) & 0xFF) / 255,
+                       blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+    }
+}
+
+/// Render a swatch of `color` to PNG — the image you get by dragging a color out
+/// of the palette. Deliberately a full-bleed OPAQUE square: rounded corners would
+/// leave transparent gaps, which Finder and Quick Look back with white, so the
+/// file reads as a color chip stuck on a white card.
+enum ColorSwatch {
+    static func png(_ color: NSColor, px: Int = 256) -> Data? {
+        let rgb = color.usingColorSpace(.sRGB) ?? color
+        // Draw straight into an sRGB context: a deviceRGB bitmap color-converts
+        // the fill (a #117AF9 pick exported as #0690FA), and CoreGraphics can't
+        // back a 24-bit context at all (that renders black) — so use 32-bit with
+        // the alpha channel skipped, filled edge to edge. Fully opaque means no
+        // transparency for Finder/Quick Look to back with white.
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8,
+                                  bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return nil }
+        ctx.setFillColor(red: rgb.redComponent, green: rgb.greenComponent,
+                         blue: rgb.blueComponent, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: px, height: px))
+        guard let cg = ctx.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
+    }
+}
+
+/// Color naming for the palette: each color shows its hex unless the user types
+/// a custom name. Custom names are stored by hex, so they survive a color rolling
+/// out of history and coming back.
+enum ColorNames {
+    private static let customKey = "colorNames"   // [hex: custom name]
+
+    static func custom(_ hex: String) -> String? {
+        (UserDefaults.standard.dictionary(forKey: customKey) as? [String: String])?[hex]
+    }
+    static func setCustom(_ hex: String, _ name: String?) {
+        var d = (UserDefaults.standard.dictionary(forKey: customKey) as? [String: String]) ?? [:]
+        d[hex] = (name?.isEmpty == false) ? name : nil
+        UserDefaults.standard.set(d, forKey: customKey)
+    }
+    /// The shown name: a custom one if set, else the hex itself.
+    static func display(_ hex: String) -> String { custom(hex) ?? hex }
+}
+
 /// Virtual keycodes for F1–F20 — the one family allowed as modifier-less
 /// hotkeys (they exist to be bare; a bare letter would hijack typing).
 let fKeyCodes: Set<UInt32> = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109,
@@ -171,14 +310,17 @@ struct Shortcut: Equatable {
         d.removeObject(forKey: panel.defaultsKey + "Modifiers")
     }
 
-    /// "⌃⌥⇧⌘X" for display.
+    /// "⌃ ⌥ ⇧ ⌘ X" for display — Apple's modifier order, glyphs spaced like the
+    /// macOS menu bar (a plain space between each). No "+": that's the
+    /// Windows/text convention; native macOS uses bare glyphs.
     var label: String {
-        var s = ""
-        if modifiers & UInt32(controlKey) != 0 { s += "⌃" }
-        if modifiers & UInt32(optionKey) != 0 { s += "⌥" }
-        if modifiers & UInt32(shiftKey) != 0 { s += "⇧" }
-        if modifiers & UInt32(cmdKey) != 0 { s += "⌘" }
-        return s + Shortcut.keyName(keyCode)
+        var parts: [String] = []
+        if modifiers & UInt32(controlKey) != 0 { parts.append("⌃") }
+        if modifiers & UInt32(optionKey) != 0 { parts.append("⌥") }
+        if modifiers & UInt32(shiftKey) != 0 { parts.append("⇧") }
+        if modifiers & UInt32(cmdKey) != 0 { parts.append("⌘") }
+        parts.append(Shortcut.keyName(keyCode))
+        return parts.joined(separator: " ")
     }
 
     static func keyName(_ code: UInt32) -> String {
@@ -201,6 +343,30 @@ struct Shortcut: Equatable {
     }
 }
 
+/// A read-only view of macOS's built-in "Speak selection" hotkey (System
+/// Settings → Accessibility → Spoken Content). LiteSwitch doesn't own this
+/// shortcut; the Speak Text card only reflects whatever macOS has assigned.
+struct SpokenSelection: Equatable {
+    let enabled: Bool
+    let shortcut: String?   // e.g. "⌘⎋"; nil when no combo is stored
+
+    static var current: SpokenSelection {
+        let d = UserDefaults(suiteName: "com.apple.speech.synthesis.general.prefs")
+        let enabled = d?.bool(forKey: "SpokenUIUseSpeakingHotKeyFlag") ?? false
+        let combo = (d?.object(forKey: "SpokenUIUseSpeakingHotKeyCombo") as? NSNumber)?.intValue
+        return SpokenSelection(enabled: enabled, shortcut: combo.map(describe))
+    }
+
+    /// The combo integer is exactly LiteSwitch's own Shortcut layout — Carbon
+    /// modifier masks OR'd onto the virtual key code (cmdKey 0x100, shiftKey
+    /// 0x200, optionKey 0x800, controlKey 0x1000) — so build a Shortcut and reuse
+    /// its label, keeping one formatter. e.g. 4149 = 0x1035 → ⌃ esc.
+    private static func describe(_ combo: Int) -> String {
+        Shortcut(keyCode: UInt32(combo & 0xFF),
+                 modifiers: UInt32(combo & (cmdKey | shiftKey | optionKey | controlKey))).label
+    }
+}
+
 // MARK: - App delegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -208,7 +374,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var idToPanel: [UInt32: Int] = [:]   // EventHotKeyID.id → panel index
     private var hotKeyHandler: EventHandlerRef?
     private var settings: SettingsWindow?
+    private var colorHistoryPanel: ColorHistoryPanel?
     private let hud = HUD()
+    private var keepAwakeAssertion: IOPMAssertionID = 0
+    private var keepAwakeStatusItem: NSStatusItem?
     private var axPollTimer: Timer?
     private(set) var hasAccessibility = AXIsProcessTrusted()
 
@@ -371,6 +540,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard appEnabled && !recording && !synthesizing else { return }
         var nextId: UInt32 = 1
         for (i, panel) in panels.enumerated() {
+            if mirrorsMacOSHotkey(panel) { continue }   // macOS owns Speak Text's hotkey
             guard worksWithoutAX(panel) || hasAccessibility else { continue }
             guard let sc = Shortcut.load(panel) else { continue }
             let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */, id: nextId)
@@ -398,8 +568,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if panel.defaultsKey == "colorhistory" {
+            showColorHistory()
+            return
+        }
+
         if panel.defaultsKey == "textcapture" {
             captureText()
+            return
+        }
+
+        if panel.defaultsKey == "keepawake" {
+            toggleKeepAwake()
             return
         }
 
@@ -437,25 +617,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         synthesizeSpotlight(then: panel.spotlightKey)
     }
 
-    /// Show the system color loupe (`NSColorSampler`), then copy the picked
-    /// color to the clipboard in the user's chosen format — plus the `NSColor`
-    /// itself, so it can be dropped straight into a color well — and flash a
-    /// brief confirmation pill at the top of the screen. The system sampler
-    /// does the screen reading out of process, so this needs no Screen
-    /// Recording or Accessibility permission. A nil color means the user
-    /// dismissed the loupe (Esc); we leave the clipboard untouched.
-    func sampleColor() {
+    /// Show the system color loupe (`NSColorSampler`), copy the picked color's
+    /// code (the clipboard is text-only by design — see `copyColorCode`), and
+    /// record it to Color History (which any open palette then refreshes). The
+    /// sampler reads the screen out of process (no Screen Recording /
+    /// Accessibility). A nil color (Esc) leaves everything untouched.
+    ///
+    /// `reopenHistory` is for picks started from the palette: it closes itself
+    /// first (so it never floats while the loupe is up), and this brings it back
+    /// once the pick finishes — including a cancelled one.
+    func sampleColor(reopenHistory: Bool = false) {
         NSColorSampler().show { [weak self] color in
+            guard let self else { return }
+            defer {
+                if reopenHistory {
+                    DispatchQueue.main.async { [weak self] in self?.openColorHistory() }
+                }
+            }
             guard let color else { return }
             let rgb = color.usingColorSpace(.sRGB) ?? color
-            let code = UserDefaults.standard.colorFormat.string(for: rgb)
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.setString(code, forType: .string)
-            pb.writeObjects([rgb])
-            self?.hud.showColor(code: code, color: rgb)
+            self.copyColorCode(rgb)
+            ColorHistory.add(rgb)
+            self.colorHistoryPanel?.reload()
         }
     }
+
+    /// Copy a color's code (in the chosen format) to the clipboard, plus the raw
+    /// `NSColor` for color wells, and flash the confirmation pill. Text + color
+    /// only, no swatch image: macOS's clipboard history snapshots any image and
+    /// re-offers it as a file URL on recall, so a swatch would make recalling a
+    /// color paste a PATH instead of the code. (Color History is how you see past
+    /// colors visually instead.)
+    func copyColorCode(_ color: NSColor) {
+        let rgb = color.usingColorSpace(.sRGB) ?? color
+        let code = UserDefaults.standard.colorFormat.string(for: rgb)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        let item = NSPasteboardItem()
+        item.setString(code, forType: .string)
+        let colorType = NSPasteboard.PasteboardType(rawValue: "com.apple.cocoa.pasteboard.color")
+        if let colorData = rgb.pasteboardPropertyList(forType: colorType) as? Data {
+            item.setData(colorData, forType: colorType)
+        }
+        pb.writeObjects([item])
+        hud.showColor(code: code, color: rgb)
+    }
+
+    /// Toggle the floating Color History palette (the shortcut's action).
+    func showColorHistory() {
+        if let p = colorHistoryPanel, p.isVisible { p.close() } else { openColorHistory() }
+    }
+
+    /// Open (never toggle) the palette — used when reopening after a pick.
+    func openColorHistory() {
+        if colorHistoryPanel == nil { colorHistoryPanel = ColorHistoryPanel(appDelegate: self) }
+        colorHistoryPanel?.reload()
+        colorHistoryPanel?.center()
+        NSApp.activate(ignoringOtherApps: true)
+        colorHistoryPanel?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Clear the recent colors (called from the settings card); pins are kept.
+    func clearColorHistory() { ColorHistory.clearRecents(); colorHistoryPanel?.reload() }
 
     /// Text Capture: the system's own crosshair region selector
     /// (`/usr/sbin/screencapture -i`) writes a PNG, which Vision OCRs; the text
@@ -512,6 +735,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         request.usesLanguageCorrection = true
         DispatchQueue.global(qos: .userInitiated).async {
             try? VNImageRequestHandler(cgImage: cg, options: [:]).perform([request])
+        }
+    }
+
+    /// Toggle a power assertion that blocks sleep (what `caffeinate` does). Its
+    /// type depends on the "Screen Sleep" option: keep the whole system awake,
+    /// or keep it awake but still let the display sleep. Released automatically
+    /// if LiteSwitch quits, so it can never orphan. No permission needed.
+    @objc func toggleKeepAwake() {
+        if keepAwakeAssertion != 0 {
+            IOPMAssertionRelease(keepAwakeAssertion)
+            keepAwakeAssertion = 0
+        } else {
+            createKeepAwakeAssertion()
+        }
+        let on = keepAwakeAssertion != 0
+        updateKeepAwakeIndicator()
+        hud.showMessage(on ? "Keep Awake On" : "Keep Awake Off", symbol: "cup.and.saucer.fill",
+                        tint: on ? .systemGreen : .secondaryLabelColor)
+    }
+
+    /// Re-create the assertion with the current type if Keep Awake is on — used
+    /// when the "Screen Sleep" option is toggled while it's running.
+    func reapplyKeepAwake() {
+        guard keepAwakeAssertion != 0 else { return }
+        IOPMAssertionRelease(keepAwakeAssertion)
+        keepAwakeAssertion = 0
+        createKeepAwakeAssertion()
+    }
+
+    private func createKeepAwakeAssertion() {
+        let type = UserDefaults.standard.keepAwakeAllowDisplaySleep
+            ? kIOPMAssertionTypePreventUserIdleSystemSleep    // system awake, display may sleep
+            : kIOPMAssertionTypePreventUserIdleDisplaySleep   // display stays awake too
+        var id: IOPMAssertionID = 0
+        if IOPMAssertionCreateWithName(type as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                                       "LiteSwitch Keep Awake" as CFString, &id) == kIOReturnSuccess {
+            keepAwakeAssertion = id
+        }
+    }
+
+    /// A menu-bar cup that appears only while Keep Awake is on (LiteSwitch is
+    /// otherwise menu-bar-less) — a persistent indicator, click it to turn off.
+    private func updateKeepAwakeIndicator() {
+        if keepAwakeAssertion != 0 {
+            guard keepAwakeStatusItem == nil else { return }
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            let img = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Keep Awake")
+            img?.isTemplate = true
+            item.button?.image = img
+            item.button?.toolTip = "LiteSwitch Keep Awake is on — click to turn off"
+            item.button?.target = self
+            item.button?.action = #selector(toggleKeepAwake)
+            keepAwakeStatusItem = item
+        } else if let item = keepAwakeStatusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            keepAwakeStatusItem = nil
         }
     }
 
@@ -738,30 +1017,40 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private let iconSize: CGFloat = 28
     private let headerBlockH: CGFloat = 52   // icon + title (no visible subtitle)
     private let itemH: CGFloat = 26, itemGap: CGFloat = 6
-    // Grouping: the Spotlight panels sit in one titled outline box, the System
-    // Tools in a second one stacked below it (narrower, centered).
+    // Grouping: Spotlight panels in one titled outline box, System Tools in a
+    // second one (same width) stacked below, its cards wrapping into rows.
     private let groupTitleH: CGFloat = 18, groupTitleGap: CGFloat = 6
-    private let groupPad: CGFloat = 12
+    private let groupPad: CGFloat = 12, utilRowGap: CGFloat = 12
     private func groupWidth(_ w: CGFloat, _ count: Int) -> CGFloat {
         groupPad * 2 + w * CGFloat(count) + boxGap * CGFloat(count - 1)
     }
     private var group1W: CGFloat { groupWidth(boxW, spotlightPanels.count) }
-    private var group2W: CGFloat { groupWidth(boxW, utilityPanels.count) }
-    // The window is as wide as the wider (Spotlight) group.
+    // The window is as wide as the Spotlight group; the System Tools box matches.
     private var winW: CGFloat { pad * 2 + group1W }
     private var contentW: CGFloat { winW - pad * 2 }
+    // How the System Tools cards wrap: as many per row as fit the box width,
+    // split into balanced rows (e.g. 5 tools → 3 + 2).
+    private var utilPerRowMax: Int { max(1, Int((group1W - groupPad * 2 + boxGap) / (boxW + boxGap))) }
+    private var utilRowCount: Int {
+        let n = utilityPanels.count
+        return max(1, (n + utilPerRowMax - 1) / utilPerRowMax)
+    }
+    private var utilPerRow: Int {
+        let n = utilityPanels.count
+        return max(1, (n + utilRowCount - 1) / utilRowCount)
+    }
     private var spotlightPanels: [(index: Int, panel: Panel)] {
         panels.enumerated().filter { !isUtility($0.element) }.map { ($0.offset, $0.element) }
     }
     private var utilityPanels: [(index: Int, panel: Panel)] {
         panels.enumerated().filter { isUtility($0.element) }.map { ($0.offset, $0.element) }
     }
-    // Accessibility warning box (Key54's metrics).
-    private let warnPadV: CGFloat = 16, warnHeadingH: CGFloat = 20, warnHeadGap: CGFloat = 8
-    private let warnBodyStepsGap: CGFloat = 12, warnStepsBtnGap: CGFloat = 14, warnBtnH: CGFloat = 26
-    /// Accessibility state the current content was built for — refreshBanner()
-    /// triggers a rebuild when trust flips so the warning appears/disappears live.
+    /// Permission / Spoken Content state the current content was built for, so
+    /// returning from System Settings rebuilds (and re-lights the strip) when any
+    /// of them changed.
     private var builtWithAX = true
+    private var builtScreenRec = CGPreflightScreenCaptureAccess()
+    private var builtSpoken = SpokenSelection.current
 
     init(delegate: AppDelegate) {
         appDelegate = delegate
@@ -799,22 +1088,25 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let spotCardH = maxColumn(spotlightPanels) + innerPad * 2
         let utilCardH = maxColumn(utilityPanels) + innerPad * 2
         let spotGroupBoxH = groupPad * 2 + spotCardH
-        let utilGroupBoxH = groupPad * 2 + utilCardH
+        let utilGroupBoxH = groupPad * 2 + CGFloat(utilRowCount) * utilCardH
+                          + CGFloat(utilRowCount - 1) * utilRowGap
         let spotGroupH = groupTitleH + groupTitleGap + spotGroupBoxH
         let utilGroupH = groupTitleH + groupTitleGap + utilGroupBoxH
         let groupsH = spotGroupH + sectionGap + utilGroupH   // stacked, gap between
 
-        // Accessibility warning box (Key54 style), only while untrusted. Like
-        // Key54, the warning REPLACES the switch, description, and controls:
-        // the window shows just the title, the warning, and a centered Quit.
+        // Both permissions just light the bottom strip; neither blocks the
+        // controls — macOS prompts for each on demand when a shortcut first
+        // needs it (Accessibility for the synthesized panels, Screen Recording
+        // the first time Text Capture runs).
         let hasAX = appDelegate?.hasAccessibility ?? AXIsProcessTrusted()
+        let hasScreenRec = CGPreflightScreenCaptureAccess()
         builtWithAX = hasAX
-        let showControls = hasAX
-        let warn = hasAX ? nil : measureWarning()
+        builtScreenRec = hasScreenRec
+        builtSpoken = SpokenSelection.current
 
-        let switchBlockH: CGFloat = showControls ? titleSwitchGap + switchRowH + unitGap + descH : 0
+        let switchBlockH = titleSwitchGap + switchRowH + unitGap + descH
         let hdrH = topMargin + titleTextH + switchBlockH + sectionGap
-        let H = hdrH + (warn?.boxH ?? 0) + (showControls ? groupsH : 0) + footerH
+        let H = hdrH + groupsH + footerH
         let keepTop: CGFloat? = isVisible ? frame.maxY : nil
         setContentSize(NSSize(width: winW, height: H))
         if let top = keepTop { setFrameTopLeftPoint(NSPoint(x: frame.minX, y: top)) }
@@ -831,82 +1123,32 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         titleLabel.frame = NSRect(x: pad, y: yTop, width: winW - pad * 2, height: titleTextH)
         v.addSubview(titleLabel)
 
-        if showControls {
-            yTop -= titleSwitchGap + switchRowH
-            let sw = NSSwitch()
-            sw.state = enabled ? .on : .off
-            sw.target = self
-            sw.action = #selector(appEnabledChanged(_:))
-            sw.frame = NSRect(origin: .zero, size: sw.intrinsicContentSize)
-            let swW = ceil(sw.frame.width), swH = ceil(sw.frame.height)
-            let capLabel = NSTextField(labelWithString: enabled ? "Enabled" : "Disabled")
-            capLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
-            capLabel.textColor = enabled ? .labelColor : .secondaryLabelColor
-            capLabel.sizeToFit()
-            let capW = ceil(capLabel.frame.width), capH = ceil(capLabel.frame.height)
-            let swGap: CGFloat = 8
-            let groupX = (winW - (capW + swGap + swW)) / 2
-            capLabel.frame = NSRect(x: groupX, y: yTop + (switchRowH - capH) / 2, width: capW, height: capH)
-            v.addSubview(capLabel)
-            sw.frame = NSRect(x: groupX + capW + swGap, y: yTop + (switchRowH - swH) / 2, width: swW, height: swH)
-            v.addSubview(sw)
+        yTop -= titleSwitchGap + switchRowH
+        let sw = NSSwitch()
+        sw.state = enabled ? .on : .off
+        sw.target = self
+        sw.action = #selector(appEnabledChanged(_:))
+        sw.frame = NSRect(origin: .zero, size: sw.intrinsicContentSize)
+        let swW = ceil(sw.frame.width), swH = ceil(sw.frame.height)
+        let capLabel = NSTextField(labelWithString: enabled ? "Enabled" : "Disabled")
+        capLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        capLabel.textColor = enabled ? .labelColor : .secondaryLabelColor
+        capLabel.sizeToFit()
+        let capW = ceil(capLabel.frame.width), capH = ceil(capLabel.frame.height)
+        let swGap: CGFloat = 8
+        let groupX = (winW - (capW + swGap + swW)) / 2
+        capLabel.frame = NSRect(x: groupX, y: yTop + (switchRowH - capH) / 2, width: capW, height: capH)
+        v.addSubview(capLabel)
+        sw.frame = NSRect(x: groupX + capW + swGap, y: yTop + (switchRowH - swH) / 2, width: swW, height: swH)
+        v.addSubview(sw)
 
-            yTop -= unitGap + descH
-            let desc = NSTextField(labelWithString: "Jump straight to any Spotlight panel — or a system utility — from anywhere, each with its own shortcut.")
-            desc.font = .systemFont(ofSize: 12, weight: .regular)
-            desc.textColor = .secondaryLabelColor
-            desc.alignment = .center
-            desc.frame = NSRect(x: pad, y: yTop, width: winW - pad * 2, height: descH)
-            v.addSubview(desc)
-        }
+        yTop -= unitGap + descH
+        addPermissionPill(hasAX: hasAX, hasScreenRec: hasScreenRec, rowY: yTop, rowH: descH, in: v)
 
         let onChange: () -> Void = { [weak self] in self?.appDelegate?.syncHotkeys(); self?.rebuild() }
-        var contentTop = H - hdrH
-
-        // Accessibility warning (Key54 style): heading, explanation, numbered
-        // steps, and a button straight to the Accessibility pane. Appears only
-        // while the permission is missing; rebuild() removes it once granted.
-        if let warn {
-            let wbox = NSBox(frame: NSRect(x: pad, y: contentTop - warn.boxH, width: contentW, height: warn.boxH))
-            wbox.boxType = .custom
-            wbox.fillColor = NSColor.systemOrange.withAlphaComponent(0.12)
-            wbox.borderColor = NSColor.systemOrange.withAlphaComponent(0.45)
-            wbox.borderWidth = 1; wbox.cornerRadius = 10; wbox.titlePosition = .noTitle
-            wbox.contentViewMargins = .zero
-            v.addSubview(wbox)
-
-            let warnInnerW = contentW - 32
-            let heading = NSTextField(labelWithString: "Accessibility Permission Required")
-            heading.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
-            heading.textColor = .systemOrange
-            heading.alignment = .center
-            heading.frame = NSRect(x: 16, y: warn.boxH - warnPadV - warnHeadingH, width: warnInnerW, height: warnHeadingH)
-            wbox.addSubview(heading)
-
-            let body = NSTextField(labelWithAttributedString: warn.body)
-            body.alignment = .center
-            body.maximumNumberOfLines = 0
-            body.frame = NSRect(x: 16, y: warn.boxH - warnPadV - warnHeadingH - warnHeadGap - warn.bodyH,
-                                width: warnInnerW, height: warn.bodyH)
-            wbox.addSubview(body)
-
-            let steps = NSTextField(labelWithAttributedString: warn.steps)
-            steps.maximumNumberOfLines = 0
-            steps.frame = NSRect(x: 16, y: warnPadV + warnBtnH + warnStepsBtnGap, width: warnInnerW, height: warn.stepsH)
-            wbox.addSubview(steps)
-
-            let btn = NSButton(title: "Open Privacy & Security Settings", target: self,
-                               action: #selector(openAxSettings))
-            btn.bezelStyle = .rounded
-            btn.frame = NSRect(x: (contentW - 260) / 2, y: warnPadV, width: 260, height: warnBtnH)
-            wbox.addSubview(btn)
-
-            contentTop -= warn.boxH + sectionGap
-        }
+        let contentTop = H - hdrH
 
         // ── Two titled outlines, stacked: Spotlight Panels over System Tools ──
-        if showControls {
-
         // Lay out one panel's card at the given left edge / top.
         func layoutCard(_ i: Int, _ panel: Panel, cardX: CGFloat, cardTop: CGFloat, cardH: CGFloat) {
             let bx = cardX
@@ -941,21 +1183,41 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
             var lineTop = top - headerBlockH
 
-            // The single shortcut field, directly under the header. Click to
-            // record — replacing any current binding — or press Delete while
-            // recording to clear it.
-            let sc = Shortcut.load(panel)
-            let field = RecorderButton(panel: panel, appDelegate: appDelegate,
-                                       restingTitle: sc?.label ?? "Set Shortcut")
-            field.alignment = .center
-            field.isEnabled = enabled
-            field.onChange = onChange
-            field.frame = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
-            v.addSubview(field)
-            // A hover-revealed ✕ to clear the binding (only when one is set).
-            if sc != nil && enabled {
-                field.enableClear { [weak self] in
-                    Shortcut.save(nil, panel); self?.appDelegate?.syncHotkeys(); self?.rebuild()
+            if mirrorsMacOSHotkey(panel) {
+                // Read-only mirror of the macOS "Speak selection" shortcut, in the
+                // same rounded field style as the other cards — but dimmed on
+                // purpose: unlike the editable recorders it's set in Spoken Content
+                // (the Set Up… button), and the dim makes "not editable here" read
+                // at a glance.
+                let spoken = SpokenSelection.current
+                let readout = NSButton(title: spoken.enabled ? (spoken.shortcut ?? "On") : "Not Set Up",
+                                       target: nil, action: nil)
+                readout.bezelStyle = .rounded
+                readout.font = .systemFont(ofSize: 11)
+                readout.alignment = .center
+                readout.isEnabled = false          // display only — macOS owns this shortcut
+                readout.toolTip = spoken.enabled
+                    ? "macOS reads the selection with this shortcut (set in Spoken Content)."
+                    : "“Speak selection” is off — turn it on in Spoken Content and its shortcut appears here."
+                readout.frame = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
+                v.addSubview(readout)
+            } else {
+                // The single shortcut field, directly under the header. Click to
+                // record — replacing any current binding — or press Delete while
+                // recording to clear it.
+                let sc = Shortcut.load(panel)
+                let field = RecorderButton(panel: panel, appDelegate: appDelegate,
+                                           restingTitle: sc?.label ?? "Set Shortcut")
+                field.alignment = .center
+                field.isEnabled = enabled
+                field.onChange = onChange
+                field.frame = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
+                v.addSubview(field)
+                // A hover-revealed ✕ to clear the binding (only when one is set).
+                if sc != nil && enabled {
+                    field.enableClear { [weak self] in
+                        Shortcut.save(nil, panel); self?.appDelegate?.syncHotkeys(); self?.rebuild()
+                    }
                 }
             }
             lineTop -= (itemH + itemGap)
@@ -982,6 +1244,40 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 centeredCheckbox("Remove Breaks", on: !UserDefaults.standard.ocrKeepLineBreaks,
                                  action: #selector(removeBreaksChanged(_:)),
                                  tip: "On: strip the line breaks and flow the captured text onto one line. Off: keep them.")
+            }
+            if panel.defaultsKey == "keepawake" {
+                centeredCheckbox("Screen Sleep", on: UserDefaults.standard.keepAwakeAllowDisplaySleep,
+                                 action: #selector(screenSleepChanged(_:)),
+                                 tip: "On: let the display sleep while the system stays awake. Off: keep the display on too.")
+            }
+            if panel.defaultsKey == "colorhistory" {
+                let btn = NSButton(title: "Clear", target: self, action: #selector(clearColorHistoryTapped))
+                btn.bezelStyle = .rounded
+                btn.controlSize = .small
+                btn.font = .systemFont(ofSize: 11)
+                btn.isEnabled = enabled
+                btn.toolTip = "Clear the recent colors (pinned colors are kept)."
+                btn.sizeToFit()
+                let w = ceil(btn.frame.width)
+                btn.frame = NSRect(x: cx + (colW - w) / 2, y: lineTop - itemH, width: w, height: itemH)
+                v.addSubview(btn)
+            }
+            if panel.defaultsKey == "speakclipboard" {
+                // One job — open Spoken Content — but the label tracks state:
+                // "Set Up…" when the feature is off, "Change…" once it's on.
+                // (macOS won't let an app arm that hotkey itself, so enabling
+                // stays a one-click job for the user there.)
+                let btn = NSButton(title: SpokenSelection.current.enabled ? "Change…" : "Set Up…",
+                                   target: self, action: #selector(openSpokenContent))
+                btn.bezelStyle = .rounded
+                btn.controlSize = .small
+                btn.font = .systemFont(ofSize: 11)
+                btn.isEnabled = enabled
+                btn.toolTip = "Open System Settings → Accessibility → Spoken Content to turn on “Speak selection” and set its shortcut, voice, and highlighting."
+                btn.sizeToFit()
+                let w = ceil(btn.frame.width)
+                btn.frame = NSRect(x: cx + (colW - w) / 2, y: lineTop - itemH, width: w, height: itemH)
+                v.addSubview(btn)
             }
             if panel.defaultsKey == "colorpicker" {
                 let popup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -1011,19 +1307,25 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                        cardTop: cardTop1, cardH: spotCardH)
         }
 
-        // System Tools — narrower, centered beneath.
+        // System Tools — same width as Spotlight, cards wrapped into balanced,
+        // centered rows so the group grows down as tools are added.
         let g2Top = contentTop - spotGroupH - sectionGap
-        let g2Box = addGroup("System Tools", x: pad + (group1W - group2W) / 2, width: group2W,
+        let g2Box = addGroup("System Tools", x: pad, width: group1W,
                              top: g2Top, boxH: utilGroupBoxH, dimmed: !enabled, in: v)
-        let cardTop2 = g2Box.maxY - groupPad
-        for (slot, entry) in utilityPanels.enumerated() {
+        let utilTop = g2Box.maxY - groupPad
+        for (i, entry) in utilityPanels.enumerated() {
+            let row = i / utilPerRow
+            let posInRow = i % utilPerRow
+            let cardsInRow = min(utilPerRow, utilityPanels.count - row * utilPerRow)
+            let clusterW = CGFloat(cardsInRow) * boxW + CGFloat(cardsInRow - 1) * boxGap
+            let startX = g2Box.minX + (group1W - clusterW) / 2
             layoutCard(entry.index, entry.panel,
-                       cardX: g2Box.minX + groupPad + CGFloat(slot) * (boxW + boxGap),
-                       cardTop: cardTop2, cardH: utilCardH)
-        }
+                       cardX: startX + CGFloat(posInRow) * (boxW + boxGap),
+                       cardTop: utilTop - CGFloat(row) * (utilCardH + utilRowGap),
+                       cardH: utilCardH)
         }
 
-        // Footer: banner across the top, Quit (left) + Done (right).
+        // Footer: the conflict banner across the top, Quit (left) + Done (right).
         let bannerField = NSTextField(wrappingLabelWithString: "")
         bannerField.font = .systemFont(ofSize: 11)
         bannerField.textColor = .systemOrange
@@ -1032,24 +1334,19 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         v.addSubview(bannerField)
         banner = bannerField
 
-        // Key54 pattern: with the warning up there's nothing to save, so the
-        // bar is just a centered Quit; otherwise Quit (left) + Done (right).
         let quit = NSButton(title: "Quit", target: self, action: #selector(forceQuit))
         quit.bezelStyle = .rounded
         quit.contentTintColor = .systemRed
         quit.toolTip = "Quit LiteSwitch — its shortcuts stop working until you launch it again."
-        quit.frame = NSRect(x: showControls ? pad : (winW - btnW) / 2,
-                            y: bottomMargin, width: btnW, height: btnH)
+        quit.frame = NSRect(x: pad, y: bottomMargin, width: btnW, height: btnH)
         v.addSubview(quit)
 
-        if showControls {
-            let done = NSButton(title: "Done", target: self, action: #selector(saveAndClose))
-            done.bezelStyle = .rounded
-            done.keyEquivalent = "\r"
-            done.toolTip = "Close this window (shortcuts are saved as you set them)."
-            done.frame = NSRect(x: winW - pad - btnW, y: bottomMargin, width: btnW, height: btnH)
-            v.addSubview(done)
-        }
+        let done = NSButton(title: "Done", target: self, action: #selector(saveAndClose))
+        done.bezelStyle = .rounded
+        done.keyEquivalent = "\r"
+        done.toolTip = "Close this window (shortcuts are saved as you set them)."
+        done.frame = NSRect(x: winW - pad - btnW, y: bottomMargin, width: btnW, height: btnH)
+        v.addSubview(done)
 
         contentView = v
         refreshBanner()
@@ -1078,48 +1375,90 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         return boxFrame
     }
 
-    /// Measured text + total height for the Accessibility warning box.
-    private struct WarnLayout {
-        let boxH: CGFloat
-        let body: NSAttributedString
-        let bodyH: CGFloat
-        let steps: NSAttributedString
-        let stepsH: CGFloat
+    /// A two-tone pill under the switch, in place of a description: the leading
+    /// "Required Permissions:" label on one gray, the permission lights on a
+    /// second gray. Each light is a green dot when granted, or a red, underlined
+    /// link when not — clicking fires the real macOS request (prompting the user
+    /// and adding LiteSwitch to that permission's list). Nothing here blocks the
+    /// app. Sits vertically centered in the [rowY, rowY+rowH] slot.
+    private func addPermissionPill(hasAX: Bool, hasScreenRec: Bool, rowY: CGFloat, rowH: CGFloat, in v: NSView) {
+        let pillH: CGFloat = 22, segPad: CGFloat = 11, itemGap: CGFloat = 16
+        func cy(_ h: CGFloat) -> CGFloat { (pillH - h) / 2 }
+
+        // Leading label.
+        let labelFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        let heading = NSTextField(labelWithString: "Required Permissions:")
+        heading.font = labelFont
+        heading.textColor = .secondaryLabelColor
+        heading.sizeToFit()
+        let headW = ceil(heading.frame.width), headH = ceil(heading.frame.height)
+
+        // dot + name; granted is plain status, missing is an underlined link.
+        func item(_ name: String, granted: Bool, action: Selector, tip: String) -> NSButton {
+            let title = NSMutableAttributedString(
+                string: "● ", attributes: [.foregroundColor: granted ? NSColor.systemGreen : NSColor.systemRed,
+                                            .font: NSFont.systemFont(ofSize: 9)])
+            var nameAttrs: [NSAttributedString.Key: Any] =
+                [.font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                 .foregroundColor: granted ? NSColor.secondaryLabelColor : NSColor.labelColor]
+            if !granted { nameAttrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+            title.append(NSAttributedString(string: name, attributes: nameAttrs))
+            let btn = NSButton()
+            btn.isBordered = false
+            btn.attributedTitle = title
+            btn.toolTip = tip
+            btn.sizeToFit()
+            if granted { btn.target = nil; btn.action = nil }
+            else { btn.target = self; btn.action = action }
+            return btn
+        }
+
+        let a = item("Accessibility", granted: hasAX, action: #selector(grantAccessibility),
+                     tip: hasAX ? "Accessibility is on — the synthesized Spotlight shortcuts can run."
+                                : "Lets Files, Actions, Clipboard, and the Settings shortcut work. Click to ask macOS and add LiteSwitch to the list.")
+        let s = item("Screen Recording", granted: hasScreenRec, action: #selector(grantScreenRecording),
+                     tip: hasScreenRec ? "Screen Recording is on — Text Capture can read the selected region."
+                                       : "Lets Text Capture read the selected region. Click to ask macOS and add LiteSwitch to the list (takes effect after a relaunch).")
+        let aw = ceil(a.frame.width), sw2 = ceil(s.frame.width)
+        let ah = ceil(a.frame.height), sh = ceil(s.frame.height)
+
+        // Two segments: label chip (darker gray) then the lights chip (lighter).
+        let labelSegW = segPad + headW + segPad
+        let lightsSegW = segPad + aw + itemGap + sw2 + segPad
+        let totalW = labelSegW + lightsSegW
+        let pillX = (winW - totalW) / 2
+        let pillY = rowY + (rowH - pillH) / 2
+
+        let pill = NSView(frame: NSRect(x: pillX, y: pillY, width: totalW, height: pillH))
+        pill.wantsLayer = true
+        pill.layer?.cornerRadius = pillH / 2
+        pill.layer?.masksToBounds = true
+        v.addSubview(pill)
+
+        // Two near-identical grays (about quaternary / quinary label strength —
+        // quinary has no NSColor, so approximate), resolved for the current theme.
+        let base = (effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+            ? NSColor.white : NSColor.black
+        let leftBG = NSView(frame: NSRect(x: 0, y: 0, width: labelSegW, height: pillH))
+        leftBG.wantsLayer = true
+        leftBG.layer?.backgroundColor = base.withAlphaComponent(0.10).cgColor
+        pill.addSubview(leftBG)
+        let rightBG = NSView(frame: NSRect(x: labelSegW, y: 0, width: lightsSegW, height: pillH))
+        rightBG.wantsLayer = true
+        rightBG.layer?.backgroundColor = base.withAlphaComponent(0.055).cgColor
+        pill.addSubview(rightBG)
+
+        heading.frame = NSRect(x: segPad, y: cy(headH), width: headW, height: headH)
+        pill.addSubview(heading)
+        var x = labelSegW + segPad
+        a.frame = NSRect(x: x, y: cy(ah), width: aw, height: ah); pill.addSubview(a); x += aw + itemGap
+        s.frame = NSRect(x: x, y: cy(sh), width: sw2, height: sh); pill.addSubview(s)
     }
 
-    private func measureWarning() -> WarnLayout {
-        let warnInnerW = contentW - 32
-        let para = NSMutableParagraphStyle()
-        para.alignment = .center
-        let body = NSAttributedString(
-            string: "Files, Actions, Clipboard, and the System Settings shortcuts work by synthesizing keystrokes, which needs Accessibility access — Applications and Color Picker work without it.",
-            attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
-                         .foregroundColor: NSColor.secondaryLabelColor,
-                         .paragraphStyle: para])
-        let bodyH = ceil(body.boundingRect(
-            with: NSSize(width: warnInnerW, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]).height)
-        let stepsPara = NSMutableParagraphStyle()
-        stepsPara.alignment = .center
-        stepsPara.lineSpacing = 3
-        let steps = NSAttributedString(
-            string: "1 ❯ Click the button below to open System Settings.\n2 ❯ Find LiteSwitch in the list and turn it on.\n3 ❯ Return to this window.",
-            attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
-                         .foregroundColor: NSColor.secondaryLabelColor,
-                         .paragraphStyle: stepsPara])
-        let stepsH = ceil(steps.boundingRect(
-            with: NSSize(width: warnInnerW, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]).height)
-        let boxH = warnPadV + warnHeadingH + warnHeadGap + bodyH
-                 + warnBodyStepsGap + stepsH + warnStepsBtnGap + warnBtnH + warnPadV
-        return WarnLayout(boxH: boxH, body: body, bodyH: bodyH, steps: steps, stepsH: stepsH)
-    }
-
-    @objc private func openAxSettings() {
-        NSWorkspace.shared.open(
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-        )
-    }
+    /// Fire the real macOS permission requests — each prompts the user and adds
+    /// LiteSwitch to that permission's list in System Settings.
+    @objc private func grantAccessibility() { appDelegate?.promptForAccessibility() }
+    @objc private func grantScreenRecording() { _ = CGRequestScreenCaptureAccess() }
 
     @objc private func forceQuit() { NSApp.terminate(nil) }
     @objc private func saveAndClose() { close() }
@@ -1131,8 +1470,21 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         UserDefaults.standard.colorFormat = ColorFormat(rawValue: sender.indexOfSelectedItem) ?? .hex
     }
 
+    @objc private func clearColorHistoryTapped() { appDelegate?.clearColorHistory() }
+
     @objc private func removeBreaksChanged(_ sender: NSButton) {
         UserDefaults.standard.ocrKeepLineBreaks = sender.state != .on   // checked = remove breaks
+    }
+
+    @objc private func screenSleepChanged(_ sender: NSButton) {
+        UserDefaults.standard.keepAwakeAllowDisplaySleep = sender.state == .on
+        appDelegate?.reapplyKeepAwake()   // take effect now if Keep Awake is running
+    }
+
+    @objc private func openSpokenContent() {
+        let urls = ["x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent",
+                    "x-apple.systempreferences:com.apple.Accessibility-Settings.extension"]
+        for s in urls where NSWorkspace.shared.open(URL(string: s)!) { break }
     }
 
     @objc private func appEnabledChanged(_ sender: NSSwitch) {
@@ -1154,8 +1506,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         icon.imageScaling = .scaleProportionallyDown
     }
 
-    /// Footer text now carries only hotkey conflicts — the Accessibility story
-    /// lives in the warning box, which rebuild() adds/removes as trust flips.
+    /// Footer text carries only hotkey conflicts; the Accessibility state lives
+    /// in the bottom strip, so a trust flip triggers a rebuild to re-light it.
     func refreshBanner() {
         if (appDelegate?.hasAccessibility ?? false) != builtWithAX { rebuild(); return }
         if let conflicts = appDelegate?.conflicted, !conflicts.isEmpty {
@@ -1175,7 +1527,11 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         // Re-try conflicted registrations (the other app may have released the
         // combo) and reflect any outside changes.
         appDelegate?.syncHotkeys()
-        refreshBanner()
+        refreshBanner()   // rebuilds if Accessibility flipped (re-lights the strip)
+        // Reflect a Screen Recording grant or a "Speak selection" change made in
+        // System Settings while we were away.
+        if CGPreflightScreenCaptureAccess() != builtScreenRec
+            || SpokenSelection.current != builtSpoken { rebuild() }
     }
 }
 
@@ -1294,6 +1650,330 @@ final class HUD {
         p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         return p
+    }
+}
+
+// MARK: - Color history palette
+
+/// A floating palette of recently-picked colors. A grid of swatches, each a color
+/// square over an editable label box (the hex by default; click to rename).
+/// Click a square to copy its code, drag it out to get the swatch as a PNG, or
+/// use its hover pin to keep it. The header has an
+/// eyedropper Pick, a format selector, and Clear. Recent picks roll off after 20;
+/// pinned keepers persist at the top. It's an ordinary window — it stays open
+/// while you work elsewhere until you close it — except that Pick closes it for
+/// the duration of the sample, then reopens it.
+final class ColorHistoryPanel: NSPanel, NSTextFieldDelegate {
+    private weak var appDelegate: AppDelegate?
+    private let cols = 5
+    private let sq: CGFloat = 90                 // color square
+    private let labelH: CGFloat = 20, labelGap: CGFloat = 4
+    private let gap: CGFloat = 10, pad: CGFloat = 16, headerH: CGFloat = 42
+    private var cellH: CGFloat { sq + labelGap + labelH }
+    private var reloading = false   // guards against any re-entrant rebuild loop
+
+    init(appDelegate: AppDelegate) {
+        self.appDelegate = appDelegate
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                   styleMask: [.titled, .closable],
+                   backing: .buffered, defer: false)
+        title = "Color History"
+        // A normal window, not a floating overlay: it stays put while you work in
+        // other apps and closes only via its close button, so it can sit open
+        // alongside a design tool.
+        isFloatingPanel = false
+        level = .normal
+        isReleasedWhenClosed = false
+        hidesOnDeactivate = false
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+    /// Panels close on Esc by default; this one is an ordinary window that should
+    /// only close via its close button (Esc still just ends a rename edit).
+    override func cancelOperation(_ sender: Any?) {}
+
+    /// LiteSwitch is a menu-bar-less agent, so there's no File menu to supply
+    /// ⌘W — wire it up here.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "w" {
+            close()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    /// Rebuild the content from the current store — called on open and after any
+    /// pick / pin / clear / format change.
+    func reload() {
+        guard !reloading else { return }
+        reloading = true
+        defer { reloading = false }
+        let entries = ColorHistory.load()
+        let fmt = UserDefaults.standard.colorFormat
+        let rows = max(1, Int(ceil(Double(entries.count) / Double(cols))))
+        let contentW = pad * 2 + CGFloat(cols) * sq + CGFloat(cols - 1) * gap
+        let gridH = CGFloat(rows) * cellH + CGFloat(rows - 1) * gap
+        let H = headerH + gridH + pad
+        setContentSize(NSSize(width: contentW, height: H))
+
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: contentW, height: H))
+        let headerY = H - headerH
+
+        // Eyedropper "Pick" (left) — closes the window FIRST, then samples, then
+        // reopens (a loupe launched from under this window could end up orphaned
+        // and holding the mouse system-wide).
+        let pick = NSButton(title: "Pick", target: self, action: #selector(pickTapped))
+        pick.image = NSImage(systemSymbolName: "eyedropper", accessibilityDescription: nil)
+        pick.imagePosition = .imageLeading
+        pick.bezelStyle = .rounded
+        pick.toolTip = "Close the palette and sample a new color."
+        pick.sizeToFit()
+        let ph = ceil(pick.frame.height)
+        pick.frame = NSRect(x: pad, y: headerY + (headerH - ph) / 2, width: ceil(pick.frame.width) + 14, height: ph)
+        v.addSubview(pick)
+
+        // Format selector (center) — drives the copy format and the labels below.
+        let fmtPopup = NSPopUpButton()
+        fmtPopup.addItems(withTitles: ColorFormat.allCases.map(\.label))
+        fmtPopup.selectItem(at: fmt.rawValue)
+        fmtPopup.target = self; fmtPopup.action = #selector(formatChanged(_:))
+        fmtPopup.toolTip = "Format used when copying a code, and shown under each swatch."
+        fmtPopup.sizeToFit()
+        let fw = ceil(fmtPopup.frame.width), fhh = ceil(fmtPopup.frame.height)
+        fmtPopup.frame = NSRect(x: (contentW - fw) / 2, y: headerY + (headerH - fhh) / 2, width: fw, height: fhh)
+        v.addSubview(fmtPopup)
+
+        // Clear (right, only if there are recents).
+        if entries.contains(where: { !$0.pinned }) {
+            let clear = NSButton(title: "Clear", target: self, action: #selector(clearTapped))
+            clear.bezelStyle = .rounded
+            clear.toolTip = "Clear the recent colors (pinned colors are kept)."
+            clear.sizeToFit()
+            let cw = ceil(clear.frame.width) + 12, ch = ceil(clear.frame.height)
+            clear.frame = NSRect(x: contentW - pad - cw, y: headerY + (headerH - ch) / 2, width: cw, height: ch)
+            v.addSubview(clear)
+        }
+
+        if entries.isEmpty {
+            let empty = NSTextField(labelWithString: "No colors yet — pick one to start.")
+            empty.font = .systemFont(ofSize: 12)
+            empty.textColor = .secondaryLabelColor
+            empty.alignment = .center
+            empty.frame = NSRect(x: pad, y: (H - headerH) / 2 - 10, width: contentW - pad * 2, height: 20)
+            v.addSubview(empty)
+        } else {
+            let top = H - headerH
+            for (i, entry) in entries.enumerated() {
+                let r = i / cols, c = i % cols
+                let x = pad + CGFloat(c) * (sq + gap)
+                let squareY = top - CGFloat(r) * (cellH + gap) - sq
+                let square = ColorSquare(
+                    entry: entry, size: sq, code: fmt.string(for: entry.color),
+                    onCopyCode: { [weak self] in self?.appDelegate?.copyColorCode(entry.color) },
+                    onTogglePin: { [weak self] in ColorHistory.togglePin(entry.hex); self?.reload() })
+                square.frame = NSRect(x: x, y: squareY, width: sq, height: sq)
+                v.addSubview(square)
+
+                // Editable label in a visible box (so it's clearly renamable):
+                // the hex by default; clearing it (or retyping the hex) reverts.
+                // The code in the chosen format is the square's tooltip.
+                let name = NSTextField()
+                name.stringValue = ColorNames.display(entry.hex)
+                name.isEditable = true
+                name.isBezeled = true
+                name.bezelStyle = .roundedBezel
+                name.controlSize = .small
+                name.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+                name.alignment = .center
+                name.lineBreakMode = .byTruncatingTail
+                name.delegate = self
+                name.identifier = NSUserInterfaceItemIdentifier(entry.hex)
+                name.toolTip = "Rename this color"
+                name.frame = NSRect(x: x, y: squareY - labelGap - labelH, width: sq, height: labelH)
+                v.addSubview(name)
+            }
+        }
+        contentView = v
+        // Don't let AppKit hand first-responder to the first name field — the
+        // window would open with a swatch's label focused and selected blue.
+        initialFirstResponder = v
+        makeFirstResponder(nil)
+    }
+
+    /// Close the palette, sample on the next runloop pass (the loupe must not be
+    /// launched while this floating panel is up), then reopen once the pick ends.
+    @objc private func pickTapped() {
+        close()
+        DispatchQueue.main.async { [weak self] in
+            self?.appDelegate?.sampleColor(reopenHistory: true)
+        }
+    }
+
+    @objc private func clearTapped() { ColorHistory.clearRecents(); reload() }
+    @objc private func formatChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.colorFormat = ColorFormat(rawValue: sender.indexOfSelectedItem) ?? .hex
+        reload()
+    }
+
+    /// Save a typed name as a custom name for that color; empty or the auto-name
+    /// reverts to the auto-generated one.
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField, let hex = field.identifier?.rawValue else { return }
+        let typed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        ColorNames.setCustom(hex, (typed.isEmpty || typed == hex) ? nil : typed)
+        DispatchQueue.main.async { [weak self] in self?.reload() }
+    }
+}
+
+/// A borderless icon button that reports its own hover, so the pin can swap
+/// between "pin.fill" and "pin.slash.fill" while the pointer is over it.
+final class HoverButton: NSButton {
+    var onHover: ((Bool) -> Void)?
+    private var tracking: NSTrackingArea?
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self)
+        addTrackingArea(t); tracking = t
+    }
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
+}
+
+/// One color square in the palette. Click it to copy its code; DRAG it out to get
+/// the swatch as a PNG (into a folder, a doc, anywhere that takes an image); and
+/// use the pin at its top-right to keep it: the pin appears hollow on hover, turns
+/// solid and stays visible once pinned, and shows a slash on hover when pinned to
+/// signal that clicking removes it. The full code is the square's tooltip.
+final class ColorSquare: NSView, NSDraggingSource, NSFilePromiseProviderDelegate {
+    private let entry: ColorEntry
+    private let onCopyCode: () -> Void
+    private let onTogglePin: () -> Void
+    private let pin = HoverButton()
+    private var tracking: NSTrackingArea?
+    private var hovered = false, pinHovered = false
+    private var mouseDownAt: NSPoint?
+    private var dragged = false
+    private let promiseQueue = OperationQueue()
+
+    init(entry: ColorEntry, size: CGFloat, code: String,
+         onCopyCode: @escaping () -> Void, onTogglePin: @escaping () -> Void) {
+        self.entry = entry
+        self.onCopyCode = onCopyCode; self.onTogglePin = onTogglePin
+        super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        wantsLayer = true
+        layer?.cornerRadius = 12
+        layer?.backgroundColor = (entry.color.usingColorSpace(.sRGB) ?? entry.color).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.labelColor.withAlphaComponent(0.15).cgColor
+        toolTip = code
+
+        pin.isBordered = true
+        pin.bezelStyle = .circular
+        pin.contentTintColor = ColorSquare.contrastInk(entry.color)
+        pin.target = self
+        pin.action = #selector(togglePin)
+        pin.frame = NSRect(x: size - 26, y: size - 26, width: 20, height: 20)
+        pin.onHover = { [weak self] inside in
+            self?.pinHovered = inside
+            self?.updatePin()
+        }
+        addSubview(pin)
+        updatePin()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Unpinned: hollow pin, shown only while the square is hovered. Pinned: solid
+    /// pin, always shown — and a slashed pin while the pointer is on it, so it's
+    /// clear a click will unpin.
+    private func updatePin() {
+        let pinned = entry.pinned
+        pin.isHidden = !pinned && !hovered
+        let sym = pinned ? (pinHovered ? "pin.slash.fill" : "pin.fill") : "pin"
+        pin.image = NSImage(systemSymbolName: sym, accessibilityDescription: pinned ? "Unpin" : "Pin")?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+        pin.toolTip = pinned ? "Unpin this color" : "Pin this color to keep it"
+    }
+
+    @objc private func togglePin() { onTogglePin() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self)
+        addTrackingArea(t); tracking = t
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true; updatePin() }
+    override func mouseExited(with event: NSEvent) { hovered = false; updatePin() }
+
+    // Click = copy the code; drag = pull the swatch out as a PNG. The copy fires
+    // on mouse-up only if no drag started, so dragging never also copies.
+    override func mouseDown(with event: NSEvent) {
+        mouseDownAt = event.locationInWindow
+        dragged = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragged, let start = mouseDownAt else { return }
+        let p = event.locationInWindow
+        guard hypot(p.x - start.x, p.y - start.y) > 3 else { return }   // real drag, not a jittery click
+        dragged = true
+
+        // A file promise, so it can be dropped into Finder as <hex>.png as well as
+        // into apps that take image data.
+        let provider = NSFilePromiseProvider(fileType: UTType.png.identifier, delegate: self)
+        let item = NSDraggingItem(pasteboardWriter: provider)
+        let preview = NSImage(size: bounds.size)
+        preview.lockFocus()
+        let path = NSBezierPath(roundedRect: NSRect(origin: .zero, size: bounds.size), xRadius: 12, yRadius: 12)
+        (entry.color.usingColorSpace(.sRGB) ?? entry.color).setFill()
+        path.fill()
+        preview.unlockFocus()
+        item.setDraggingFrame(bounds, contents: preview)
+        beginDraggingSession(with: [item], event: event, source: self)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if !dragged { onCopyCode() }
+        mouseDownAt = nil
+    }
+
+    func draggingSession(_ session: NSDraggingSession,
+                         sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .outsideApplication ? [.copy] : []
+    }
+
+    // MARK: File promise (the dragged-out PNG)
+
+    /// Name the dragged-out file after the swatch's label — its custom name if it
+    /// has one, otherwise the hex (with the "#" kept). Only characters a filename
+    /// can't hold are swapped out.
+    func filePromiseProvider(_ p: NSFilePromiseProvider, fileNameForType t: String) -> String {
+        let label = ColorNames.display(entry.hex)
+        let safe = label.replacingOccurrences(of: "/", with: "-")
+                        .replacingOccurrences(of: ":", with: "-")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (safe.isEmpty ? entry.hex : safe) + ".png"
+    }
+
+    func filePromiseProvider(_ p: NSFilePromiseProvider, writePromiseTo url: URL,
+                             completionHandler: @escaping (Error?) -> Void) {
+        do {
+            guard let png = ColorSwatch.png(entry.color) else { completionHandler(nil); return }
+            try png.write(to: url)
+            completionHandler(nil)
+        } catch { completionHandler(error) }
+    }
+
+    func operationQueue(for p: NSFilePromiseProvider) -> OperationQueue { promiseQueue }
+
+    /// Black on light colors, white on dark — for the pin badge.
+    static func contrastInk(_ color: NSColor) -> NSColor {
+        let c = color.usingColorSpace(.sRGB) ?? color
+        let lum = 0.299 * c.redComponent + 0.587 * c.greenComponent + 0.114 * c.blueComponent
+        return lum > 0.6 ? .black : .white
     }
 }
 

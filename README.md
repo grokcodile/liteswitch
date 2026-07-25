@@ -16,8 +16,11 @@ It runs as a background agent — no Dock icon, no menu bar item — and starts 
 - **Apps** opens through the system's own `Apps.app` stub — instant, no permissions needed (with a synthesized fallback if the stub is ever missing).
 - **Files / Actions / Clipboard** open by synthesizing the documented Spotlight gesture (⌘Space, then the panel's number).
 - **Smart Toggle** for System Settings: press the shortcut a second time and you're returned to the app you came from.
-- **Color Picker**: a shortcut that pops the system color loupe, then copies the pixel under your cursor — in Hex, RGB, HSL, or SwiftUI form (your choice) — and flashes a pill with the swatch and code at the top of the screen. No Screen Recording permission needed.
-- **Text Capture**: a shortcut that brings up the system's region selector; the text inside your selection is recognized on-device (Vision) and copied to the clipboard, with a pill previewing what was grabbed. Choose whether to **preserve or remove line breaks**. A native replacement for TextSniper — and, like Color Picker, no Screen Recording permission needed.
+- **Color Picker**: a shortcut that pops the system color loupe, then copies the pixel under your cursor to the clipboard as the **code** — in Hex, RGB, HSL, or SwiftUI form (your choice) — plus the raw **color** for dropping into a color well. A pill flashes the swatch and code at the top of the screen. No Screen Recording permission needed.
+- **Color History**: a shortcut that opens a floating palette of the colors you've picked — every pick (from the Color Picker too) lands here. Each swatch is labeled with its hex in an edit box you can click to give it a custom name. **Click** a swatch to re-copy its code (its full code is the swatch's tooltip), **drag** it out to drop the swatch as a PNG into Finder or any app that takes an image, and use the **pin** at its top-right to keep it — hollow on hover, solid once pinned, slashed when hovering a pinned one to show a click will remove it. Or hit the eyedropper **Pick** — the window steps out of the way while you sample, then comes back with the new color in it. It's an ordinary window, so you can leave it open beside your design tool until you close it. It keeps the last 20, and **pinned** colors persist at the top. This is how you reference past colors *visually* — the OS clipboard can't hold a swatch usefully, so LiteSwitch keeps its own.
+- **Text Capture**: a shortcut that brings up the system's region selector; the text inside your selection is recognized on-device (Vision) and copied to the clipboard, with a pill showing how much was grabbed. Choose whether to **remove line breaks**. A native replacement for TextSniper. On macOS 26 the region selector needs **Screen Recording** permission — macOS prompts the first time you use it.
+- **Keep Awake**: a toggle that stops your Mac from sleeping (an IOKit power assertion — the same thing `caffeinate` uses). While it's on, a coffee cup appears in the menu bar (click it to turn off); a **Screen Sleep** option lets the display still sleep while the system stays awake. A native replacement for Amphetamine / Caffeine. The assertion auto-releases if LiteSwitch quits, so it can't leave your Mac stuck awake.
+- **Speak Text**: rather than re-implement speech, this surfaces macOS's own **Speak selection** (System Settings → Accessibility → Spoken Content) — the feature that reads your selected text aloud in the system voice you've chosen. The card shows the keyboard shortcut macOS has assigned to it (or **Not Set Up** if it's off), and a **Set Up… / Change…** button opens Spoken Content so you can enable it and pick the shortcut and voice. LiteSwitch reflects that state; macOS does the talking.
 - Shortcut conflicts with other apps are detected and surfaced in the settings window rather than failing silently.
 - Runs silently in the background and starts at login; opening the app again brings up settings.
 
@@ -36,13 +39,16 @@ The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the v
 ## Requirements
 
 - macOS 26 or later (the four-panel Spotlight).
-- **Accessibility permission** (System Settings → Privacy & Security → Accessibility) for the synthesized panels — Files, Actions, Clipboard, and the System Settings shortcuts. **Apps, Color Picker, and Text Capture work without it** (and none of them need Screen Recording either).
+- **Accessibility** (System Settings → Privacy & Security → Accessibility) for the synthesized panels — Files, Actions, Clipboard, and the System Settings shortcut. **Apps and Color Picker work without it.**
+- **Screen Recording** for **Text Capture** (macOS 26 gates the region selector behind it). No permission is needed for Keep Awake or Speak Text.
+
+macOS prompts for each permission the first time a shortcut needs it — there's nothing to set up in advance. The settings window shows a status light for both at the bottom, and clicking a red one jumps straight to the right Settings pane.
 
 ## First run
 
 1. Launch **LiteSwitch**. Its settings window opens.
-2. Grant **Accessibility** permission — the window walks you through it and updates the moment permission lands.
-3. Record a shortcut for each panel or tool you want (see [Shortcuts](#shortcuts)), then click **Done**. LiteSwitch keeps running in the background and starts automatically at login — silently, without showing the window.
+2. Record a shortcut for each panel or tool you want (see [Shortcuts](#shortcuts)), then click **Done**. LiteSwitch keeps running in the background and starts automatically at login — silently, without showing the window.
+3. The first time you fire a shortcut that needs Accessibility or Screen Recording, macOS asks for it. The status strip at the bottom of the window turns that permission's light green once it's granted.
 
 ## Shortcuts
 
@@ -61,9 +67,9 @@ by default — check it to strip the OCR's line breaks onto one line).
 
 Shortcuts are registered as Carbon global hotkeys (`RegisterEventHotKey`) — no event tap, so LiteSwitch never sits in your keyboard's event path. **Apps** launches the system stub at `/System/Applications/Apps.app` via `NSWorkspace` (public API). The other panels post the documented Spotlight gesture — ⌘Space, a ~30 ms beat, then the panel's ⌘-number — first waiting for you to release any lingering modifiers so the synthesized chord lands clean. While the sequence is in flight LiteSwitch's own hotkeys are parked, which is what lets ⌘1–⌘4 themselves serve as the global shortcuts without re-triggering.
 
-**Color Picker** uses `NSColorSampler`, the system's own loupe. Because the screen sampling happens out of process, LiteSwitch itself never reads your screen — so it needs no Screen Recording permission — and the picked color is copied both as text (in your chosen format) and as an `NSColor`, so it drops straight into a color well too.
+**Color Picker** uses `NSColorSampler`, the system's own loupe. Because the screen sampling happens out of process, LiteSwitch itself never reads your screen — so it needs no Screen Recording permission. The pick lands on the clipboard as the **code text** in your chosen format, plus the raw **`NSColor`** (so it drops into a color well). It's text-only by design: an experiment to also copy a color *swatch image* — so you could spot the color in clipboard history — had to be dropped, because macOS's clipboard history snapshots any copied image into its own store and, on recall, re-offers it as that snapshot's file URL, which made recalling a color paste a file *path* instead of the code. Copying the code is the point, so text-only keeps paste reliable both live and from history.
 
-**Text Capture** shells out to `/usr/sbin/screencapture -i` for the region selection, then runs Apple's on-device **Vision** OCR (`VNRecognizeTextRequest`) on the captured image. Same principle as the color loupe: the system tool reads the screen in its own process, so LiteSwitch needs no Screen Recording permission — the recognition all happens locally.
+**Text Capture** shells out to `/usr/sbin/screencapture -i` for the region selection, then runs Apple's on-device **Vision** OCR (`VNRecognizeTextRequest`) on the captured image — the recognition all happens locally, nothing leaves your Mac. On macOS 26 the interactive capture requires LiteSwitch to hold **Screen Recording** permission, which macOS prompts for the first time you use the shortcut.
 
 ## Uninstall
 
