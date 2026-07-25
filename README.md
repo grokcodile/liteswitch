@@ -28,14 +28,14 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
 | **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its voices, its shortcut | text-to-speech utilities |
 | **Hold to Dictate** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
-| **Polish Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
+| **Tidy Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
 
 The four Spotlight panels are the starkest case: an app launcher, a file searcher, a command runner and a clipboard history are four separate paid utilities in most people's setups, and macOS 26 ships all four — behind one keystroke and a number. They just needed keys of their own.
 
 Two more that make the point:
 
 - **Hold to Dictate** — dictation apps sell push-to-talk with their own speech model and a monthly bill. Your Mac already transcribes on-device, for free, at least as well. The *only* thing it lacks is hold-to-talk: macOS dictation is toggle-only. So that's all this adds — the missing key, on top of Apple's transcription.
-- **Polish Text** — cleaning up dictated speech is exactly what an on-device LLM is for, and macOS 26 ships one. No API key, no per-token cost, no text uploaded anywhere.
+- **Tidy Text** — cleaning up dictated speech is exactly what an on-device LLM is for, and macOS 26 ships one. No API key, no per-token cost, no text uploaded anywhere.
 
 ## Features
 
@@ -54,7 +54,7 @@ Two more that make the point:
 - **Keep Awake** — stops your Mac sleeping; a cup appears in the menu bar while it's on (click to stop), and **Screen Sleep** lets the display sleep while the system stays up. The assertion releases automatically if LiteSwitch quits, so it can't strand your Mac awake.
 - **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. LiteSwitch reflects that state; macOS does the talking.
 - **Hold to Dictate** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
-- **Polish Text** — rewrites the selected text with Apple Intelligence's on-device model, following instructions you set. Two sets, for two jobs: light proofreading for text you typed, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Polish** on the Hold to Dictate card runs the dictated set automatically on what you just spoke.
+- **Tidy Text** — rewrites the selected text with Apple Intelligence's on-device model, following instructions you set. Two sets, for two jobs: light proofreading for text you typed, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Hold to Dictate card runs the dictated set automatically on what you just spoke.
 
 **Throughout**
 
@@ -77,9 +77,9 @@ The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the v
 ## Requirements
 
 - **macOS 26 or later** (the four-panel Spotlight).
-- **Accessibility** — for anything that synthesizes keystrokes or reads another app's menus: Files, Actions, Clipboard, the System Settings shortcut, Hold to Dictate, and Polish Text.
+- **Accessibility** — for anything that synthesizes keystrokes or reads another app's menus: Files, Actions, Clipboard, the System Settings shortcut, Hold to Dictate, and Tidy Text.
 - **Screen Recording** — for **Text Capture** only (macOS 26 gates the region selector behind it).
-- **Apple Intelligence** — for **Polish Text**, which uses the on-device model. Without it that one tool is unavailable; everything else is unaffected.
+- **Apple Intelligence** — for **Tidy Text**, which uses the on-device model. Without it that one tool is unavailable; everything else is unaffected.
 
 Nothing needs setting up in advance: macOS prompts the first time a shortcut needs a permission. The settings window shows a light for each, and clicking a red one asks for it directly.
 
@@ -100,7 +100,7 @@ Two tools work differently, because a recorded chord isn't the right control for
 - **Hold to Dictate** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
 - **Speak Text** has no LiteSwitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
 
-Each card carries one option: the copy **format** for Color Picker, **View…** for Color History, **Smart Toggle** for System Settings, **Remove Breaks** for Text Capture, **Screen Sleep** for Keep Awake, **Auto-Polish** for Hold to Dictate, and **Instructions…** for Polish Text.
+Each card carries one option: the copy **format** for Color Picker, **View…** for Color History, **Smart Toggle** for System Settings, **Remove Breaks** for Text Capture, **Screen Sleep** for Keep Awake, **Auto-Tidy** for Hold to Dictate, and **Instructions…** for Tidy Text.
 
 ## How it works
 
@@ -114,7 +114,7 @@ Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) �
 
 **Hold to Dictate** watches the chosen modifier with `flagsChanged` monitors, since Carbon hotkeys report presses but never releases. Starting dictation took some ruling out: the mic key on F5 can't be synthesized — macOS takes it at the HID layer, so it never becomes an event an app can post — and by default dictation has no ordinary shortcut to send either. So LiteSwitch presses the frontmost app's **Edit ▸ Start / Stop Dictation** item through the **Accessibility API**, which leaves your own dictation setup untouched. The stop is deferred ~1.5 s because dictation keeps transcribing after you stop speaking; pressing the key again inside that window carries on rather than restarting.
 
-**Polish Text** runs the text through **`FoundationModels`**, Apple Intelligence's on-device model, with your instructions. Nothing is sent anywhere and there's no API key. The selection is copied, rewritten, and pasted back, with the clipboard borrowed and restored around the round trip.
+**Tidy Text** runs the text through **`FoundationModels`**, Apple Intelligence's on-device model, with your instructions. Nothing is sent anywhere and there's no API key. The selection is copied, rewritten, and pasted back, with the clipboard borrowed and restored around the round trip.
 
 ## Built on macOS, and moving with it
 

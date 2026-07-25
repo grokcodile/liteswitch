@@ -64,7 +64,7 @@ let panels: [Panel] = [
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Text Capture", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Polish Text", symbol: "checkmark.seal.text.page", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Tidy Text", symbol: "checkmark.seal.text.page", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
     Panel(name: "Hold to Dictate", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-dictate macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
@@ -211,7 +211,7 @@ extension UserDefaults {
         get { object(forKey: "keepAwakeAllowDisplaySleep") as? Bool ?? false }
         set { set(newValue, forKey: "keepAwakeAllowDisplaySleep") }
     }
-    /// Polish Text: what to tell the on-device model. Two sets, because tidying
+    /// Tidy Text: what to tell the on-device model. Two sets, because tidying
     /// text you typed and cleaning up speech are different jobs.
     static let defaultPolishInstructions =
         "Correct spelling, grammar, capitalisation and punctuation. Keep the original wording, tone and meaning — do not rephrase, shorten, or add anything."
@@ -240,7 +240,7 @@ extension UserDefaults {
         get { string(forKey: "dictationInstructions") ?? UserDefaults.defaultDictationInstructions }
         set { set(newValue, forKey: "dictationInstructions") }
     }
-    /// Polish Text: run dictated text through the model as soon as it lands.
+    /// Tidy Text: run dictated text through the model as soon as it lands.
     var polishDictation: Bool {
         get { object(forKey: "polishDictation") as? Bool ?? false }
         set { set(newValue, forKey: "polishDictation") }
@@ -534,7 +534,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
     /// cancelled if the key goes back down within the grace period.
     private var pendingDictationStop: DispatchWorkItem?
-    /// When dictation started, so Auto-Polish can guess how many words to select.
+    /// When dictation started, so Auto-Tidy can guess how many words to select.
     private var dictationStartedAt: Date?
     private var dictatedWordEstimate: Int {
         guard let start = dictationStartedAt else { return 0 }
@@ -791,7 +791,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         synthesizeSpotlight(then: panel.spotlightKey)
     }
 
-    // MARK: Polish Text
+    // MARK: Tidy Text
 
     /// Rewrite the selection in place: copy it, run it through the on-device
     /// model with the user's instructions, and paste the result back. The
@@ -821,7 +821,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 pb.clearContents()
                 pb.setString(result, forType: .string)
                 self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
-                self.hud.showMessage("Polished", symbol: "checkmark.circle.fill", tint: .systemGreen)
+                self.hud.showMessage("Tidied", symbol: "checkmark.circle.fill", tint: .systemGreen)
                 // Give the paste a moment to land before handing the clipboard back.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
@@ -975,7 +975,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !pressDictationMenuItem(starting: false) { post(CGKeyCode(kVK_Escape), []) }
 
         guard UserDefaults.standard.polishDictation else { hud.hide(); return }
-        // Auto-Polish: select what was just dictated and rewrite it in place.
+        // Auto-Tidy: select what was just dictated and rewrite it in place.
         // Dictation leaves the caret at the end of its insertion, so shift-select
         // back over it — that's the only handle we have on "the dictated text",
         // since it lands in the app, not in us.
@@ -1702,7 +1702,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 v.addSubview(btn)
             }
             if panel.defaultsKey == "dictation" {
-                centeredCheckbox("Auto-Polish", on: UserDefaults.standard.polishDictation,
+                centeredCheckbox("Auto-Tidy", on: UserDefaults.standard.polishDictation,
                                  action: #selector(polishDictationChanged(_:)))
             }
             if panel.defaultsKey == "colorpicker" {
@@ -2095,7 +2095,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 }
 
-/// The editor for what Polish Text tells the on-device model. Two sets, because
+/// The editor for what Tidy Text tells the on-device model. Two sets, because
 /// the tool does two different jobs: tidying text you selected, and cleaning up
 /// what you just dictated.
 final class InstructionsWindow: NSWindow {
@@ -2106,7 +2106,7 @@ final class InstructionsWindow: NSWindow {
         let w: CGFloat = 520, h: CGFloat = 520
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Polish Text Instructions"
+        title = "Tidy Text Instructions"
         isReleasedWhenClosed = false
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
@@ -2149,7 +2149,7 @@ final class InstructionsWindow: NSWindow {
         section("Typed Text Instructions", "Used when you run the shortcut on text you've selected.",
                 selectionView, text: UserDefaults.standard.polishInstructions,
                 y: 356, boxH: 74, resetAction: #selector(restoreSelection))
-        section("Dictated Text Instructions", "Used by Auto-Polish, on what Hold to Dictate just typed.",
+        section("Dictated Text Instructions", "Used by Auto-Tidy, on what Hold to Dictate just typed.",
                 dictationView, text: UserDefaults.standard.dictationInstructions,
                 y: 80, boxH: 216, resetAction: #selector(restoreDictation))
 
