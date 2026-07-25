@@ -25,10 +25,10 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **Color Picker** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
 | **Color History** | LiteSwitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
 | **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
-| **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
 | **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its voices, its shortcut | text-to-speech utilities |
-| **Tidy Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
+| **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
 | **Dictate Text** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
+| **Tidy Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
 
 The four Spotlight panels are the starkest case: an app launcher, a file searcher, a command runner and a clipboard history are four separate paid utilities in most people's setups, and macOS 26 ships all four — behind one keystroke and a number. They just needed keys of their own.
 
@@ -54,10 +54,10 @@ Two more that make the point:
 
 **Text Tools**
 
-- **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
 - **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. LiteSwitch reflects that state; macOS does the talking.
-- **Tidy Text** — rewrites text with Apple Intelligence's on-device model, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Dictate Text card runs the dictated set automatically on what you just spoke.
+- **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
 - **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
+- **Tidy Text** — rewrites text with Apple Intelligence's on-device model, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Dictate Text card runs the dictated set automatically on what you just spoke.
 
 **Throughout**
 
@@ -102,7 +102,7 @@ A fresh install comes with a working set already assigned — **⌃ plus a lette
 |---|---|---|---|
 | ⌃A Applications | ⌃/ Files | ⌃X Actions | ⌃V Clipboard |
 | ⌃` System Settings | ⌃L Color Picker | ⌃H Color History | ⌃K Keep Awake |
-| ⌃O Capture Text | Speak Text: macOS's own | ⌃P Tidy Text | Hold **Right ⌥** to dictate |
+| Speak Text: macOS's own | ⌃O Capture Text | Hold **Right ⌥** to dictate | ⌃T Tidy Text |
 
 Change any of them by clicking the field and recording, or press **Delete** while recording to clear it. Defaults are only ever applied to a tool that has no shortcut yet, so they can't overwrite something you've set.
 

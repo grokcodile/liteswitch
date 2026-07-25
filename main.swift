@@ -62,10 +62,10 @@ let panels: [Panel] = [
     Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor and copy its code in the format you choose.", spotlightKey: 0, defaultsKey: "colorpicker"),
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
-    Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Tidy Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
+    Panel(name: "Tidy Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
 ]
 
 /// The long-form help each group's sheet shows: what a tool does, a couple of
@@ -136,7 +136,7 @@ let panelInfo: [String: PanelInfo] = [
         body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone; switch on Auto-Tidy on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
         examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
                    "Turn a rambling dictation into something you'd actually send."],
-        suggestion: "⌃P — P for polish, beside the other text chords."),
+        suggestion: "⌃T — T for Tidy, beside the other text chords."),
 ]
 
 /// Panels shown in the "System Utilities" group rather than the "Spotlight" group,
@@ -174,7 +174,7 @@ let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃
     "colorhistory": 4,    // ⌃H — History
     "keepawake": 40,      // ⌃K — Keep awake
     "textcapture": 31,    // ⌃O — OCR
-    "polish": 35,         // ⌃P — Polish
+    "polish": 17,         // ⌃T — Tidy
 ]
 
 /// Dictation is push-to-talk: it needs the key's release as well as its press,
