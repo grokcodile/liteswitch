@@ -1055,9 +1055,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         colorHistoryPanel?.makeKeyAndOrderFront(nil)
     }
 
-    /// Clear the recent colors (called from the settings card); pins are kept.
-    func clearColorHistory() { ColorHistory.clearRecents(); colorHistoryPanel?.reload() }
-
     /// Text Capture: the system's own crosshair region selector
     /// (`/usr/sbin/screencapture -i`) writes a PNG, which Vision OCRs; the text
     /// lands on the clipboard with a confirmation pill. screencapture reads the
@@ -1666,7 +1663,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                                  action: #selector(screenSleepChanged(_:)))
             }
             if panel.defaultsKey == "colorhistory" {
-                let btn = NSButton(title: "Clear", target: self, action: #selector(clearColorHistoryTapped))
+                let btn = NSButton(title: "View…", target: self, action: #selector(viewColorHistoryTapped))
                 btn.bezelStyle = .rounded
                 btn.controlSize = .small
                 btn.font = .systemFont(ofSize: 11)
@@ -2031,7 +2028,9 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         UserDefaults.standard.colorFormat = ColorFormat(rawValue: sender.indexOfSelectedItem) ?? .hex
     }
 
-    @objc private func clearColorHistoryTapped() { appDelegate?.clearColorHistory() }
+    /// Open the palette — clearing lives in there, behind actually looking at
+    /// what you'd be throwing away.
+    @objc private func viewColorHistoryTapped() { appDelegate?.openColorHistory() }
 
     @objc private func removeBreaksChanged(_ sender: NSButton) {
         UserDefaults.standard.ocrKeepLineBreaks = sender.state != .on   // checked = remove breaks
