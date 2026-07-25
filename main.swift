@@ -64,7 +64,7 @@ let panels: [Panel] = [
     Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Tidy Text", symbol: "checkmark.seal.text.page", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Tidy Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
     Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
@@ -602,6 +602,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         seedDefaultShortcutsIfNeeded()
+        // The system broadcasts this when Appearance changes (including on the
+        // automatic light/dark schedule). A view-level callback isn't dependable
+        // here — this app has no Dock presence and its windows are usually not
+        // frontmost — so listen for the broadcast instead.
+        DistributedNotificationCenter.default.addObserver(
+            self, selector: #selector(systemThemeChanged),
+            name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil)
         // Tooltips here are quick labels, not asides — show them promptly rather
         // than after AppKit's ~1.5 s dwell.
         UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 150])
@@ -694,6 +701,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSNotification.Name("com.apple.accessibility.api"), object: nil)
         axChanged()
         syncDictationMonitor()
+    }
+
+    /// Redraw anything holding baked layer colours. The notification can arrive
+    /// a beat before the new appearance resolves, hence the short delay.
+    @objc private func systemThemeChanged() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.settings?.appearanceChanged()
+            self?.colorHistoryPanel?.appearanceChanged()
+        }
     }
 
     @objc private func axChanged() {
@@ -1423,10 +1439,22 @@ final class RecorderButton: NSButton {
 
 // MARK: - Settings window
 
+/// A view that reports when the system flips between light and dark. Layer
+/// colours (`.cgColor`) are resolved once when they're set, so anything drawn
+/// into a layer has to be rebuilt on the flip or it keeps the old theme's
+/// colours until the app restarts.
+class AppearanceAwareView: NSView {
+    var onAppearanceChange: (() -> Void)?
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
+}
+
 /// The settings window's content view. It knows where any open help sheets are,
 /// so a click on the controls underneath can put them away — help is reference
 /// material, not a mode you should have to remember to leave.
-final class SettingsContentView: NSView {
+final class SettingsContentView: AppearanceAwareView {
     var sheetFrames: [NSRect] = []
     var onClickOutsideSheets: (() -> Void)?
 
@@ -1495,6 +1523,9 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     /// Permission / Spoken Content state the current content was built for, so
     /// returning from System Settings rebuilds (and re-lights the strip) when any
     /// of them changed.
+    /// The appearance the current content was built for, so a theme flip forces
+    /// a rebuild (and nothing else does).
+    private var builtAppearance: NSAppearance.Name?
     private var builtWithAX = true
     private var builtScreenRec = CGPreflightScreenCaptureAccess()
     private var builtSpoken = SpokenSelection.current
@@ -1521,6 +1552,15 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     /// shrink as bindings are added or removed. Called on init and after any
     /// add/remove.
     func rebuild() {
+        // Layer colours (.cgColor) resolve against NSAppearance.current, which
+        // outside a draw cycle is the app default — not this window's appearance.
+        // Building inside the window's own drawing appearance is what makes the
+        // dark/light colours come out right, and what makes a rebuild after a
+        // theme change actually change anything.
+        effectiveAppearance.performAsCurrentDrawingAppearance { self.rebuildContent() }
+    }
+
+    private func rebuildContent() {
         RecorderButton.active?.cancelRecording()
 
         // ── Measure ────────────────────────────────────────────────────────
@@ -1565,6 +1605,13 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
         let v = SettingsContentView(frame: NSRect(x: 0, y: 0, width: winW, height: H))
         v.onClickOutsideSheets = { [weak self] in self?.dismissGroupHelp() }
+        builtAppearance = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+        v.onAppearanceChange = { [weak self] in
+            guard let self,
+                  self.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) != self.builtAppearance
+            else { return }
+            DispatchQueue.main.async { self.rebuild() }
+        }
 
         let enabled = appDelegate?.appEnabled ?? true
         var yTop = H - topMargin
@@ -1964,6 +2011,13 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         scroll.contentView.scroll(to: NSPoint(x: 0, y: 0))
     }
 
+    /// Rebuild for a light/dark flip. Layer colours resolve once when set, so
+    /// the whole content has to be rebuilt or it keeps the old theme's colours.
+    func appearanceChanged() {
+        builtAppearance = nil
+        rebuild()
+    }
+
     /// Put any open help sheets away. Called when the window loses focus or
     /// closes, and when anything outside a sheet is clicked — otherwise a sheet
     /// left open covers its controls again the next time the window appears.
@@ -1987,17 +2041,21 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         label.alphaValue = dimmed ? 0.5 : 1
         label.frame = NSRect(x: x + 6, y: top - groupTitleH, width: width - 12, height: groupTitleH)
         v.addSubview(label)
-        // A filled well rather than an outline: it binds the label to its row
-        // just as firmly with far less line weight, and the cards read as sitting
-        // in it. (A label on its own doesn't — twelve cards then read as one
-        // field, which is what dropping the container entirely looked like.)
+        // An outline, not a fill. The container has to be here — without it the
+        // labels float free of their rows and twelve cards read as one field —
+        // but a filled well plus filled cards was a box in a box twelve times
+        // over, and a well with unfilled cards was one grey too many. A hairline
+        // does the binding without adding another surface.
         let boxFrame = NSRect(x: x, y: top - groupTitleH - groupTitleGap - boxH, width: width, height: boxH)
         let box = NSView(frame: boxFrame)
         box.wantsLayer = true
         box.layer?.cornerRadius = 10
-        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        box.layer?.backgroundColor = (dark ? NSColor.white : NSColor.black)
-            .withAlphaComponent(dark ? 0.06 : 0.045).cgColor
+        box.layer?.borderWidth = 1
+        // Plain separatorColor: it's dynamic, so it tracks light/dark and matches
+        // the help sheet's border. Putting withAlphaComponent on it resolves the
+        // colour against the default appearance instead — which came out brighter
+        // in dark mode, not fainter.
+        box.layer?.borderColor = NSColor.separatorColor.cgColor
         box.alphaValue = dimmed ? 0.5 : 1
         v.addSubview(box)
         return boxFrame
@@ -2534,6 +2592,7 @@ final class ColorHistoryPanel: NSPanel, NSTextFieldDelegate {
     private let gap: CGFloat = 10, pad: CGFloat = 16, headerH: CGFloat = 42
     private var cellH: CGFloat { sq + labelGap + labelH }
     private var reloading = false   // guards against any re-entrant rebuild loop
+    private var builtAppearance: NSAppearance.Name?
 
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
@@ -2567,9 +2626,20 @@ final class ColorHistoryPanel: NSPanel, NSTextFieldDelegate {
         return super.performKeyEquivalent(with: event)
     }
 
+    /// Redraw for a light/dark flip — swatch borders and the pin badge are layer
+    /// colours, which keep whichever theme they were created under.
+    func appearanceChanged() {
+        builtAppearance = nil
+        reload()
+    }
+
     /// Rebuild the content from the current store — called on open and after any
     /// pick / pin / clear / format change.
     func reload() {
+        effectiveAppearance.performAsCurrentDrawingAppearance { self.reloadContent() }
+    }
+
+    private func reloadContent() {
         guard !reloading else { return }
         reloading = true
         defer { reloading = false }
@@ -2581,7 +2651,16 @@ final class ColorHistoryPanel: NSPanel, NSTextFieldDelegate {
         let H = headerH + gridH + pad
         setContentSize(NSSize(width: contentW, height: H))
 
-        let v = NSView(frame: NSRect(x: 0, y: 0, width: contentW, height: H))
+        let v = AppearanceAwareView(frame: NSRect(x: 0, y: 0, width: contentW, height: H))
+        // Swatch borders and the pin badge are layer colours too, so a theme flip
+        // has to redraw this the same way it redraws the settings window.
+        builtAppearance = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+        v.onAppearanceChange = { [weak self] in
+            guard let self,
+                  self.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) != self.builtAppearance
+            else { return }
+            DispatchQueue.main.async { self.reload() }
+        }
         let headerY = H - headerH
 
         // Eyedropper "Pick" (left) — closes the window FIRST, then samples, then
