@@ -81,47 +81,47 @@ let panelInfo: [String: PanelInfo] = [
         body: "Spotlight's Applications panel — a grid of everything installed, ready to filter by name. It opens through the system's own Apps stub rather than by faking keystrokes, so it's instant and the one panel that needs no Accessibility permission at all.",
         examples: ["Launch an app without hunting the Dock or Launchpad.",
                    "Browse what's installed when the name won't come to you."],
-        suggestion: "⌃A — A for Apps. The whole set is ⌃ plus a letter that stands for something."),
+        suggestion: "⌥A — A for Apps. The whole set is ⌥ plus a letter that stands for something."),
     "files": PanelInfo(
         body: "Spotlight's Files panel: the same index Finder searches, scoped to documents and folders. No apps, web results, definitions or conversions in the way — just the file you're after, which is the difference between this and hitting ⌘Space.",
         examples: ["Jump to a document you had open yesterday.",
                    "Open a folder buried deep without walking Finder down to it."],
-        suggestion: "⌃/ — the search key, beside the other panel chords."),
+        suggestion: "⌥/ — the path separator, for finding files, beside the other panel chords."),
     "actions": PanelInfo(
         body: "Spotlight's Actions panel — the Shortcuts you've built and macOS's own quick actions, run by typing their name. It's the closest thing the Mac has to a built-in command palette, and it never leaves the keyboard.",
         examples: ["Run a Shortcut by name instead of finding it in the app.",
                    "Fire off a system action in the middle of something else."],
-        suggestion: "⌃X — X for eXecute."),
+        suggestion: "⌥X — X for eXecute."),
     "clipboard": PanelInfo(
         body: "Spotlight's Clipboard panel — macOS keeps a clipboard history of its own, so you can paste something from a while back. Nothing to install or leave running: this is the system's own store, not a third-party one watching your clipboard.",
         examples: ["Recover a link you copied an hour ago.",
                    "Grab the second-to-last thing you copied, without redoing the work."],
-        suggestion: "⌃V — the paste key, for the paste history."),
+        suggestion: "⌥V — the paste key, for the paste history."),
     "settings": PanelInfo(
         body: "Opens System Settings from anywhere. With Smart Toggle on, pressing the shortcut again hides it and puts you back in the app you came from — so checking a setting is a peek rather than a detour you have to navigate out of.",
         examples: ["Flip a toggle mid-task and land straight back where you were.",
                    "Reach Wi-Fi, Sound or Displays without touching the menu bar."],
-        suggestion: "⌃` — tucked out of the way of anything you'd actually type."),
+        suggestion: "⌥, — the key most apps use for preferences."),
     "colorpicker": PanelInfo(
         body: "Pops the system's color loupe and copies the pixel under your cursor, in Hex, RGB, HSL or SwiftUI form — plus the color itself, so it drops into a color well. The sampling happens in Apple's own process, which is why this needs no Screen Recording permission. Every pick is saved to Color History.",
         examples: ["Lift a hex out of a screenshot and straight into CSS.",
                    "Match a brand color you can only see on screen."],
-        suggestion: "⌃L — L for loupe."),
+        suggestion: "⌥L — L for loupe."),
     "colorhistory": PanelInfo(
         body: "A window of the colors you've picked. Click a swatch to copy its code again, drag one out to save it as a PNG, and pin the ones worth keeping. Labels show the hex and can be renamed to something you'll recognize. The last 20 are kept; pins sit at the top and stay.",
         examples: ["Recover a color you sampled earlier without picking it again.",
                    "Keep a palette pinned beside you while you design."],
-        suggestion: "⌃H — H for history, next to the picker's ⌃L."),
+        suggestion: "⌥H — H for history, next to the picker's ⌥L."),
     "keepawake": PanelInfo(
         body: "Holds a power assertion so your Mac won't sleep — the same mechanism the caffeinate command uses, not a fake mouse jiggle. A cup appears in the menu bar while it's on, and clicking it turns it off. Screen Sleep lets the display sleep while the system stays up, and quitting always releases the assertion, so it can't strand your Mac awake.",
         examples: ["Keep a long render, download or backup alive.",
                    "Stop the screen sleeping halfway through a presentation."],
-        suggestion: "⌃K — K for Keep Awake."),
+        suggestion: "⌥K — K for Keep Awake."),
     "textcapture": PanelInfo(
         body: "Drag a box around anything on screen and its text is recognized and copied — a screenshot you can paste as words. Recognition uses Apple's Vision framework on-device, so it works offline and nothing is uploaded. Remove Breaks flows the result onto one line when the original line wrapping isn't worth keeping.",
         examples: ["Copy text out of a screenshot, a PDF, or a paused video.",
                    "Grab an error message from a dialog that won't let you select it."],
-        suggestion: "⌃O — O for OCR."),
+        suggestion: "⌥O — O for OCR."),
     "speakclipboard": PanelInfo(
         body: "Mirrors macOS's own Speak selection rather than adding a second voice engine. The field shows the shortcut macOS has assigned it, so this card is a window onto that setting rather than a competing one; Set Up… opens Spoken Content, where you switch it on and choose the voice and speed.",
         examples: ["Have a long article read to you while you do something else.",
@@ -136,7 +136,7 @@ let panelInfo: [String: PanelInfo] = [
         body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone; switch on Auto-Tidy on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
         examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
                    "Turn a rambling dictation into something you'd actually send."],
-        suggestion: "⌃T — T for Tidy, beside the other text chords."),
+        suggestion: "⌥T — T for Tidy, beside the other text chords."),
 ]
 
 /// Panels shown in the "System Utilities" group rather than the "Spotlight" group,
@@ -160,25 +160,31 @@ func worksWithoutAX(_ panel: Panel) -> Bool {
 /// field plus a button into Spoken Content settings.
 func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
 
-/// What a fresh install starts with: ⌃ plus a letter that stands for something.
-/// One modifier keeps every chord inside one hand, and ⌃ is the one that doesn't
-/// eat anything people type — ⌥-letter produces å, ø and the accent dead keys,
-/// while ⌘ and ⇧⌘ chords are claimed by the app you're in. It does override the
-/// emacs-style text bindings (⌃A start of paragraph, ⌃K delete to end, ⌃H
-/// backspace), which are real but little-known; anyone who uses them can rebind.
+/// What a fresh install starts with: ⌥ plus a letter that stands for something.
+/// One modifier keeps every chord in one hand — three-modifier sets are safe but
+/// tax every user forever, and most would just rebind or use the app less.
+///
+/// ⌥-letter otherwise types a special character, and a global hotkey swallows it,
+/// so the letters are picked to avoid the ones people actually reach for (⌥G ©,
+/// ⌥R ®, ⌥2 ™, ⌥8 •, ⌥; …, ⌥- –, ⌥C ç) and all five dead keys (⌥E ⌥I ⌥N ⌥U ⌥`,
+/// which compose é ñ ü). What's left — å ÷ ≈ √ ≤ ¬ ˙ ˚ ø † — is obscure outside
+/// Scandinavian and maths, discoverable the moment it bites, and one click to
+/// rebind. ⌃ was the alternative, but it collides with the text-editing bindings
+/// macOS puts in every field (⌃A, ⌃K, ⌃H…).
+///
 /// Only ever applied to a tool with no shortcut of its own — see
 /// `seedDefaultShortcutsIfNeeded`.
-let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃
-    "apps": 0,            // ⌃A — Apps
-    "files": 44,          // ⌃/ — search
-    "actions": 7,         // ⌃X — eXecute
-    "clipboard": 9,       // ⌃V — the paste key, for the paste history
-    "settings": 50,       // ⌃` — clear of anything you'd actually type
-    "colorpicker": 37,    // ⌃L — Loupe
-    "colorhistory": 4,    // ⌃H — History
-    "keepawake": 40,      // ⌃K — Keep awake
-    "textcapture": 31,    // ⌃O — OCR
-    "polish": 17,         // ⌃T — Tidy
+let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌥
+    "apps": 0,            // ⌥A — Apps
+    "files": 44,          // ⌥/ — the path separator
+    "actions": 7,         // ⌥X — eXecute
+    "clipboard": 9,       // ⌥V — the paste key, for the paste history
+    "settings": 43,       // ⌥, — the preferences key
+    "colorpicker": 37,    // ⌥L — Loupe
+    "colorhistory": 4,    // ⌥H — History
+    "keepawake": 40,      // ⌥K — Keep awake
+    "textcapture": 31,    // ⌥O — OCR
+    "polish": 17,         // ⌥T — Tidy
 ]
 
 /// Dictation is push-to-talk: it needs the key's release as well as its press,
@@ -573,6 +579,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
     /// cancelled if the key goes back down within the grace period.
     private var pendingDictationStop: DispatchWorkItem?
+    /// Counts down the dead zone before dictation engages, so holding the key as
+    /// an ordinary modifier doesn't start talking.
+    private var dictationArmTimer: Timer?
+
     /// When dictation started, so Auto-Tidy can guess how many words to select.
     private var dictationStartedAt: Date?
     private var dictatedWordEstimate: Int {
@@ -657,7 +667,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         d.set(true, forKey: "didSeedShortcuts")
         for panel in panels where Shortcut.load(panel) == nil {
             guard let code = defaultShortcuts[panel.defaultsKey] else { continue }
-            Shortcut.save(Shortcut(keyCode: code, modifiers: UInt32(controlKey)), panel)
+            Shortcut.save(Shortcut(keyCode: code, modifiers: UInt32(optionKey)), panel)
         }
     }
 
@@ -705,6 +715,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSNotification.Name("com.apple.accessibility.api"), object: nil)
         axChanged()
         syncDictationMonitor()
+
     }
 
     /// Redraw anything holding baked layer colours. The notification can arrive
@@ -950,9 +961,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.hud.showWaveform(tint: .systemGreen)
                     return
                 }
-                if !self.dictating { self.startDictation() }
-            } else if self.dictating {
-                self.scheduleDictationStop()
+                if !self.dictating { self.armDictation() }
+            } else {
+                self.disarmDictation()          // let go inside the dead zone: nothing happened
+                if self.dictating { self.scheduleDictationStop() }
             }
         }
         if let g = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged], handler: handle) {
@@ -961,6 +973,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let l = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged], handler: { e in handle(e); return e }) {
             holdMonitors.append(l)
         }
+        // A key pressed during the dead zone means the modifier was part of a
+        // chord, so stand down rather than starting to dictate.
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown], handler: { [weak self] _ in
+            self?.disarmDictation()
+        }) { holdMonitors.append(g) }
     }
 
     /// Press the frontmost app's Edit ▸ Start/Stop Dictation item over the
@@ -997,6 +1014,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let item = search(menuBar as! AXUIElement, depth: 0) else { return false }
         return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+    }
+
+    /// Wait out a short dead zone before engaging. The hold key is a real
+    /// modifier — right ⌥ still types å and ø, and gets held for ⌥-click and
+    /// ⌥-arrow — so dictation must not start the instant it goes down. Holding it
+    /// alone past the buffer is unambiguous; any other key joining means it was a
+    /// chord after all, and cancels.
+    private func armDictation() {
+        disarmDictation()
+        dictationArmTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            self?.dictationArmTimer = nil
+            self?.startDictation()
+        }
+    }
+
+    private func disarmDictation() {
+        dictationArmTimer?.invalidate()
+        dictationArmTimer = nil
     }
 
     private func startDictation() {
