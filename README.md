@@ -24,7 +24,7 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **System Settings** | `NSWorkspace`, with a remembered "toggle back" | — |
 | **Color Picker** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
 | **Color History** | LiteSwitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
-| **Text Capture** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
+| **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
 | **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
 | **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its voices, its shortcut | text-to-speech utilities |
 | **Hold to Dictate** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
@@ -50,7 +50,7 @@ Two more that make the point:
 - **System Settings** — with **Smart Toggle**, pressing the shortcut again hides it and returns you to the app you came from.
 - **Color Picker** — pops the system loupe and copies the pixel under your cursor as **Hex, RGB, HSL, or SwiftUI**, plus the raw color for dropping into a color well. A pill flashes the swatch and code.
 - **Color History** — a window of everything you've picked. **Click** a swatch to re-copy its code, **drag** it out to save the swatch as a PNG, **pin** the keepers. Labels default to the hex and can be renamed. Keeps the last 20; pins persist at the top.
-- **Text Capture** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
+- **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
 - **Keep Awake** — stops your Mac sleeping; a cup appears in the menu bar while it's on (click to stop), and **Screen Sleep** lets the display sleep while the system stays up. The assertion releases automatically if LiteSwitch quits, so it can't strand your Mac awake.
 - **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. LiteSwitch reflects that state; macOS does the talking.
 - **Hold to Dictate** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
@@ -78,7 +78,7 @@ The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the v
 
 - **macOS 26 or later** (the four-panel Spotlight).
 - **Accessibility** — for anything that synthesizes keystrokes or reads another app's menus: Files, Actions, Clipboard, the System Settings shortcut, Hold to Dictate, and Tidy Text.
-- **Screen Recording** — for **Text Capture** only (macOS 26 gates the region selector behind it).
+- **Screen Recording** — for **Capture Text** only (macOS 26 gates the region selector behind it).
 - **Apple Intelligence** — for **Tidy Text**, which uses the on-device model. Without it that one tool is unavailable; everything else is unaffected.
 
 Nothing needs setting up in advance: macOS prompts the first time a shortcut needs a permission. The settings window shows a light for each, and clicking a red one asks for it directly.
@@ -100,7 +100,7 @@ Two tools work differently, because a recorded chord isn't the right control for
 - **Hold to Dictate** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
 - **Speak Text** has no LiteSwitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
 
-Each card carries one option: the copy **format** for Color Picker, **View…** for Color History, **Smart Toggle** for System Settings, **Remove Breaks** for Text Capture, **Screen Sleep** for Keep Awake, **Auto-Tidy** for Hold to Dictate, and **Instructions…** for Tidy Text.
+Each card carries one option: the copy **format** for Color Picker, **View…** for Color History, **Smart Toggle** for System Settings, **Remove Breaks** for Capture Text, **Screen Sleep** for Keep Awake, **Auto-Tidy** for Hold to Dictate, and **Instructions…** for Tidy Text.
 
 ## How it works
 
@@ -108,7 +108,7 @@ Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) �
 
 **Color Picker** uses `NSColorSampler`, the system's own loupe. The sampling happens out of process, so LiteSwitch never reads your screen and needs no Screen Recording. The pick lands as the **code text** plus the raw **`NSColor`**. It's text-only by design: an experiment to also copy a swatch *image* had to be dropped, because macOS's clipboard history snapshots any copied image and, on recall, re-offers it as that snapshot's file URL — which made recalling a color paste a file *path* instead of the code. **Color History** exists to cover what that swatch was for: seeing past colors visually.
 
-**Text Capture** shells out to `/usr/sbin/screencapture -i` for the region selection, then runs Apple's on-device **Vision** OCR (`VNRecognizeTextRequest`) on the result. Recognition is entirely local.
+**Capture Text** shells out to `/usr/sbin/screencapture -i` for the region selection, then runs Apple's on-device **Vision** OCR (`VNRecognizeTextRequest`) on the result. Recognition is entirely local.
 
 **Keep Awake** holds an **IOKit power assertion** (`IOPMAssertionCreateWithName`) — the same mechanism `caffeinate` uses — choosing the display-sleep or system-sleep variant to match the Screen Sleep option. Assertions die with the process, so quitting always releases it.
 

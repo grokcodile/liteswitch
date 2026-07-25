@@ -15,7 +15,7 @@
 //
 // A group of "System Tools" ride alongside the panels, none needing any
 // permission: open System Settings (with a smart toggle back); a Color Picker
-// (NSColorSampler → clipboard); Text Capture (screencapture -i region → Vision
+// (NSColorSampler → clipboard); Capture Text (screencapture -i region → Vision
 // OCR → clipboard); Keep Awake (an IOKit power assertion that blocks sleep); and
 // Speak Text — which doesn't re-implement speech at all: it mirrors macOS's own
 // "Speak selection" (Accessibility → Spoken Content), showing the shortcut that
@@ -62,7 +62,7 @@ let panels: [Panel] = [
     Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor and copy its code in the format you choose.", spotlightKey: 0, defaultsKey: "colorpicker"),
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
-    Panel(name: "Text Capture", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
+    Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
     Panel(name: "Tidy Text", symbol: "checkmark.seal.text.page", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
     Panel(name: "Hold to Dictate", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-dictate macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
@@ -201,7 +201,7 @@ extension UserDefaults {
         get { ColorFormat(rawValue: integer(forKey: "colorFormat")) ?? .hex }
         set { set(newValue.rawValue, forKey: "colorFormat") }
     }
-    /// Text Capture: keep the OCR line breaks, or flow it onto one line.
+    /// Capture Text: keep the OCR line breaks, or flow it onto one line.
     var ocrKeepLineBreaks: Bool {
         get { object(forKey: "ocrKeepLineBreaks") as? Bool ?? true }
         set { set(newValue, forKey: "ocrKeepLineBreaks") }
@@ -1055,7 +1055,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         colorHistoryPanel?.makeKeyAndOrderFront(nil)
     }
 
-    /// Text Capture: the system's own crosshair region selector
+    /// Capture Text: the system's own crosshair region selector
     /// (`/usr/sbin/screencapture -i`) writes a PNG, which Vision OCRs; the text
     /// lands on the clipboard with a confirmation pill. screencapture reads the
     /// screen in its own process, so LiteSwitch needs no Screen Recording grant.
@@ -1490,7 +1490,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         // Both permissions just light the bottom strip; neither blocks the
         // controls — macOS prompts for each on demand when a shortcut first
         // needs it (Accessibility for the synthesized panels, Screen Recording
-        // the first time Text Capture runs).
+        // the first time Capture Text runs).
         let hasAX = appDelegate?.hasAccessibility ?? AXIsProcessTrusted()
         let hasScreenRec = CGPreflightScreenCaptureAccess()
         builtWithAX = hasAX
@@ -1638,7 +1638,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             }
             lineTop -= (itemH + itemGap)
 
-            // Tool option below the shortcut. Settings and Text Capture use a
+            // Tool option below the shortcut. Settings and Capture Text use a
             // checkbox; Color Picker uses a select menu (its copy format).
             func centeredCheckbox(_ title: String, on: Bool, action: Selector) {
                 let check = NSButton(checkboxWithTitle: title, target: self, action: action)
@@ -1957,8 +1957,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                      tip: hasAX ? "Accessibility is on — the synthesized Spotlight shortcuts can run."
                                 : "Lets Files, Actions, Clipboard, and the Settings shortcut work. Click to ask macOS and add LiteSwitch to the list.")
         let s = item("Screen Recording", granted: hasScreenRec, action: #selector(grantScreenRecording),
-                     tip: hasScreenRec ? "Screen Recording is on — Text Capture can read the selected region."
-                                       : "Lets Text Capture read the selected region. Click to ask macOS and add LiteSwitch to the list (takes effect after a relaunch).")
+                     tip: hasScreenRec ? "Screen Recording is on — Capture Text can read the selected region."
+                                       : "Lets Capture Text read the selected region. Click to ask macOS and add LiteSwitch to the list (takes effect after a relaunch).")
         let aw = ceil(a.frame.width), sw2 = ceil(s.frame.width)
         let ah = ceil(a.frame.height), sh = ceil(s.frame.height)
 
@@ -2330,7 +2330,7 @@ final class HUD {
         dismiss()
     }
 
-    /// SF Symbol + message (Text Capture confirmations), styled like the color pill.
+    /// SF Symbol + message (Capture Text confirmations), styled like the color pill.
     /// `sticky` leaves the pill up until `hide()` — for states that last as long
     /// as you hold a key, rather than momentary confirmations.
     func showMessage(_ message: String, symbol: String, tint: NSColor, sticky: Bool = false) {
