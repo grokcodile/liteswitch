@@ -64,8 +64,8 @@ let panels: [Panel] = [
     Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
     Panel(name: "Tidy Text", symbol: "checkmark.seal.text.page", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
 /// The long-form help each group's sheet shows: what a tool does, a couple of
@@ -1423,6 +1423,22 @@ final class RecorderButton: NSButton {
 
 // MARK: - Settings window
 
+/// The settings window's content view. It knows where any open help sheets are,
+/// so a click on the controls underneath can put them away — help is reference
+/// material, not a mode you should have to remember to leave.
+final class SettingsContentView: NSView {
+    var sheetFrames: [NSRect] = []
+    var onClickOutsideSheets: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if !sheetFrames.isEmpty, !sheetFrames.contains(where: { $0.contains(p) }) {
+            onClickOutsideSheets?()
+        }
+        super.mouseDown(with: event)
+    }
+}
+
 /// Top-down coordinates, so scrolled help content starts at the top.
 final class FlippedView: NSView { override var isFlipped: Bool { true } }
 
@@ -1547,7 +1563,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         setContentSize(NSSize(width: winW, height: H))
         if let top = keepTop { setFrameTopLeftPoint(NSPoint(x: frame.minX, y: top)) }
 
-        let v = NSView(frame: NSRect(x: 0, y: 0, width: winW, height: H))
+        let v = SettingsContentView(frame: NSRect(x: 0, y: 0, width: winW, height: H))
+        v.onClickOutsideSheets = { [weak self] in self?.dismissGroupHelp() }
 
         let enabled = appDelegate?.appEnabled ?? true
         var yTop = H - topMargin
@@ -1586,7 +1603,11 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         yTop -= unitGap + descH
         addPermissionPill(hasAX: hasAX, hasScreenRec: hasScreenRec, rowY: yTop, rowH: descH, in: v)
 
-        let onChange: () -> Void = { [weak self] in self?.appDelegate?.syncHotkeys(); self?.rebuild() }
+        let onChange: () -> Void = { [weak self] in
+            self?.helpShown.removeAll()          // recording a shortcut closes help
+            self?.appDelegate?.syncHotkeys()
+            self?.rebuild()
+        }
         let contentTop = H - hdrH
 
         // ── Three titled outlines, stacked: Spotlight, System, Text ──
@@ -1600,7 +1621,9 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             let card = NSView(frame: NSRect(x: bx, y: cardTop - cardH, width: cardW, height: cardH))
             card.wantsLayer = true
             card.layer?.cornerRadius = 8
-            card.layer?.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(enabled ? 0.4 : 0.15).cgColor
+            // No fill of its own: the group's well is the one surface. Filled
+            // cards inside a filled well is a box in a box, twelve times over.
+            card.layer?.backgroundColor = NSColor.clear.cgColor
             card.alphaValue = enabled ? 1 : 0.5
             v.addSubview(card)
 
@@ -1866,6 +1889,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         sheet.layer?.borderWidth = 1
         sheet.layer?.borderColor = NSColor.separatorColor.cgColor
         v.addSubview(sheet)
+        (v as? SettingsContentView)?.sheetFrames.append(box)
 
         let inset: CGFloat = 14
         let scroll = NSScrollView(frame: NSRect(x: inset, y: inset,
@@ -1940,6 +1964,15 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         scroll.contentView.scroll(to: NSPoint(x: 0, y: 0))
     }
 
+    /// Put any open help sheets away. Called when the window loses focus or
+    /// closes, and when anything outside a sheet is clicked — otherwise a sheet
+    /// left open covers its controls again the next time the window appears.
+    func dismissGroupHelp() {
+        guard !helpShown.isEmpty else { return }
+        helpShown.removeAll()
+        rebuild()
+    }
+
     @objc private func toggleGroupHelp(_ sender: NSButton) {
         guard let key = sender.identifier?.rawValue else { return }
         if helpShown.contains(key) { helpShown.remove(key) } else { helpShown.insert(key) }
@@ -1954,12 +1987,17 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         label.alphaValue = dimmed ? 0.5 : 1
         label.frame = NSRect(x: x + 6, y: top - groupTitleH, width: width - 12, height: groupTitleH)
         v.addSubview(label)
+        // A filled well rather than an outline: it binds the label to its row
+        // just as firmly with far less line weight, and the cards read as sitting
+        // in it. (A label on its own doesn't — twelve cards then read as one
+        // field, which is what dropping the container entirely looked like.)
         let boxFrame = NSRect(x: x, y: top - groupTitleH - groupTitleGap - boxH, width: width, height: boxH)
         let box = NSView(frame: boxFrame)
         box.wantsLayer = true
         box.layer?.cornerRadius = 10
-        box.layer?.borderWidth = 1
-        box.layer?.borderColor = NSColor.separatorColor.cgColor
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        box.layer?.backgroundColor = (dark ? NSColor.white : NSColor.black)
+            .withAlphaComponent(dark ? 0.06 : 0.045).cgColor
         box.alphaValue = dimmed ? 0.5 : 1
         v.addSubview(box)
         return boxFrame
@@ -2053,10 +2091,12 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     @objc private func forceQuit() { NSApp.terminate(nil) }
     @objc private func saveAndClose() { close() }
     @objc private func smartToggleChanged(_ sender: NSButton) {
+        dismissGroupHelp()
         UserDefaults.standard.settingsToggle = sender.state == .on
     }
 
     @objc private func dictationHoldChanged(_ sender: NSPopUpButton) {
+        helpShown.removeAll()
         UserDefaults.standard.dictationHoldKey =
             HoldKey.menuOrder[safe: sender.indexOfSelectedItem] ?? .off
         appDelegate?.syncDictationMonitor()
@@ -2064,6 +2104,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func polishDictationChanged(_ sender: NSButton) {
+        dismissGroupHelp()
         UserDefaults.standard.polishDictation = sender.state == .on
     }
 
@@ -2075,6 +2116,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func colorFormatChanged(_ sender: NSPopUpButton) {
+        dismissGroupHelp()
         UserDefaults.standard.colorFormat = ColorFormat(rawValue: sender.indexOfSelectedItem) ?? .hex
     }
 
@@ -2083,10 +2125,12 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     @objc private func viewColorHistoryTapped() { appDelegate?.openColorHistory() }
 
     @objc private func removeBreaksChanged(_ sender: NSButton) {
+        dismissGroupHelp()
         UserDefaults.standard.ocrKeepLineBreaks = sender.state != .on   // checked = remove breaks
     }
 
     @objc private func screenSleepChanged(_ sender: NSButton) {
+        dismissGroupHelp()
         UserDefaults.standard.keepAwakeAllowDisplaySleep = sender.state == .on
         appDelegate?.reapplyKeepAwake()   // take effect now if sleep is blocked
     }
@@ -2098,6 +2142,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func appEnabledChanged(_ sender: NSSwitch) {
+        dismissGroupHelp()
         let on = sender.state == .on
         appDelegate?.setAppEnabled(on)
         rebuild()
@@ -2130,8 +2175,14 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     // Recording must never outlive the window's key status: a local NSEvent
     // monitor only sees events while we're the active app, so an orphaned
     // recording would park every hotkey with no way to resume them.
-    func windowWillClose(_ notification: Notification) { RecorderButton.active?.cancelRecording() }
-    func windowDidResignKey(_ notification: Notification) { RecorderButton.active?.cancelRecording() }
+    func windowWillClose(_ notification: Notification) {
+        RecorderButton.active?.cancelRecording()
+        dismissGroupHelp()
+    }
+    func windowDidResignKey(_ notification: Notification) {
+        RecorderButton.active?.cancelRecording()
+        dismissGroupHelp()
+    }
 
     func windowDidBecomeKey(_ notification: Notification) {
         // Re-try conflicted registrations (the other app may have released the
