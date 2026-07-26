@@ -585,7 +585,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// an ordinary modifier doesn't start talking.
     private var dictationArmTimer: Timer?
 
-    /// When dictation started, so Auto-Tidy can guess how many words to select.
+    /// The field dictation is going into, and what it held before — enough to
+    /// work out afterwards exactly what was inserted.
+    private var dictationElement: AXUIElement?
+    private var dictationBeforeText: String?
+    /// When dictation started; only used if the field won't tell us its text.
     private var dictationStartedAt: Date?
     private var dictatedWordEstimate: Int {
         guard let start = dictationStartedAt else { return 0 }
@@ -1088,6 +1092,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         dictating = true
         dictationStartedAt = Date()
+        captureDictationField()
         hud.showWaveform(tint: .systemGreen)
     }
 
@@ -1124,14 +1129,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showWaveform(tint: .systemOrange, mode: .processing)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self else { return }
-            self.selectDictatedRun()
+            if !self.selectDictatedRunExactly() { self.selectDictatedRun() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.polishSelection(dictated: true) }
         }
     }
 
-    /// Select the text dictation just inserted, so it can be rewritten. Uses
-    /// shift-⌥← word by word: dictation ends at the caret, so walking back over
-    /// the run it added selects it without touching what was there before.
+    /// Note the focused field and its current text, so what dictation adds can be
+    /// identified exactly rather than guessed at.
+    private func captureDictationField() {
+        dictationElement = nil
+        dictationBeforeText = nil
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(),
+                                            kAXFocusedUIElementAttribute as CFString,
+                                            &focused) == .success,
+              let element = focused else { return }
+        let field = element as! AXUIElement
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
+              let text = value as? String else { return }
+        dictationElement = field
+        dictationBeforeText = text
+    }
+
+    /// Select exactly what dictation inserted, by diffing the field against the
+    /// snapshot taken when it started: the common head and tail are what was
+    /// already there, so everything between them is new. Returns false when the
+    /// app won't expose its text (many Electron and web views), leaving the
+    /// caller to fall back on the estimate.
+    private func selectDictatedRunExactly() -> Bool {
+        guard let field = dictationElement, let before = dictationBeforeText else { return false }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
+              let after = value as? String, after != before else { return false }
+
+        // UTF-16 offsets, because that's what an AX range is counted in.
+        let b = Array(before.utf16), a = Array(after.utf16)
+        guard a.count > b.count else { return false }
+        var head = 0
+        while head < b.count, a[head] == b[head] { head += 1 }
+        var tail = 0
+        while tail < b.count - head, a[a.count - 1 - tail] == b[b.count - 1 - tail] { tail += 1 }
+        let length = a.count - tail - head
+        guard length > 0 else { return false }
+
+        var range = CFRange(location: head, length: length)
+        guard let axRange = AXValueCreate(.cfRange, &range) else { return false }
+        return AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString,
+                                            axRange) == .success
+    }
+
+    /// Fallback when the field is opaque: walk back over roughly as many words as
+    /// were spoken. An estimate, and it shows — it can take too little or too much.
     private func selectDictatedRun() {
         let words = min(max(dictatedWordEstimate, 1), 120)
         for _ in 0..<words { post(CGKeyCode(kVK_LeftArrow), [.maskShift, .maskAlternate]) }

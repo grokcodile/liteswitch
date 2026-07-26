@@ -70,10 +70,26 @@ Two more that make the point:
 ### Build from source
 
 ```sh
-bash build.sh    # → ./build/LiteSwitch.app (ad-hoc signed)
+bash build.sh    # → ./build/LiteSwitch.app
 ```
 
-Copy `build/LiteSwitch.app` into `Applications` and launch it. An ad-hoc build isn't notarized, so its first launch shows the "unidentified developer" warning — clear it once by right-clicking **LiteSwitch → Open**.
+If a **Developer ID Application** certificate is in your keychain, `build.sh` finds it and signs with it, using the hardened runtime and a trusted timestamp. Otherwise it falls back to an ad-hoc signature.
+
+That distinction matters for more than distribution: **macOS ties Accessibility and Screen Recording to the signing identity**, and an ad-hoc build gets a new identity every time it's compiled — so every rebuild appears to macOS as a different app and the permissions have to be granted again. Signed with a stable Developer ID, they're granted once and stay.
+
+### Notarizing a release
+
+```sh
+bash notarize.sh    # → ./dist/LiteSwitch.zip, stapled
+```
+
+Signing alone still leaves Gatekeeper showing the "unidentified developer" warning on someone else's Mac; notarizing is what clears it. One-time setup, which stores an app-specific password in your keychain:
+
+```sh
+xcrun notarytool store-credentials liteswitch --apple-id "you@example.com" --team-id YOURTEAMID
+```
+
+Make the app-specific password at [appleid.apple.com](https://appleid.apple.com) under Sign-In and Security — it isn't your Apple ID password. After that, `notarize.sh` builds, submits, waits for Apple, staples the ticket into the bundle, and leaves a distributable zip in `dist/`.
 
 The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the vector source with `icon/make-icns.sh` (needs `brew install librsvg`).
 
