@@ -22,13 +22,13 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **Actions** | Spotlight's Actions panel — Shortcuts and system actions by name | Raycast commands, Alfred workflows |
 | **Clipboard** | Spotlight's own clipboard history | Paste, Copy'em, Raycast clipboard history |
 | **System Settings** | `NSWorkspace`, with a remembered "toggle back" | — |
+| **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
 | **Color Picker** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
 | **Color History** | LiteSwitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
-| **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
 | **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its voices, its shortcut | text-to-speech utilities |
 | **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
-| **Dictate Text** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
 | **Tidy Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
+| **Dictate Text** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
 
 The four Spotlight panels are the starkest case: an app launcher, a file searcher, a command runner and a clipboard history are four separate paid utilities in most people's setups, and macOS 26 ships all four — behind one keystroke and a number. They just needed keys of their own.
 
@@ -48,16 +48,16 @@ Two more that make the point:
 **System Utilities**
 
 - **System Settings** — with **Smart Toggle**, pressing the shortcut again hides it and returns you to the app you came from.
+- **Keep Awake** — stops your Mac sleeping; a cup appears in the menu bar while it's on (click to stop), and **Screen Sleep** lets the display sleep while the system stays up. The assertion releases automatically if LiteSwitch quits, so it can't strand your Mac awake.
 - **Color Picker** — pops the system loupe and copies the pixel under your cursor as **Hex, RGB, HSL, or SwiftUI**, plus the raw color for dropping into a color well. A pill flashes the swatch and code, and every pick is saved to Color History.
 - **Color History** — a window of everything you've picked. **Click** a swatch to re-copy its code, **drag** it out to save the swatch as a PNG, **pin** the keepers. Labels default to the hex and can be renamed. Keeps the last 20; pins persist at the top.
-- **Keep Awake** — stops your Mac sleeping; a cup appears in the menu bar while it's on (click to stop), and **Screen Sleep** lets the display sleep while the system stays up. The assertion releases automatically if LiteSwitch quits, so it can't strand your Mac awake.
 
 **Text Tools**
 
 - **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. LiteSwitch reflects that state; macOS does the talking.
 - **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
-- **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
 - **Tidy Text** — rewrites text with Apple Intelligence's on-device model, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Dictate Text card runs the dictated set automatically on what you just spoke.
+- **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
 
 **Throughout**
 
@@ -101,12 +101,12 @@ A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a
 | | | | |
 |---|---|---|---|
 | ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘⏎ Clipboard |
-| ⌃⌥⌘, System Settings | ⌃⌥⌘L Color Picker | ⌃⌥⌘H Color History | ⌃⌥⌘K Keep Awake |
-| Speak Text: macOS's own | ⌃⌥⌘O Capture Text | Hold **Right ⌥** to dictate | ⌃⌥⌘' Tidy Text |
+| ⌃⌥⌘, System Settings | ⌃⌥⌘K Keep Awake | ⌃⌥⌘L Color Picker | ⌃⌥⌘H Color History |
+| Speak Text: macOS's own | ⌃⌥⌘O Capture Text | ⌃⌥⌘' Tidy Text | Hold **Right ⌥** to dictate |
 
 Three modifiers look heavy written down, but the left hand takes them as one shape and never moves, so every trigger key sits under the right — no chord crosses the keyboard. It's also the one combination nothing else claims: ⌃ alone hits the text-editing bindings macOS puts in every field (⌃A, ⌃K, ⌃H), ⌥ alone eats the character it would otherwise type, and ⌘ belongs to whatever app is frontmost.
 
-Every key earns its place. The four panels run left to right in the order Spotlight numbers them. **`/` finds and `\\` does** — mirrored symbols, one for paths, one for escapes. **`,`** is the preferences key every Mac app already uses. **`'`** is quoted text. The rest are initials: **L**oupe, **H**istory, **K**eep awake, **O**CR.
+Every key earns its place. The four panels run left to right in the order Spotlight numbers them. **`/` finds and `\` does** — mirrored symbols, one for paths, one for escapes. **`,`** is the preferences key every Mac app already uses. **`'`** is quoted text. The rest are initials: **L**oupe, **H**istory, **K**eep awake, **O**CR.
 
 Change any of them by clicking the field and recording, or press **Delete** while recording to clear it. Defaults are only ever applied to a tool that has no shortcut yet, so they can't overwrite something you've set.
 
@@ -115,7 +115,7 @@ Two tools work differently, because a recorded chord isn't the right control for
 - **Dictate Text** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
 - **Speak Text** has no LiteSwitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
 
-Each card carries one option: the copy **format** for Color Picker (Hex), **View…** for Color History, **Smart Toggle** for System Settings (on), **Remove Breaks** for Capture Text (on), **Screen Sleep** for Keep Awake (on), **Auto-Tidy** for Dictate Text (on), and **Instructions…** for Tidy Text.
+Each card carries one option: **Smart Toggle** for System Settings (on), **Screen Sleep** for Keep Awake (on), the copy **format** for Color Picker (Hex), **View…** for Color History, **Remove Breaks** for Capture Text (on), **Instructions…** for Tidy Text, and **Auto-Tidy** for Dictate Text (on).
 
 ## How it works
 
