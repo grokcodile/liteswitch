@@ -96,15 +96,17 @@ Nothing needs setting up in advance: macOS prompts the first time a shortcut nee
 
 ## Shortcuts
 
-A fresh install comes with a working set already assigned — **⌥ plus a letter that stands for something**:
+A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a key under your right hand**:
 
 | | | | |
 |---|---|---|---|
-| ⌥A Applications | ⌥/ Files | ⌥X Actions | ⌥V Clipboard |
-| ⌥, System Settings | ⌥L Color Picker | ⌥H Color History | ⌥K Keep Awake |
-| Speak Text: macOS's own | ⌥O Capture Text | Hold **Right ⌥** to dictate | ⌥T Tidy Text |
+| ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘⏎ Clipboard |
+| ⌃⌥⌘, System Settings | ⌃⌥⌘L Color Picker | ⌃⌥⌘H Color History | ⌃⌥⌘K Keep Awake |
+| Speak Text: macOS's own | ⌃⌥⌘O Capture Text | Hold **Right ⌥** to dictate | ⌃⌥⌘' Tidy Text |
 
-One modifier keeps every chord in one hand — three-modifier sets are collision-proof but tax you forever. ⌥-letter otherwise types a special character and a global hotkey swallows it, so the letters dodge the ones people actually reach for (⌥G ©, ⌥R ®, ⌥8 •, ⌥; …, ⌥C ç) and all five accent dead keys (⌥E ⌥I ⌥N ⌥U ⌥\`). What's left — å ÷ ≈ √ ≤ ¬ ˚ ø † — is obscure outside Scandinavian and maths, and rebinding takes one click. ⌃ was the alternative, but macOS puts text-editing bindings on ⌃A, ⌃K and ⌃H in every field.
+Three modifiers look heavy written down, but the left hand takes them as one shape and never moves, so every trigger key sits under the right — no chord crosses the keyboard. It's also the one combination nothing else claims: ⌃ alone hits the text-editing bindings macOS puts in every field (⌃A, ⌃K, ⌃H), ⌥ alone eats the character it would otherwise type, and ⌘ belongs to whatever app is frontmost.
+
+Every key earns its place. The four panels run left to right in the order Spotlight numbers them. **`/` finds and `\\` does** — mirrored symbols, one for paths, one for escapes. **`,`** is the preferences key every Mac app already uses. **`'`** is quoted text. The rest are initials: **L**oupe, **H**istory, **K**eep awake, **O**CR.
 
 Change any of them by clicking the field and recording, or press **Delete** while recording to clear it. Defaults are only ever applied to a tool that has no shortcut yet, so they can't overwrite something you've set.
 
