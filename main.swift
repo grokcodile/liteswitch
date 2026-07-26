@@ -96,7 +96,7 @@ let panelInfo: [String: PanelInfo] = [
         body: "Spotlight's Clipboard panel — macOS keeps a clipboard history of its own, so you can paste something from a while back. Nothing to install or leave running: this is the system's own store, not a third-party one watching your clipboard.",
         examples: ["Recover a link you copied an hour ago.",
                    "Grab the second-to-last thing you copied, without redoing the work."],
-        suggestion: "⌃⌥⌘Return — last of the four panels, out at the end of the row."),
+        suggestion: "⌃⌥⌘V — the paste key, for the paste history."),
     "settings": PanelInfo(
         body: "Opens System Settings from anywhere. With Smart Toggle on, pressing the shortcut again hides it and puts you back in the app you came from — so checking a setting is a peek rather than a detour you have to navigate out of.",
         examples: ["Flip a toggle mid-task and land straight back where you were.",
@@ -136,7 +136,7 @@ let panelInfo: [String: PanelInfo] = [
         body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone — with nothing selected it takes the whole field; switch on Auto-Tidy on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
         examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
                    "Turn a rambling dictation into something you'd actually send."],
-        suggestion: "⌃⌥⌘' — the quote mark, for working on a passage of text."),
+        suggestion: "⌃⌥⌘P — P for proofread."),
 ]
 
 /// Panels shown in the "System Utilities" group rather than the "Spotlight" group,
@@ -180,13 +180,13 @@ let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃�
     "apps": 47,           // .        panel 1
     "files": 44,          // /        panel 2 — the path separator: finding
     "actions": 42,        // \        panel 3 — the escape: doing
-    "clipboard": 36,      // Return   panel 4
+    "clipboard": 9,       // V        the paste key, for the paste history
     "settings": 43,       // ,        the preferences key
     "colorpicker": 37,    // L        Loupe
     "colorhistory": 4,    // H        History
     "keepawake": 40,      // K        Keep awake
     "textcapture": 31,    // O        OCR
-    "polish": 39,         // '        quoted text
+    "polish": 35,         // P        Proofread
 ]
 
 /// Dictation is push-to-talk: it needs the key's release as well as its press,
@@ -866,14 +866,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSWorkspace.shared.openApplication(at: stub, configuration: config) { [weak self] _, error in
                     guard error != nil else { return }
                     DispatchQueue.main.async {
-                        self?.synthesizeSpotlight(then: panel.spotlightKey)
+                        self?.synthesizeSpotlight(then: panel.spotlightKey,
+                                                  trigger: Shortcut.load(panel).map { CGKeyCode($0.keyCode) })
                     }
                 }
                 return
             }
         }
 
-        synthesizeSpotlight(then: panel.spotlightKey)
+        synthesizeSpotlight(then: panel.spotlightKey,
+                            trigger: Shortcut.load(panel).map { CGKeyCode($0.keyCode) })
     }
 
     // MARK: Tidy Text
@@ -1367,23 +1369,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Timing learnings inherited from Key54's clipboard experiment:
     /// Spotlight buffers keys behind its ⌘Space, but a ~30 ms gap is needed
     /// for cold starts (1 ms was observed to miss).
-    private func synthesizeSpotlight(then key: CGKeyCode, attempt: Int = 0) {
+    /// `trigger` is the key of the shortcut that fired, which has to be released
+    /// before the sequence runs. Waiting only for the modifiers isn't enough: we
+    /// park our own hotkeys while synthesizing, so a trigger key still held is no
+    /// longer swallowed by us and its auto-repeat reaches whatever we just opened.
+    /// With Clipboard on ⌃⌥⌘Return that meant Return landing in the panel —
+    /// activating an entry and leaving it half-open.
+    private func synthesizeSpotlight(then key: CGKeyCode, trigger: CGKeyCode? = nil,
+                                     attempt: Int = 0) {
         guard hasAccessibility else {
             // Rather than silently doing nothing, ask — macOS shows the dialog
             // that leads straight to the setting.
             if attempt == 0 { promptForAccessibility() }
             return
         }
-        let held = [kVK_Shift, kVK_RightShift, kVK_Option, kVK_RightOption,
-                    kVK_Control, kVK_RightControl, kVK_Function]
-            .contains { CGEventSource.keyState(.hidSystemState, key: CGKeyCode($0)) }
+        var watch = [kVK_Shift, kVK_RightShift, kVK_Option, kVK_RightOption,
+                     kVK_Control, kVK_RightControl, kVK_Function].map { CGKeyCode($0) }
+        if let trigger { watch.append(trigger) }
+        let held = watch.contains { CGEventSource.keyState(.hidSystemState, key: $0) }
         if held {
             // Waiting on the user's fingers: people hold a chord for a long
             // beat when they expect something to appear, so give them 2 s
             // (80 × 25 ms) before quietly giving up, not a fraction of one.
             guard attempt < 80 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) { [weak self] in
-                self?.synthesizeSpotlight(then: key, attempt: attempt + 1)
+                self?.synthesizeSpotlight(then: key, trigger: trigger, attempt: attempt + 1)
             }
             return
         }
@@ -1526,6 +1536,15 @@ final class RecorderButton: NSButton {
             if bare && Int(event.keyCode) == kVK_Escape { return nil }
             if bare && [kVK_Delete, kVK_ForwardDelete].contains(Int(event.keyCode)) {
                 Shortcut.save(nil, self.panel)
+                return nil
+            }
+            // Return and Delete can't be bound at all. Return means "activate"
+            // inside every panel these shortcuts open, so a press that outlives
+            // the chord lands in the panel and leaves it half-open; Delete is
+            // already the gesture for clearing a binding here.
+            if [kVK_Return, kVK_ANSI_KeypadEnter, kVK_Delete, kVK_ForwardDelete]
+                .contains(Int(event.keyCode)) {
+                NSSound.beep()
                 return nil
             }
             // Chords need ⌘/⌥/⌃ so a bare letter can't hijack typing

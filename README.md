@@ -116,13 +116,15 @@ A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a
 
 | | | | |
 |---|---|---|---|
-| ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘⏎ Clipboard |
+| ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘V Clipboard |
 | ⌃⌥⌘, System Settings | ⌃⌥⌘K Keep Awake | ⌃⌥⌘L Color Picker | ⌃⌥⌘H Color History |
-| Speak Text: macOS's own | ⌃⌥⌘O Capture Text | ⌃⌥⌘' Tidy Text | Hold **Right ⌥** to dictate |
+| Speak Text: macOS's own | ⌃⌥⌘O Capture Text | ⌃⌥⌘P Tidy Text | Hold **Right ⌥** to dictate |
 
 Three modifiers look heavy written down, but the left hand takes them as one shape and never moves, so every trigger key sits under the right — no chord crosses the keyboard. It's also the one combination nothing else claims: ⌃ alone hits the text-editing bindings macOS puts in every field (⌃A, ⌃K, ⌃H), ⌥ alone eats the character it would otherwise type, and ⌘ belongs to whatever app is frontmost.
 
-Every key earns its place. The four panels run left to right in the order Spotlight numbers them. **`/` finds and `\` does** — mirrored symbols, one for paths, one for escapes. **`,`** is the preferences key every Mac app already uses. **`'`** is quoted text. The rest are initials: **L**oupe, **H**istory, **K**eep awake, **O**CR.
+Every key earns its place. **`/` finds and `\` does** — mirrored symbols, one for paths, one for escapes. **`,`** is the preferences key every Mac app already uses, **`V`** the paste key for the paste history. The rest are initials: **L**oupe, **H**istory, **K**eep awake, **O**CR, **P**roofread.
+
+**Return and Delete can't be assigned**, and the recorder refuses them. Return means "activate" inside every panel these shortcuts open, so a press that outlives the chord lands in the panel itself and leaves it stuck half-open; Delete is already the gesture for clearing a binding.
 
 Change any of them by clicking the field and recording, or press **Delete** while recording to clear it. Defaults are only ever applied to a tool that has no shortcut yet, so they can't overwrite something you've set.
 
