@@ -56,7 +56,7 @@ Two more that make the point:
 
 - **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. LiteSwitch reflects that state; macOS does the talking.
 - **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
-- **Tidy Text** — rewrites text with Apple Intelligence's on-device model, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Dictate Text card runs the dictated set automatically on what you just spoke.
+- **Tidy Text** — rewrites the selected text with Apple Intelligence's on-device model, or the whole field if nothing is selected, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Dictate Text card runs the dictated set automatically on what you just spoke.
 - **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
 
 **Throughout**
@@ -129,7 +129,7 @@ Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) �
 
 **Dictate Text** watches the chosen modifier with `flagsChanged` monitors, since Carbon hotkeys report presses but never releases. Starting dictation took some ruling out: the mic key on F5 can't be synthesized — macOS takes it at the HID layer, so it never becomes an event an app can post — and by default dictation has no ordinary shortcut to send either. So LiteSwitch presses the frontmost app's **Edit ▸ Start / Stop Dictation** item through the **Accessibility API**, which leaves your own dictation setup untouched. The stop is deferred ~1.5 s because dictation keeps transcribing after you stop speaking; pressing the key again inside that window carries on rather than restarting.
 
-**Tidy Text** runs the text through **`FoundationModels`**, Apple Intelligence's on-device model, with your instructions. Nothing is sent anywhere and there's no API key. The selection is copied, rewritten, and pasted back, with the clipboard borrowed and restored around the round trip.
+**Tidy Text** runs the text through **`FoundationModels`**, Apple Intelligence's on-device model, with your instructions. Nothing is sent anywhere and there's no API key. The selection is copied, rewritten, and pasted back, with the clipboard borrowed and restored around the round trip. With nothing selected it presses ⌘A first and takes the whole field — except after dictation, where the selection is an estimate and selecting all would rewrite the document rather than the sentence you just spoke.
 
 ## Built on macOS, and moving with it
 

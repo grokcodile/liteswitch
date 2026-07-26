@@ -133,7 +133,7 @@ let panelInfo: [String: PanelInfo] = [
                    "Talk out a rough paragraph, then tidy it up by hand."],
         suggestion: "Hold Right ⌥ — nothing else claims it, and it's easy to find without looking."),
     "polish": PanelInfo(
-        body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone; switch on Auto-Tidy on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
+        body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone — with nothing selected it takes the whole field; switch on Auto-Tidy on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
         examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
                    "Turn a rambling dictation into something you'd actually send."],
         suggestion: "⌃⌥⌘' — the quote mark, for working on a passage of text."),
@@ -877,36 +877,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Rewrite the selection in place: copy it, run it through the on-device
     /// model with the user's instructions, and paste the result back. The
     /// clipboard is borrowed for the round trip and put back afterwards.
+    ///
+    /// With nothing selected, it takes the whole field — ⌘A then copy — so the
+    /// shortcut does something useful when you just want the thing you're looking
+    /// at tidied. That fallback is deliberately NOT used for Auto-Tidy: after
+    /// dictation the selection is an estimate, and if it came back empty,
+    /// selecting all would rewrite the entire document instead of the sentence
+    /// you just spoke.
     func polishSelection(dictated: Bool = false) {
         guard hasAccessibility else { promptForAccessibility(); return }
         let pb = NSPasteboard.general
         let saved = pb.string(forType: .string)
-        let before = pb.changeCount
 
-        post(CGKeyCode(kVK_ANSI_C), .maskCommand)      // copy the selection
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        copySelectionText { [weak self] text in
             guard let self else { return }
+            if let text {
+                self.runPolish(text, dictated: dictated, restoring: saved)
+            } else if dictated {
+                self.hud.hide()          // nothing to work on; leave the text alone
+                if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
+            } else {
+                // Nothing selected: take the lot.
+                self.post(CGKeyCode(kVK_ANSI_A), .maskCommand)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    self.copySelectionText { all in
+                        guard let all else {
+                            self.hud.showMessage("No text to tidy", symbol: "text.badge.xmark", tint: .systemRed)
+                            if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
+                            return
+                        }
+                        self.runPolish(all, dictated: dictated, restoring: saved)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Copy whatever is selected and hand it back, or nil if nothing came.
+    private func copySelectionText(then: @escaping (String?) -> Void) {
+        let pb = NSPasteboard.general
+        let before = pb.changeCount
+        post(CGKeyCode(kVK_ANSI_C), .maskCommand)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             guard pb.changeCount != before, let text = pb.string(forType: .string),
-                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                self.hud.showMessage("Select some text first", symbol: "text.badge.xmark", tint: .systemRed)
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { then(nil); return }
+            then(text)
+        }
+    }
+
+    /// Run the text through the model and paste the result over the selection.
+    private func runPolish(_ text: String, dictated: Bool, restoring saved: String?) {
+        let pb = NSPasteboard.general
+        hud.showWaveform(tint: .systemOrange, mode: .processing)
+        polish(text, dictated: dictated) { [weak self] result in
+            guard let self else { return }
+            guard let result else {
+                self.hud.showMessage("Couldn't rewrite that", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
                 if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
                 return
             }
-            self.hud.showWaveform(tint: .systemOrange, mode: .processing)
-            self.polish(text, dictated: dictated) { result in
-                guard let result else {
-                    self.hud.showMessage("Couldn't rewrite that", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
-                    if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
-                    return
-                }
-                pb.clearContents()
-                pb.setString(result, forType: .string)
-                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
-                self.hud.showMessage("Tidied", symbol: "checkmark.circle.fill", tint: .systemGreen)
-                // Give the paste a moment to land before handing the clipboard back.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
-                }
+            pb.clearContents()
+            pb.setString(result, forType: .string)
+            self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
+            self.hud.showMessage("Tidied", symbol: "checkmark.circle.fill", tint: .systemGreen)
+            // Give the paste a moment to land before handing the clipboard back.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
             }
         }
     }
