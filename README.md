@@ -1,13 +1,13 @@
-<img src="docs/icon.png" alt="LiteSwitch Icon" width="96"/>
+<img src="docs/icon.png" alt="Liteswitch Icon" width="96"/>
 
-# LiteSwitch
+# Liteswitch
 
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111111)](#requirements)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-**LiteSwitch puts a global shortcut on things your Mac already knows how to do.**
+**Liteswitch puts a global shortcut on things your Mac already knows how to do.**
 
-macOS ships the hard part and leaves out the key. Screen OCR, color sampling, sleep prevention, dictation, on-device text cleanup — the engines are all in the box, on-device, already paid for, and mostly a menu dive or a Settings pane away. That gap is a whole category of paid utilities: apps that bundle their own engine, or their own subscription, to sell you a keystroke. LiteSwitch is a dozen of those keystrokes in one background agent — one Swift file, no dependencies, no menu bar item, no account, no subscription, nothing leaving your Mac.
+macOS ships the hard part and leaves out the key. Screen OCR, color sampling, sleep prevention, dictation, on-device text cleanup — the engines are all in the box, on-device, already paid for, and mostly a menu dive or a Settings pane away. That gap is a whole category of paid utilities: apps that bundle their own engine, or their own subscription, to sell you a keystroke. Liteswitch is a dozen of those keystrokes in one background agent — one Swift file, no dependencies, no menu bar item, no account, no subscription, nothing leaving your Mac.
 
 It's also built to be temporary wherever it can be. Each tool covers a convenience macOS misses by a hair, so when a future release closes that gap, the tool comes out. **The app getting smaller as the system gets better is a success, not a regression** — simplicity here is the point of the thing, not a marketing line.
 
@@ -24,7 +24,7 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **System Settings** | `NSWorkspace`, with a remembered "toggle back" | — |
 | **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
 | **Color Picker** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
-| **Color History** | LiteSwitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
+| **Color History** | Liteswitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
 | **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its voices, its shortcut | text-to-speech utilities |
 | **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
 | **Tidy Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
@@ -48,13 +48,13 @@ Two more that make the point:
 **System Utilities**
 
 - **System Settings** — with **Smart Toggle**, pressing the shortcut again hides it and returns you to the app you came from.
-- **Keep Awake** — stops your Mac sleeping; a cup appears in the menu bar while it's on (click to stop), and **Screen Sleep** lets the display sleep while the system stays up. The assertion releases automatically if LiteSwitch quits, so it can't strand your Mac awake.
+- **Keep Awake** — stops your Mac sleeping; a cup appears in the menu bar while it's on (click to stop), and **Screen Sleep** lets the display sleep while the system stays up. The assertion releases automatically if Liteswitch quits, so it can't strand your Mac awake.
 - **Color Picker** — pops the system loupe and copies the pixel under your cursor as **Hex, RGB, HSL, or SwiftUI**, plus the raw color for dropping into a color well. A pill flashes the swatch and code, and every pick is saved to Color History.
 - **Color History** — a window of everything you've picked. **Click** a swatch to re-copy its code, **drag** it out to save the swatch as a PNG, **pin** the keepers. Labels default to the hex and can be renamed. Keeps the last 20; pins persist at the top.
 
 **Text Tools**
 
-- **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. LiteSwitch reflects that state; macOS does the talking.
+- **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. Liteswitch reflects that state; macOS does the talking.
 - **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
 - **Tidy Text** — rewrites the selected text with Apple Intelligence's on-device model, or the whole field if nothing is selected, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Tidy** on the Dictate Text card runs the dictated set automatically on what you just spoke.
 - **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on.
@@ -67,20 +67,32 @@ Two more that make the point:
 
 ## Install
 
-### Build from source
+### Build and install
 
 ```sh
-bash build.sh    # → ./build/LiteSwitch.app
+bash install.sh    # → /Applications/Liteswitch.app, running
 ```
+
+This is the one to use. It builds, quits whatever copy is already running, replaces `/Applications/Liteswitch.app`, and relaunches — then tells you how many copies are running, which should always be one.
+
+**Don't run the app out of `./build`.** `build.sh` starts by deleting that directory, so a running instance has its bundle pulled out from under it: the process survives, but macOS now sees the rebuilt bundle as a different app and launching it starts a *second* copy instead of reusing the first. They stack up silently, and they don't coexist peacefully — every instance registers the same global hotkeys and installs its own dictation monitor, so one keypress fires N times and N Auto-Tidy passes rewrite the same text while each is pasting into it.
+
+### Build only
+
+```sh
+bash build.sh    # → ./build/Liteswitch.app
+```
+
+Builds without installing — what `install.sh` and `notarize.sh` both call.
 
 If a **Developer ID Application** certificate is in your keychain, `build.sh` finds it and signs with it, using the hardened runtime and a trusted timestamp. Otherwise it falls back to an ad-hoc signature.
 
-That distinction matters for more than distribution: **macOS ties Accessibility and Screen Recording to the signing identity**, and an ad-hoc build gets a new identity every time it's compiled — so every rebuild appears to macOS as a different app and the permissions have to be granted again. Signed with a stable Developer ID, they're granted once and stay.
+That distinction matters for more than distribution: **macOS ties Accessibility and Screen Recording to the signing identity**, and an ad-hoc build gets a new identity every time it's compiled — so every rebuild appears to macOS as a different app and the permissions have to be granted again. Signed with a stable Developer ID, they're granted once and stay. (It's the identity that counts, not the location, so moving the app to `/Applications` doesn't cost you the grants.)
 
 ### Notarizing a release
 
 ```sh
-bash notarize.sh    # → ./dist/LiteSwitch.zip, stapled
+bash notarize.sh    # → ./dist/Liteswitch.zip, stapled
 ```
 
 Signing alone still leaves Gatekeeper showing the "unidentified developer" warning on someone else's Mac; notarizing is what clears it. One-time setup, which stores an app-specific password in your keychain:
@@ -106,7 +118,7 @@ Nothing needs setting up in advance: macOS prompts the first time a shortcut nee
 
 ## First run
 
-1. Launch **LiteSwitch**. Its settings window opens.
+1. Launch **Liteswitch**. Its settings window opens.
 2. Record a shortcut for each tool you want, then click **Done**. It keeps running in the background and starts at login — silently, without showing the window.
 3. The first time you fire a shortcut that needs a permission, macOS asks. The light turns green once granted.
 
@@ -131,38 +143,38 @@ Change any of them by clicking the field and recording, or press **Delete** whil
 Two tools work differently, because a recorded chord isn't the right control for them:
 
 - **Dictate Text** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
-- **Speak Text** has no LiteSwitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
+- **Speak Text** has no Liteswitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
 
 Each card carries one option: **Smart Toggle** for System Settings (on), **Screen Sleep** for Keep Awake (on), the copy **format** for Color Picker (Hex), **View…** for Color History, **Remove Breaks** for Capture Text (on), **Instructions…** for Tidy Text, and **Auto-Tidy** for Dictate Text (on).
 
 ## How it works
 
-Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) — no event tap, so LiteSwitch never sits in your keyboard's event path. **Apps** launches `/System/Applications/Apps.app` via `NSWorkspace`. The other panels post the documented Spotlight gesture — ⌘Space, a ~30 ms beat, then the panel's ⌘-number — waiting first for you to release any lingering modifiers so the chord lands clean. While that sequence is in flight LiteSwitch's own hotkeys are parked, which is what lets ⌘1–⌘4 themselves be the global shortcuts without re-triggering. A Delete follows the panel key to clear Spotlight's leftover query — deliberately a bare Delete rather than ⌘A + Delete, because if the sequence ever misfires into the frontmost app, select-all-and-delete would wipe a document.
+Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) — no event tap, so Liteswitch never sits in your keyboard's event path. **Apps** launches `/System/Applications/Apps.app` via `NSWorkspace`. The other panels post the documented Spotlight gesture — ⌘Space, a ~30 ms beat, then the panel's ⌘-number — waiting first for you to release any lingering modifiers so the chord lands clean. While that sequence is in flight Liteswitch's own hotkeys are parked, which is what lets ⌘1–⌘4 themselves be the global shortcuts without re-triggering. A Delete follows the panel key to clear Spotlight's leftover query — deliberately a bare Delete rather than ⌘A + Delete, because if the sequence ever misfires into the frontmost app, select-all-and-delete would wipe a document.
 
-**Color Picker** uses `NSColorSampler`, the system's own loupe. The sampling happens out of process, so LiteSwitch never reads your screen and needs no Screen Recording. The pick lands as the **code text** plus the raw **`NSColor`**. It's text-only by design: an experiment to also copy a swatch *image* had to be dropped, because macOS's clipboard history snapshots any copied image and, on recall, re-offers it as that snapshot's file URL — which made recalling a color paste a file *path* instead of the code. **Color History** exists to cover what that swatch was for: seeing past colors visually.
+**Color Picker** uses `NSColorSampler`, the system's own loupe. The sampling happens out of process, so Liteswitch never reads your screen and needs no Screen Recording. The pick lands as the **code text** plus the raw **`NSColor`**. It's text-only by design: an experiment to also copy a swatch *image* had to be dropped, because macOS's clipboard history snapshots any copied image and, on recall, re-offers it as that snapshot's file URL — which made recalling a color paste a file *path* instead of the code. **Color History** exists to cover what that swatch was for: seeing past colors visually.
 
 **Capture Text** shells out to `/usr/sbin/screencapture -i` for the region selection, then runs Apple's on-device **Vision** OCR (`VNRecognizeTextRequest`) on the result. Recognition is entirely local.
 
 **Keep Awake** holds an **IOKit power assertion** (`IOPMAssertionCreateWithName`) — the same mechanism `caffeinate` uses — choosing the display-sleep or system-sleep variant to match the Screen Sleep option. Assertions die with the process, so quitting always releases it.
 
-**Dictate Text** watches the chosen modifier with `flagsChanged` monitors, since Carbon hotkeys report presses but never releases. Starting dictation took some ruling out: the mic key on F5 can't be synthesized — macOS takes it at the HID layer, so it never becomes an event an app can post — and by default dictation has no ordinary shortcut to send either. So LiteSwitch presses the frontmost app's **Edit ▸ Start / Stop Dictation** item through the **Accessibility API**, which leaves your own dictation setup untouched. The stop is deferred ~1.5 s because dictation keeps transcribing after you stop speaking; pressing the key again inside that window carries on rather than restarting.
+**Dictate Text** watches the chosen modifier with `flagsChanged` monitors, since Carbon hotkeys report presses but never releases. Starting dictation took some ruling out: the mic key on F5 can't be synthesized — macOS takes it at the HID layer, so it never becomes an event an app can post — and by default dictation has no ordinary shortcut to send either. So Liteswitch presses the frontmost app's **Edit ▸ Start / Stop Dictation** item through the **Accessibility API**, which leaves your own dictation setup untouched. The stop is deferred ~1.5 s because dictation keeps transcribing after you stop speaking; pressing the key again inside that window carries on rather than restarting.
 
 **Tidy Text** runs the text through **`FoundationModels`**, Apple Intelligence's on-device model, with your instructions. Nothing is sent anywhere and there's no API key. The selection is copied, rewritten, and pasted back, with the clipboard borrowed and restored around the round trip. With nothing selected it presses ⌘A first and takes the whole field — except after dictation, where the selection is an estimate and selecting all would rewrite the document rather than the sentence you just spoke.
 
 ## Built on macOS, and moving with it
 
-LiteSwitch targets **macOS 26** and deliberately uses what that release ships — the four-panel Spotlight, on-device Vision OCR, Spoken Content, macOS Dictation, Apple Intelligence's local model. That's the point of the app, and also its exposure: it is a thin layer over Apple's own behaviour, so when that behaviour moves, this moves with it.
+Liteswitch targets **macOS 26** and deliberately uses what that release ships — the four-panel Spotlight, on-device Vision OCR, Spoken Content, macOS Dictation, Apple Intelligence's local model. That's the point of the app, and also its exposure: it is a thin layer over Apple's own behaviour, so when that behaviour moves, this moves with it.
 
 Some of what's here already rests on things Apple never promised to keep still — the Spotlight ⌘Space gesture and its panel numbers, the **Edit ▸ Start Dictation** menu item that Dictate Text presses, the Spoken Content preference that Speak Text reads. Those work today. A future macOS could rename a menu item, restructure a pane, or change how a panel opens, and the tool that leans on it would need adjusting. Where a behaviour is undocumented or was arrived at by testing rather than by the docs, [How it works](#how-it-works) says so.
 
-**The better outcome is that Apple absorbs some of this.** Several of these tools exist purely because a convenience is missing by a hair: dictation transcribes beautifully but is toggle-only; the Spotlight panels have numbers but no global keys; the loupe samples a color but keeps no history. If macOS grows push-to-talk dictation, or lets you bind a panel directly, then that card has served its purpose and should be removed rather than defended. LiteSwitch is meant to be scaffolding over the gaps, not a permanent parallel implementation.
+**The better outcome is that Apple absorbs some of this.** Several of these tools exist purely because a convenience is missing by a hair: dictation transcribes beautifully but is toggle-only; the Spotlight panels have numbers but no global keys; the loupe samples a color but keeps no history. If macOS grows push-to-talk dictation, or lets you bind a panel directly, then that card has served its purpose and should be removed rather than defended. Liteswitch is meant to be scaffolding over the gaps, not a permanent parallel implementation.
 
 So: expect this to track macOS releases, expect the occasional fix when Apple shifts something underneath, and expect features to retire when the system makes them unnecessary.
 
 ## Uninstall
 
-1. Open LiteSwitch, toggle the switch to **Disabled** (this removes the login item), then click **Quit**. (Or just `killall LiteSwitch`.)
-2. Delete **LiteSwitch.app** from `Applications`.
+1. Open Liteswitch, toggle the switch to **Disabled** (this removes the login item), then click **Quit**. (Or just `killall Liteswitch`.)
+2. Delete **Liteswitch.app** from `Applications`.
 3. Optionally remove its entry under System Settings → Privacy & Security → Accessibility.
 
 ## The name
@@ -171,7 +183,7 @@ You flip a light switch without looking at it — that's the bar: the thing you 
 
 ## Notes
 
-LiteSwitch synthesizes keystrokes to drive Spotlight, which is incompatible with the Mac App Store sandbox — it's built from source for now.
+Liteswitch synthesizes keystrokes to drive Spotlight, which is incompatible with the Mac App Store sandbox — it's built from source for now.
 
 ## License
 
