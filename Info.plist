@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>LiteSwitch</string>
+    <string>Liteswitch</string>
     <key>CFBundleDisplayName</key>
-    <string>LiteSwitch</string>
+    <string>Liteswitch</string>
     <key>CFBundleIdentifier</key>
     <string>com.ethan.liteswitch</string>
     <key>CFBundleVersion</key>
@@ -13,7 +13,7 @@
     <key>CFBundleShortVersionString</key>
     <string>0.1</string>
     <key>CFBundleExecutable</key>
-    <string>LiteSwitch</string>
+    <string>Liteswitch</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>

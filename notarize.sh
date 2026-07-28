@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds, notarizes and staples LiteSwitch, then leaves a distributable zip in
+# Builds, notarizes and staples Liteswitch, then leaves a distributable zip in
 # ./dist. Notarization is what stops Gatekeeper showing the "unidentified
 # developer" warning on someone else's Mac — the Developer ID signature alone
 # isn't enough.
@@ -17,7 +17,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-APP_NAME="LiteSwitch"
+APP_NAME="Liteswitch"
 APP="./build/${APP_NAME}.app"
 PROFILE="${NOTARY_PROFILE:-liteswitch}"
 DIST="./dist"

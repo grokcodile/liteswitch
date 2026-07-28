@@ -1,9 +1,9 @@
-// LiteSwitch — flip any Spotlight panel on from anywhere.
+// Liteswitch — flip any Spotlight panel on from anywhere.
 //
-// LiteSwitch gives every Spotlight panel its own keyboard shortcut.
+// Liteswitch gives every Spotlight panel its own keyboard shortcut.
 //
 // macOS 26 gave Spotlight four panels — Apps ⌘1, Files ⌘2, Actions ⌘3,
-// Clipboard ⌘4 — reachable only after opening Spotlight itself. LiteSwitch lets
+// Clipboard ⌘4 — reachable only after opening Spotlight itself. Liteswitch lets
 // you assign a global shortcut to each panel directly.
 //
 // How panels open:
@@ -155,7 +155,7 @@ func optionRows(_ panel: Panel) -> Int { isUtility(panel) ? 1 : 0 }
 func worksWithoutAX(_ panel: Panel) -> Bool {
     ["apps", "colorpicker", "colorhistory", "textcapture", "keepawake"].contains(panel.defaultsKey)
 }
-/// Speak Text owns no LiteSwitch shortcut — it mirrors macOS's built-in "Speak
+/// Speak Text owns no Liteswitch shortcut — it mirrors macOS's built-in "Speak
 /// selection" hotkey — so it registers nothing and its card shows a read-only
 /// field plus a button into Spoken Content settings.
 func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
@@ -541,7 +541,7 @@ struct Shortcut: Equatable {
 }
 
 /// A read-only view of macOS's built-in "Speak selection" hotkey (System
-/// Settings → Accessibility → Spoken Content). LiteSwitch doesn't own this
+/// Settings → Accessibility → Spoken Content). Liteswitch doesn't own this
 /// shortcut; the Speak Text card only reflects whatever macOS has assigned.
 struct SpokenSelection: Equatable {
     let enabled: Bool
@@ -554,7 +554,7 @@ struct SpokenSelection: Equatable {
         return SpokenSelection(enabled: enabled, shortcut: combo.map(describe))
     }
 
-    /// The combo integer is exactly LiteSwitch's own Shortcut layout — Carbon
+    /// The combo integer is exactly Liteswitch's own Shortcut layout — Carbon
     /// modifier masks OR'd onto the virtual key code (cmdKey 0x100, shiftKey
     /// 0x200, optionKey 0x800, controlKey 0x1000) — so build a Shortcut and reuse
     /// its label, keeping one formatter. e.g. 4149 = 0x1035 → ⌃ esc.
@@ -1251,7 +1251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Capture Text: the system's own crosshair region selector
     /// (`/usr/sbin/screencapture -i`) writes a PNG, which Vision OCRs; the text
     /// lands on the clipboard with a confirmation pill. screencapture reads the
-    /// screen in its own process, so LiteSwitch needs no Screen Recording grant.
+    /// screen in its own process, so Liteswitch needs no Screen Recording grant.
     /// A cancelled selection (Esc) writes no file and is a silent no-op.
     func captureText() {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -1309,7 +1309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Toggle a power assertion that blocks sleep (what `caffeinate` does). Its
     /// type depends on the "Screen Sleep" option: keep the whole system awake,
     /// or keep it awake but still let the display sleep. Released automatically
-    /// if LiteSwitch quits, so it can never orphan. No permission needed.
+    /// if Liteswitch quits, so it can never orphan. No permission needed.
     @objc func toggleKeepAwake() {
         if keepAwakeAssertion != 0 {
             IOPMAssertionRelease(keepAwakeAssertion)
@@ -1338,12 +1338,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             : kIOPMAssertionTypePreventUserIdleDisplaySleep   // display stays awake too
         var id: IOPMAssertionID = 0
         if IOPMAssertionCreateWithName(type as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                       "LiteSwitch Keep Awake" as CFString, &id) == kIOReturnSuccess {
+                                       "Liteswitch Keep Awake" as CFString, &id) == kIOReturnSuccess {
             keepAwakeAssertion = id
         }
     }
 
-    /// A menu-bar cup that appears only while sleep is blocked (LiteSwitch is
+    /// A menu-bar cup that appears only while sleep is blocked (Liteswitch is
     /// otherwise menu-bar-less) — a persistent indicator, click it to turn off.
     private func updateKeepAwakeIndicator() {
         if keepAwakeAssertion != 0 {
@@ -1352,7 +1352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let img = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Keep Awake")
             img?.isTemplate = true
             item.button?.image = img
-            item.button?.toolTip = "LiteSwitch Keep Awake is on — click to turn off"
+            item.button?.toolTip = "Liteswitch Keep Awake is on — click to turn off"
             item.button?.target = self
             item.button?.action = #selector(toggleKeepAwake)
             keepAwakeStatusItem = item
@@ -1763,7 +1763,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         var yTop = H - topMargin
 
         yTop -= titleTextH
-        let titleLabel = NSTextField(labelWithString: "LiteSwitch")
+        let titleLabel = NSTextField(labelWithString: "Liteswitch")
         titleLabel.font = .systemFont(ofSize: 26, weight: .bold)
         titleLabel.alignment = .center
         titleLabel.frame = NSRect(x: pad, y: yTop, width: winW - pad * 2, height: titleTextH)
@@ -1784,8 +1784,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let swGap: CGFloat = 8
         let groupX = (winW - (capW + swGap + swW)) / 2
         let switchTip = enabled
-            ? "LiteSwitch is on: your shortcuts are live and it starts automatically at login. Switching off releases the shortcuts and stops it launching at login — unlike Quit, which only ends this session."
-            : "LiteSwitch is off: no shortcuts fire and it won't start at login. Switch on to restore both."
+            ? "Liteswitch is on: your shortcuts are live and it starts automatically at login. Switching off releases the shortcuts and stops it launching at login — unlike Quit, which only ends this session."
+            : "Liteswitch is off: no shortcuts fire and it won't start at login. Switch on to restore both."
         capLabel.toolTip = switchTip
         sw.toolTip = switchTip
         capLabel.frame = NSRect(x: groupX, y: yTop + (switchRowH - capH) / 2, width: capW, height: capH)
@@ -2032,7 +2032,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let quit = NSButton(title: "Quit", target: self, action: #selector(forceQuit))
         quit.bezelStyle = .rounded
         quit.contentTintColor = .systemRed
-        quit.toolTip = "Quit LiteSwitch for now. It still starts at login — use the switch above to stop that too."
+        quit.toolTip = "Quit Liteswitch for now. It still starts at login — use the switch above to stop that too."
         quit.frame = NSRect(x: pad, y: bottomMargin, width: btnW, height: btnH)
         v.addSubview(quit)
 
@@ -2211,7 +2211,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     /// "System Permissions:" label on one gray, the permission lights on a
     /// second gray. Each light is a green dot when granted, or a red, underlined
     /// link when not — clicking fires the real macOS request (prompting the user
-    /// and adding LiteSwitch to that permission's list). Nothing here blocks the
+    /// and adding Liteswitch to that permission's list). Nothing here blocks the
     /// app. Sits vertically centered in the [rowY, rowY+rowH] slot.
     private func addPermissionPill(hasAX: Bool, hasScreenRec: Bool, rowY: CGFloat, rowH: CGFloat, in v: NSView) {
         let pillH: CGFloat = 22, segPad: CGFloat = 11, itemGap: CGFloat = 16
@@ -2247,10 +2247,10 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
         let a = item("Accessibility", granted: hasAX, action: #selector(grantAccessibility),
                      tip: hasAX ? "Accessibility is on — the synthesized Spotlight shortcuts can run."
-                                : "Lets Files, Actions, Clipboard, and the Settings shortcut work. Click to ask macOS and add LiteSwitch to the list.")
+                                : "Lets Files, Actions, Clipboard, and the Settings shortcut work. Click to ask macOS and add Liteswitch to the list.")
         let s = item("Screen Recording", granted: hasScreenRec, action: #selector(grantScreenRecording),
                      tip: hasScreenRec ? "Screen Recording is on — Capture Text can read the selected region."
-                                       : "Lets Capture Text read the selected region. Click to ask macOS and add LiteSwitch to the list (takes effect after a relaunch).")
+                                       : "Lets Capture Text read the selected region. Click to ask macOS and add Liteswitch to the list (takes effect after a relaunch).")
         let aw = ceil(a.frame.width), sw2 = ceil(s.frame.width)
         let ah = ceil(a.frame.height), sh = ceil(s.frame.height)
 
@@ -2288,7 +2288,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     /// Fire the real macOS permission requests — each prompts the user and adds
-    /// LiteSwitch to that permission's list in System Settings.
+    /// Liteswitch to that permission's list in System Settings.
     @objc private func grantAccessibility() { appDelegate?.promptForAccessibility() }
     @objc private func grantScreenRecording() { _ = CGRequestScreenCaptureAccess() }
 
@@ -2761,7 +2761,7 @@ final class ColorHistoryPanel: NSPanel, NSTextFieldDelegate {
     /// only close via its close button (Esc still just ends a rename edit).
     override func cancelOperation(_ sender: Any?) {}
 
-    /// LiteSwitch is a menu-bar-less agent, so there's no File menu to supply
+    /// Liteswitch is a menu-bar-less agent, so there's no File menu to supply
     /// ⌘W — wire it up here.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
