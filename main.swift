@@ -1007,6 +1007,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Nothing selected: take the lot.
                 self.post(CGKeyCode(kVK_ANSI_A), .maskCommand)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    // Ask over AX again first. There was nothing to read a moment
+                    // ago because nothing was selected; now there is. Skipping this
+                    // is what still left a clipboard entry behind in apps that do
+                    // answer — which is most of them, Electron included — whenever
+                    // the shortcut was used without selecting anything first, the
+                    // ordinary way to tidy something you just typed.
+                    if let viaAX = self.selectedTextViaAX() {
+                        self.runPolish(viaAX, dictated: dictated, restoring: saved)
+                        return
+                    }
                     self.copySelectionText { all in
                         guard let all else {
                             self.endTidying()
