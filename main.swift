@@ -105,7 +105,7 @@ let panelInfo: [String: PanelInfo] = [
         examples: ["Recover a color you sampled earlier without picking it again.",
                    "Keep a palette pinned beside you while you design."]),
     "keepawake": PanelInfo(
-        body: "Holds a power assertion so your Mac stays up — the same thing caffeinate does, not a fake mouse jiggle. A cup appears in the menu bar, and clicking it turns it off. Quitting always releases it.",
+        body: "Stops your Mac going to sleep on its own, using the same built-in caffeinate mechanism macOS ships with. Turn on Screen Sleep and the display still goes dark while everything else keeps running, which saves power and rests the screen. A cup in the menu bar turns it all off.",
         examples: ["Keep a long render, download or backup alive.",
                    "Stop the screen sleeping halfway through a presentation."]),
     "textcapture": PanelInfo(
