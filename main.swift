@@ -257,8 +257,26 @@ extension UserDefaults {
     }
     /// Tidy Text: what to tell the on-device model. Two sets, because tidying
     /// text you typed and cleaning up speech are different jobs.
-    static let defaultPolishInstructions =
-        "Correct spelling, grammar, capitalisation and punctuation. Keep the original wording, tone and meaning — do not rephrase, shorten, or add anything."
+    /// Spelled out deliberately. "Correct spelling, grammar, capitalisation and
+    /// punctuation" on its own reads to this model as permission to fix only the
+    /// safe, local thing — it would mend a misspelling and hand back a sentence
+    /// with no capital and no full stop, and sometimes answer a question instead
+    /// of correcting it. Naming the mechanics fixes both, consistently.
+    ///
+    /// Naming them is also as far as it should go. A draft that added "a question
+    /// takes a question mark" had the model putting question marks on flat
+    /// statements and appending "— is that correct?"; one that asked it to leave
+    /// contractions alone changed nothing at all. It over-applies any rule that
+    /// tells it to transform something and ignores rules that tell it to hold
+    /// back, so extra clauses here are likelier to cost than to help.
+    static let defaultPolishInstructions = """
+        Fix every spelling, grammar, capitalisation and punctuation error. \
+        Capitalise the first word of every sentence and the pronoun I. End every \
+        sentence with the punctuation it needs. Split run-on sentences.
+
+        Keep the original wording, tone and meaning — do not rephrase, shorten, \
+        reorder or add anything.
+        """
     static let defaultDictationInstructions = """
         Turn dictated speech into clean written text.
 
