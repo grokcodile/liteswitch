@@ -59,7 +59,7 @@ let panels: [Panel] = [
     Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Run a Shortcut or a system action by typing its name.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
     Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Paste something you copied a while back, from macOS's own history.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
     Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Open System Settings. With Smart Toggle, press again to land back where you were.", spotlightKey: 0, defaultsKey: "settings"),
-    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Keep your Mac awake. A cup sits in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
+    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Keep your Mac awake. A coffee cup sits in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Grab the color under your cursor and copy it in whatever format you like.", spotlightKey: 0, defaultsKey: "colorpicker"),
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Every color you've picked. Click to copy, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Your Mac can read text aloud. This shows you how to switch it on.", spotlightKey: 0, defaultsKey: "speakclipboard"),
@@ -105,7 +105,7 @@ let panelInfo: [String: PanelInfo] = [
         examples: ["Recover a color you sampled earlier without picking it again.",
                    "Keep a palette pinned beside you while you design."]),
     "keepawake": PanelInfo(
-        body: "Stops your Mac going to sleep on its own. Turn on Screen Sleep and the display still goes dark while everything else keeps running. Closing a laptop's lid on battery overrides all of it and sleeps anyway. A cup in the menu bar turns it off.",
+        body: "Stops your Mac going to sleep on its own. Turn on Screen Sleep and the display still goes dark while everything else keeps running. Closing a laptop's lid on battery overrides all of it and sleeps anyway. While Keep Awake is on, a coffee cup sits in the menu bar. Click the cup or press the shortcut again to switch it off.",
         examples: ["Keep a long render, download or backup alive.",
                    "Stop the screen sleeping halfway through a presentation."]),
     "textcapture": PanelInfo(
