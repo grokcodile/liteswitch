@@ -78,62 +78,62 @@ struct PanelInfo {
 
 let panelInfo: [String: PanelInfo] = [
     "apps": PanelInfo(
-        body: "This is Spotlight's Applications panel: a grid of everything you have installed, ready to filter by name. It opens through a system stub instead of faking keystrokes, so it comes up instantly. It's also the one panel that needs no Accessibility permission at all.",
+        body: "Spotlight's Applications panel — every app you have, filtered by name. It opens through a system stub rather than faked keystrokes, so it's instant and needs no permissions at all.",
         examples: ["Launch an app without hunting the Dock or Launchpad.",
                    "Browse what's installed when the name won't come to you."],
         suggestion: "⌃⌥⌘. — first of the four panels, which run left to right in Spotlight's own order."),
     "files": PanelInfo(
-        body: "Spotlight's Files panel searches the same index Finder does, but only for documents and folders. No apps, no web results, no definitions or unit conversions cluttering it up. Just the file you were looking for. That's what separates it from plain ⌘Space.",
+        body: "Spotlight's Files panel searches the same index Finder does, but only documents and folders. No apps, no web results, nothing else in the way.",
         examples: ["Jump to a document you had open yesterday.",
                    "Open a folder buried deep without walking Finder down to it."],
         suggestion: "⌃⌥⌘/ — the path separator: this is the one that finds things."),
     "actions": PanelInfo(
-        body: "Every Shortcut you've built, plus macOS's own quick actions, run by typing a name. It's the closest thing your Mac has to a built-in command palette, and you never have to leave the keyboard.",
+        body: "Every Shortcut you've built, plus macOS's own quick actions, run by typing a name. It's the closest thing your Mac has to a command palette.",
         examples: ["Run a Shortcut by name instead of finding it in the app.",
                    "Fire off a system action in the middle of something else."],
         suggestion: "⌃⌥⌘\\ — the escape character: this is the one that does things."),
     "clipboard": PanelInfo(
-        body: "Your Mac quietly keeps a clipboard history, so you can paste something from a while back. There's nothing to install and nothing extra running. This is the system's own store, not another app watching everything you copy.",
+        body: "Your Mac keeps a clipboard history of its own. This opens it, so you can paste something from a while back. Nothing extra to install or leave running.",
         examples: ["Recover a link you copied an hour ago.",
                    "Grab the second-to-last thing you copied, without redoing the work."],
         suggestion: "⌃⌥⌘V — the paste key, for the paste history."),
     "settings": PanelInfo(
-        body: "Opens System Settings from wherever you are. With Smart Toggle on, pressing the shortcut again hides it and drops you back in the app you came from. Checking a setting becomes a quick peek instead of a detour you have to find your way out of.",
+        body: "Opens System Settings from wherever you are. With Smart Toggle on, pressing the shortcut again hides it and drops you back where you were.",
         examples: ["Flip a toggle mid-task and land straight back where you were.",
                    "Reach Wi-Fi, Sound or Displays without touching the menu bar."],
         suggestion: "⌃⌥⌘, — the preferences key every Mac app already uses."),
     "colorpicker": PanelInfo(
-        body: "Brings up the system loupe and copies whatever pixel you click, as Hex, RGB, HSL or SwiftUI. It copies the color itself too, so it drops straight into a color well. Apple's own process does the sampling, which is why this needs no Screen Recording permission. Every pick is saved to Color History.",
+        body: "Brings up the system loupe and copies the pixel you click, as Hex, RGB, HSL or SwiftUI. Apple's own process does the sampling, so it needs no Screen Recording. Every pick is saved to Color History.",
         examples: ["Lift a hex out of a screenshot and straight into CSS.",
                    "Match a brand color you can only see on screen."],
         suggestion: "⌃⌥⌘L — L for loupe."),
     "colorhistory": PanelInfo(
-        body: "A window of every color you've picked. Click a swatch to copy its code again, drag one out to save it as a PNG, or pin the ones worth keeping. Labels start as the hex, and you can rename them to something you'll actually recognize. It keeps the last 20, and pinned colors stay at the top.",
+        body: "Every color you've picked, in one window. Click a swatch to copy it again, drag one out as a PNG, or pin the keepers. It holds the last 20.",
         examples: ["Recover a color you sampled earlier without picking it again.",
                    "Keep a palette pinned beside you while you design."],
         suggestion: "⌃⌥⌘H — H for history, beside the picker's ⌃⌥⌘L."),
     "keepawake": PanelInfo(
-        body: "Holds a power assertion so your Mac stays up. That's the same thing the caffeinate command does, not a fake mouse jiggle. A cup shows up in the menu bar while it's on, and clicking it turns it off. Screen Sleep lets the display go dark while the system keeps working. Quitting always releases it, so you can't accidentally leave your Mac awake.",
+        body: "Holds a power assertion so your Mac stays up — the same thing caffeinate does, not a fake mouse jiggle. A cup appears in the menu bar, and clicking it turns it off. Quitting always releases it.",
         examples: ["Keep a long render, download or backup alive.",
                    "Stop the screen sleeping halfway through a presentation."],
         suggestion: "⌃⌥⌘K — K for Keep Awake."),
     "textcapture": PanelInfo(
-        body: "Drag a box around anything on screen and the text inside it lands on your clipboard. Think of it as a screenshot you can paste as words. Apple's Vision framework does the reading, right on your Mac, so it works offline and nothing gets uploaded. Remove Breaks flows the result onto one line when the original wrapping isn't worth keeping.",
+        body: "Drag a box around anything on screen and the text inside it lands on your clipboard. Apple's Vision framework reads it right on your Mac, so it works offline.",
         examples: ["Copy text out of a screenshot, a PDF, or a paused video.",
                    "Grab an error message from a dialog that won't let you select it."],
         suggestion: "⌃⌥⌘O — O for OCR."),
     "speakclipboard": PanelInfo(
-        body: "Your Mac already reads text aloud, in the same voices Siri uses. Liteswitch doesn't add a second voice engine, it just points you at that one. The card shows the shortcut macOS has given it, and Set Up… opens Spoken Content, where you turn it on and pick the voice and speed.",
+        body: "Your Mac already reads text aloud, in the same voices Siri uses. This doesn't add a second engine — it shows the shortcut macOS gave it, and Set Up… opens Spoken Content.",
         examples: ["Have a long article read to you while you do something else.",
                    "Proofread by ear — the mistakes you skim past are audible."],
         suggestion: "Set in System Settings, not here — macOS owns this shortcut."),
     "dictation": PanelInfo(
-        body: "Hold a key, talk, let go. That's the whole thing. Your Mac already does the transcribing, on-device with the offline model for your language, so nothing you say leaves the machine. What it won't do is hold-to-talk: macOS dictation is toggle-only, press to start and press again to stop. That one missing piece is all this adds.\n\nThe meter runs green while it's listening. It turns amber for a moment afterwards while dictation catches up, and pressing again during the amber carries you straight on. With Auto-Correct on it goes purple while the model rewrites, and the hold key is ignored until that's done, so a correction can't land in the middle of your next sentence.",
+        body: "Hold a key, talk, let go. Your Mac does the transcribing on-device, so nothing you say leaves it. What it won't do is hold-to-talk, and that's the only thing this adds. The meter is green while listening, amber while dictation catches up, purple while Auto-Correct rewrites.",
         examples: ["Get a long reply down without typing it all out.",
                    "Talk out a rough paragraph, then correct it by hand."],
         suggestion: "Hold Right ⌥ — nothing else claims it, and it's easy to find without looking."),
     "polish": PanelInfo(
-        body: "Fixes your text using Apple Intelligence's model, running on your Mac. No account, no API key, no per-word cost, and nothing uploaded anywhere.\n\nIt keeps two sets of instructions because it does two jobs. Run the shortcut on a selection and it proofreads: spelling, grammar, capitalization and punctuation, with your wording left alone. Nothing selected and it takes the whole field. Switch on Auto-Correct over on the Dictate Text card and it cleans up speech instead, dropping filler words and false starts and breaking run-on talk into sentences.\n\nBoth sets are yours to edit under Instructions…, so you can tell it to keep things short, match a house style, or whatever else you want.",
+        body: "Fixes spelling, grammar and punctuation with Apple Intelligence, running on your Mac. It keeps two sets of instructions for two jobs: proofreading what you selected, and cleaning up dictated speech. Both are yours to edit.",
         examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
                    "Turn a rambling dictation into something you'd actually send."],
         suggestion: "⌃⌥⌘P — P for proofread."),
@@ -1218,7 +1218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Not the red warning triangle the other failures use. Those are
                 // things you have to go and fix; this one is the model shrugging,
                 // and your text is exactly where you left it.
-                self.hud.showMessage("Stumped", symbol: "questionmark.circle.fill",
+                self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
                                      tint: .systemOrange)
                 Self.restoreClipboard(saved, on: pb)
                 return
