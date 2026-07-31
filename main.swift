@@ -283,8 +283,17 @@ extension UserDefaults {
     /// which then gets pasted into the document. The mechanical framing here is
     /// what stops the model reading this as a chat request.
     ///
-    /// The pattern behind all of it: it over-applies rules that tell it to
-    /// transform, and ignores rules that tell it to hold back.
+    /// The second paragraph is not decoration either — dropping it and keeping
+    /// only the mechanics above was tried, and over 24 samples it deleted the
+    /// whole second clause of "him and me was going to the shop but it dont open
+    /// till ten", and turned "can you send me the file thanks" into "I can send
+    /// you the file" — a request inverted into an offer. One is data loss and the
+    /// other reverses the meaning; this wording did neither.
+    ///
+    /// The pattern behind all of it, stated carefully: it over-applies rules that
+    /// tell it to transform, and ignores NARROW rules that tell it to hold back —
+    /// but the broad "keep the wording" guard is load-bearing, which the
+    /// contraction result on its own would have wrongly suggested it wasn't.
     static let defaultPolishInstructions = """
         Fix every spelling, grammar, capitalisation and punctuation error. \
         Capitalise the first word of every sentence and the pronoun I. End every \
