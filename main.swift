@@ -970,7 +970,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dictation the selection is an estimate, and if it came back empty,
     /// selecting all would rewrite the entire document instead of the sentence
     /// you just spoke.
-    func polishSelection(dictated: Bool = false) {
+    func polishSelection(dictated: Bool = false, known: String? = nil) {
         // One round trip at a time. Two overlapping ones race over the clipboard
         // and the selection, and the loser's paste lands wherever the caret has
         // got to by then — the same failure as dictating again mid-rewrite, just
@@ -983,6 +983,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard hasAccessibility else { endTidying(); promptForAccessibility(); return }
         let pb = NSPasteboard.general
         let saved = pb.string(forType: .string)
+
+        // Three ways to learn what's selected, cheapest first. Only the last one
+        // touches the clipboard, and it's the only one that leaves a trace there.
+        if let known {
+            runPolish(known, dictated: dictated, restoring: saved)
+            return
+        }
+        if let viaAX = selectedTextViaAX() {
+            runPolish(viaAX, dictated: dictated, restoring: saved)
+            return
+        }
 
         copySelectionText { [weak self] text in
             guard let self else { return }
@@ -1338,8 +1349,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showWaveform(tint: .systemPurple, mode: .processing)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self else { return }
-            if !self.selectDictatedRunExactly() { self.selectDictatedRun() }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.polishSelection(dictated: true) }
+            // The exact diff hands back the text it selected; the estimate can't,
+            // so that path still has to read the selection the slow way.
+            let dictatedText = self.selectDictatedRunExactly()
+            if dictatedText == nil { self.selectDictatedRun() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self.polishSelection(dictated: true, known: dictatedText)
+            }
         }
     }
 
@@ -1363,29 +1379,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Select exactly what dictation inserted, by diffing the field against the
     /// snapshot taken when it started: the common head and tail are what was
-    /// already there, so everything between them is new. Returns false when the
+    /// already there, so everything between them is new. Returns nil when the
     /// app won't expose its text (many Electron and web views), leaving the
     /// caller to fall back on the estimate.
-    private func selectDictatedRunExactly() -> Bool {
-        guard let field = dictationElement, let before = dictationBeforeText else { return false }
+    ///
+    /// Hands back the text as well as selecting it. The diff has already worked
+    /// out precisely which characters those are, so making the caller fetch them
+    /// again with a ⌘C would be both redundant and visible: that copy is the
+    /// app's own write to the clipboard, which lands in clipboard history where
+    /// nothing this tool does belongs.
+    private func selectDictatedRunExactly() -> String? {
+        guard let field = dictationElement, let before = dictationBeforeText else { return nil }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
-              let after = value as? String, after != before else { return false }
+              let after = value as? String, after != before else { return nil }
 
         // UTF-16 offsets, because that's what an AX range is counted in.
         let b = Array(before.utf16), a = Array(after.utf16)
-        guard a.count > b.count else { return false }
+        guard a.count > b.count else { return nil }
         var head = 0
         while head < b.count, a[head] == b[head] { head += 1 }
         var tail = 0
         while tail < b.count - head, a[a.count - 1 - tail] == b[b.count - 1 - tail] { tail += 1 }
         let length = a.count - tail - head
-        guard length > 0 else { return false }
+        guard length > 0 else { return nil }
 
         var range = CFRange(location: head, length: length)
-        guard let axRange = AXValueCreate(.cfRange, &range) else { return false }
-        return AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString,
-                                            axRange) == .success
+        guard let axRange = AXValueCreate(.cfRange, &range),
+              AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString,
+                                           axRange) == .success
+        else { return nil }
+        return String(decoding: a[head..<(head + length)], as: UTF16.self)
+    }
+
+    /// Read the selection straight out of the focused field, no ⌘C involved.
+    ///
+    /// Worth trying before the clipboard for the same reason as above: a copy is
+    /// the frontmost app's write, so it can't be marked transient from here and
+    /// turns up in clipboard history. Plenty of apps won't answer — Notes exposes
+    /// no focused element at all — hence the fallback rather than a replacement.
+    private func selectedTextViaAX() -> String? {
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(),
+                                            kAXFocusedUIElementAttribute as CFString,
+                                            &focused) == .success,
+              let element = focused, CFGetTypeID(element) == AXUIElementGetTypeID()
+        else { return nil }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element as! AXUIElement,
+                                            kAXSelectedTextAttribute as CFString,
+                                            &value) == .success,
+              let text = value as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return text
     }
 
     /// Fallback when the field is opaque: walk back over roughly as many words as
