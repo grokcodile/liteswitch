@@ -263,12 +263,28 @@ extension UserDefaults {
     /// with no capital and no full stop, and sometimes answer a question instead
     /// of correcting it. Naming the mechanics fixes both, consistently.
     ///
-    /// Naming them is also as far as it should go. A draft that added "a question
-    /// takes a question mark" had the model putting question marks on flat
-    /// statements and appending "— is that correct?"; one that asked it to leave
-    /// contractions alone changed nothing at all. It over-applies any rule that
-    /// tells it to transform something and ignores rules that tell it to hold
-    /// back, so extra clauses here are likelier to cost than to help.
+    /// Naming them is also as far as it should go. Three drafts that lost, so
+    /// they don't get tried again:
+    ///
+    /// - "A question takes a question mark" put question marks on flat statements
+    ///   and appended "— is that correct?".
+    /// - "Leave contractions as they are" changed nothing whatsoever.
+    /// - Spelling the contractions out ("dont becomes don't") did work — and cost
+    ///   grammar to get it. Over 12 samples against 12 for this wording, it fixed
+    ///   the grammar in 9 rather than 11, left "We was" and "it don't" standing,
+    ///   and reordered "him and me" into "I and him" three times, which this very
+    ///   instruction forbids. Leaving "it's" as "it is" is a style nit; leaving
+    ///   "we was" is a failure to do the job, so the nit stays.
+    ///
+    /// Simpler wordings lose differently. "Fix spelling, grammar, and make any
+    /// corrections needed" keeps contractions properly, but answers instead of
+    /// correcting, rewrites "the thing is" into "The issue is", drops openers
+    /// entirely, and leaks "Sure, here's the rewritten text:" into the output —
+    /// which then gets pasted into the document. The mechanical framing here is
+    /// what stops the model reading this as a chat request.
+    ///
+    /// The pattern behind all of it: it over-applies rules that tell it to
+    /// transform, and ignores rules that tell it to hold back.
     static let defaultPolishInstructions = """
         Fix every spelling, grammar, capitalisation and punctuation error. \
         Capitalise the first word of every sentence and the pronoun I. End every \
