@@ -54,18 +54,18 @@ struct Panel {
 // (Spotlight uses the copy glyph, not a clip).
 let sidebarApplications = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/SidebarApplicationsFolder.icns"
 let panels: [Panel] = [
-    Panel(name: "Applications", symbol: "square.grid.2x2", glyphPath: sidebarApplications, detail: "Browse and launch any installed app, through Spotlight's Applications panel.", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
-    Panel(name: "Files", symbol: "folder", glyphPath: nil, detail: "Search files and folders across your Mac, without the app and web results.", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
-    Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Run a Shortcut or quick system action by name.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
-    Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Browse macOS's clipboard history to paste something you copied earlier.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
-    Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Open System Settings — with Smart Toggle, press again to return to where you were.", spotlightKey: 0, defaultsKey: "settings"),
-    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Stop your Mac sleeping; a cup shows in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
-    Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Sample the color under your cursor and copy its code in the format you choose.", spotlightKey: 0, defaultsKey: "colorpicker"),
-    Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
-    Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
-    Panel(name: "Correct Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
-    Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
+    Panel(name: "Applications", symbol: "square.grid.2x2", glyphPath: sidebarApplications, detail: "Every app you have installed, in a grid you can filter by name.", spotlightKey: CGKeyCode(kVK_ANSI_1), defaultsKey: "apps"),
+    Panel(name: "Files", symbol: "folder", glyphPath: nil, detail: "Search your files and folders. No app or web results in the way.", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
+    Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Run a Shortcut or a system action by typing its name.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
+    Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Paste something you copied a while back, from macOS's own history.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
+    Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Open System Settings. With Smart Toggle, press again to land back where you were.", spotlightKey: 0, defaultsKey: "settings"),
+    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Keep your Mac awake. A cup sits in the menu bar while it's on.", spotlightKey: 0, defaultsKey: "keepawake"),
+    Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Grab the color under your cursor and copy it in whatever format you like.", spotlightKey: 0, defaultsKey: "colorpicker"),
+    Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Every color you've picked. Click to copy, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
+    Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Your Mac can read text aloud. This shows you how to switch it on.", spotlightKey: 0, defaultsKey: "speakclipboard"),
+    Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Drag a box around anything on screen and get its text on your clipboard.", spotlightKey: 0, defaultsKey: "textcapture"),
+    Panel(name: "Correct Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Fix spelling, grammar and punctuation with Apple Intelligence, right on your Mac.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and talk. Let go and it stops. That's the part macOS leaves out.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
 /// The long-form help each group's sheet shows: what a tool does, a couple of
@@ -78,62 +78,62 @@ struct PanelInfo {
 
 let panelInfo: [String: PanelInfo] = [
     "apps": PanelInfo(
-        body: "Spotlight's Applications panel — a grid of everything installed, ready to filter by name. It opens through the system's own Apps stub rather than by faking keystrokes, so it's instant and the one panel that needs no Accessibility permission at all.",
+        body: "This is Spotlight's Applications panel: a grid of everything you have installed, ready to filter by name. It opens through a system stub instead of faking keystrokes, so it comes up instantly. It's also the one panel that needs no Accessibility permission at all.",
         examples: ["Launch an app without hunting the Dock or Launchpad.",
                    "Browse what's installed when the name won't come to you."],
         suggestion: "⌃⌥⌘. — first of the four panels, which run left to right in Spotlight's own order."),
     "files": PanelInfo(
-        body: "Spotlight's Files panel: the same index Finder searches, scoped to documents and folders. No apps, web results, definitions or conversions in the way — just the file you're after, which is the difference between this and hitting ⌘Space.",
+        body: "Spotlight's Files panel searches the same index Finder does, but only for documents and folders. No apps, no web results, no definitions or unit conversions cluttering it up. Just the file you were looking for. That's what separates it from plain ⌘Space.",
         examples: ["Jump to a document you had open yesterday.",
                    "Open a folder buried deep without walking Finder down to it."],
-        suggestion: "⌃⌥⌘/ — the path separator: this is the one that finds things., beside the other panel chords."),
+        suggestion: "⌃⌥⌘/ — the path separator: this is the one that finds things."),
     "actions": PanelInfo(
-        body: "Spotlight's Actions panel — the Shortcuts you've built and macOS's own quick actions, run by typing their name. It's the closest thing the Mac has to a built-in command palette, and it never leaves the keyboard.",
+        body: "Every Shortcut you've built, plus macOS's own quick actions, run by typing a name. It's the closest thing your Mac has to a built-in command palette, and you never have to leave the keyboard.",
         examples: ["Run a Shortcut by name instead of finding it in the app.",
                    "Fire off a system action in the middle of something else."],
         suggestion: "⌃⌥⌘\\ — the escape character: this is the one that does things."),
     "clipboard": PanelInfo(
-        body: "Spotlight's Clipboard panel — macOS keeps a clipboard history of its own, so you can paste something from a while back. Nothing to install or leave running: this is the system's own store, not a third-party one watching your clipboard.",
+        body: "Your Mac quietly keeps a clipboard history, so you can paste something from a while back. There's nothing to install and nothing extra running. This is the system's own store, not another app watching everything you copy.",
         examples: ["Recover a link you copied an hour ago.",
                    "Grab the second-to-last thing you copied, without redoing the work."],
         suggestion: "⌃⌥⌘V — the paste key, for the paste history."),
     "settings": PanelInfo(
-        body: "Opens System Settings from anywhere. With Smart Toggle on, pressing the shortcut again hides it and puts you back in the app you came from — so checking a setting is a peek rather than a detour you have to navigate out of.",
+        body: "Opens System Settings from wherever you are. With Smart Toggle on, pressing the shortcut again hides it and drops you back in the app you came from. Checking a setting becomes a quick peek instead of a detour you have to find your way out of.",
         examples: ["Flip a toggle mid-task and land straight back where you were.",
                    "Reach Wi-Fi, Sound or Displays without touching the menu bar."],
         suggestion: "⌃⌥⌘, — the preferences key every Mac app already uses."),
     "colorpicker": PanelInfo(
-        body: "Pops the system's color loupe and copies the pixel under your cursor, in Hex, RGB, HSL or SwiftUI form — plus the color itself, so it drops into a color well. The sampling happens in Apple's own process, which is why this needs no Screen Recording permission. Every pick is saved to Color History.",
+        body: "Brings up the system loupe and copies whatever pixel you click, as Hex, RGB, HSL or SwiftUI. It copies the color itself too, so it drops straight into a color well. Apple's own process does the sampling, which is why this needs no Screen Recording permission. Every pick is saved to Color History.",
         examples: ["Lift a hex out of a screenshot and straight into CSS.",
                    "Match a brand color you can only see on screen."],
         suggestion: "⌃⌥⌘L — L for loupe."),
     "colorhistory": PanelInfo(
-        body: "A window of the colors you've picked. Click a swatch to copy its code again, drag one out to save it as a PNG, and pin the ones worth keeping. Labels show the hex and can be renamed to something you'll recognize. The last 20 are kept; pins sit at the top and stay.",
+        body: "A window of every color you've picked. Click a swatch to copy its code again, drag one out to save it as a PNG, or pin the ones worth keeping. Labels start as the hex, and you can rename them to something you'll actually recognize. It keeps the last 20, and pinned colors stay at the top.",
         examples: ["Recover a color you sampled earlier without picking it again.",
                    "Keep a palette pinned beside you while you design."],
         suggestion: "⌃⌥⌘H — H for history, beside the picker's ⌃⌥⌘L."),
     "keepawake": PanelInfo(
-        body: "Holds a power assertion so your Mac won't sleep — the same mechanism the caffeinate command uses, not a fake mouse jiggle. A cup appears in the menu bar while it's on, and clicking it turns it off. Screen Sleep lets the display sleep while the system stays up, and quitting always releases the assertion, so it can't strand your Mac awake.",
+        body: "Holds a power assertion so your Mac stays up. That's the same thing the caffeinate command does, not a fake mouse jiggle. A cup shows up in the menu bar while it's on, and clicking it turns it off. Screen Sleep lets the display go dark while the system keeps working. Quitting always releases it, so you can't accidentally leave your Mac awake.",
         examples: ["Keep a long render, download or backup alive.",
                    "Stop the screen sleeping halfway through a presentation."],
         suggestion: "⌃⌥⌘K — K for Keep Awake."),
     "textcapture": PanelInfo(
-        body: "Drag a box around anything on screen and its text is recognized and copied — a screenshot you can paste as words. Recognition uses Apple's Vision framework on-device, so it works offline and nothing is uploaded. Remove Breaks flows the result onto one line when the original line wrapping isn't worth keeping.",
+        body: "Drag a box around anything on screen and the text inside it lands on your clipboard. Think of it as a screenshot you can paste as words. Apple's Vision framework does the reading, right on your Mac, so it works offline and nothing gets uploaded. Remove Breaks flows the result onto one line when the original wrapping isn't worth keeping.",
         examples: ["Copy text out of a screenshot, a PDF, or a paused video.",
                    "Grab an error message from a dialog that won't let you select it."],
         suggestion: "⌃⌥⌘O — O for OCR."),
     "speakclipboard": PanelInfo(
-        body: "Mirrors macOS's own Speak selection rather than adding a second voice engine. The field shows the shortcut macOS has assigned it, so this card is a window onto that setting rather than a competing one; Set Up… opens Spoken Content, where you switch it on and choose the voice and speed.",
+        body: "Your Mac already reads text aloud, in the same voices Siri uses. Liteswitch doesn't add a second voice engine, it just points you at that one. The card shows the shortcut macOS has given it, and Set Up… opens Spoken Content, where you turn it on and pick the voice and speed.",
         examples: ["Have a long article read to you while you do something else.",
                    "Proofread by ear — the mistakes you skim past are audible."],
         suggestion: "Set in System Settings, not here — macOS owns this shortcut."),
     "dictation": PanelInfo(
-        body: "Hold a key and it transcribes what you say; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so hold-to-talk is the one thing it doesn't offer, and the only thing this adds. Transcription is macOS's, running on-device with the offline model for your language (Apple Intelligence manages it on supported Macs), so your audio never leaves the Mac. The meter reads green while listening, then amber for a beat while dictation catches up — press again during the amber to carry straight on. With Auto-Correct on it goes purple while the model rewrites, and the hold key is ignored until that finishes, so a rewrite can't land in the middle of your next sentence.",
+        body: "Hold a key, talk, let go. That's the whole thing. Your Mac already does the transcribing, on-device with the offline model for your language, so nothing you say leaves the machine. What it won't do is hold-to-talk: macOS dictation is toggle-only, press to start and press again to stop. That one missing piece is all this adds.\n\nThe meter runs green while it's listening. It turns amber for a moment afterwards while dictation catches up, and pressing again during the amber carries you straight on. With Auto-Correct on it goes purple while the model rewrites, and the hold key is ignored until that's done, so a correction can't land in the middle of your next sentence.",
         examples: ["Get a long reply down without typing it all out.",
                    "Talk out a rough paragraph, then correct it by hand."],
         suggestion: "Hold Right ⌥ — nothing else claims it, and it's easy to find without looking."),
     "polish": PanelInfo(
-        body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone — with nothing selected it takes the whole field; switch on Auto-Correct on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
+        body: "Fixes your text using Apple Intelligence's model, running on your Mac. No account, no API key, no per-word cost, and nothing uploaded anywhere.\n\nIt keeps two sets of instructions because it does two jobs. Run the shortcut on a selection and it proofreads: spelling, grammar, capitalization and punctuation, with your wording left alone. Nothing selected and it takes the whole field. Switch on Auto-Correct over on the Dictate Text card and it cleans up speech instead, dropping filler words and false starts and breaking run-on talk into sentences.\n\nBoth sets are yours to edit under Instructions…, so you can tell it to keep things short, match a house style, or whatever else you want.",
         examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
                    "Turn a rambling dictation into something you'd actually send."],
         suggestion: "⌃⌥⌘P — P for proofread."),
