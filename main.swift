@@ -1218,15 +1218,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Not the red warning triangle the other failures use. Those are
                 // things you have to go and fix; this one is the model shrugging,
                 // and your text is exactly where you left it.
-                self.hud.showIcon(symbol: "questionmark.circle.fill", tint: .systemOrange,
-                                  describedAs: "Couldn’t rewrite that")
+                self.hud.showMessage("Stumped", symbol: "questionmark.circle.fill",
+                                     tint: .systemOrange)
                 Self.restoreClipboard(saved, on: pb)
                 return
             }
             Self.setClipboardQuietly(Self.rewrap(result, like: text), on: pb)
             self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
-            self.hud.showIcon(symbol: "checkmark.circle.fill", tint: .systemGreen,
-                              describedAs: "Tidied")
+            self.hud.showMessage("Tidied", symbol: "checkmark.circle.fill", tint: .systemGreen)
             // Give the paste a moment to land before handing the clipboard back —
             // and only release the hold key once it has, since that paste is the
             // thing a new dictation would otherwise land in the middle of.
@@ -3055,29 +3054,6 @@ final class HUD {
     /// SF Symbol + message (Capture Text confirmations), styled like the color pill.
     /// `sticky` leaves the pill up until `hide()` — for states that last as long
     /// as you hold a key, rather than momentary confirmations.
-    /// The symbol on its own, in a circle. Where a tool has only two outcomes and
-    /// you just asked for it, the word beside the tick is saying a second time
-    /// what the tick already said. The panel is as tall as it is wide here, and
-    /// its corner radius is already half its height, so this comes out round.
-    ///
-    /// `describedAs` isn't decoration: dropping the label would otherwise leave
-    /// nothing for VoiceOver to read.
-    func showIcon(symbol: String, tint: NSColor, describedAs description: String) {
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: panelH, height: panelH))
-        // Bigger than the 18 it gets beside text — on its own there's nothing for
-        // it to be in proportion to, and 18 reads as undersized in the circle.
-        let d: CGFloat = 22
-        let icon = NSImageView(frame: NSRect(x: (panelH - d) / 2, y: (panelH - d) / 2,
-                                             width: d, height: d))
-        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)?
-            .withSymbolConfiguration(.init(pointSize: 19, weight: .semibold))
-        icon.contentTintColor = tint
-        icon.imageScaling = .scaleProportionallyDown
-        icon.setAccessibilityLabel(description)
-        content.addSubview(icon)
-        present(content, width: panelH)
-    }
-
     func showMessage(_ message: String, symbol: String, tint: NSColor, sticky: Bool = false) {
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
         let measured = ceil((message as NSString).size(withAttributes: [.font: font]).width)
