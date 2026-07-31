@@ -73,70 +73,57 @@ let panels: [Panel] = [
 struct PanelInfo {
     let body: String
     let examples: [String]
-    let suggestion: String
 }
 
 let panelInfo: [String: PanelInfo] = [
     "apps": PanelInfo(
         body: "Spotlight's Applications panel — every app you have, filtered by name. It opens through a system stub rather than faked keystrokes, so it's instant and needs no permissions at all.",
         examples: ["Launch an app without hunting the Dock or Launchpad.",
-                   "Browse what's installed when the name won't come to you."],
-        suggestion: "⌃⌥⌘. — first of the four panels, which run left to right in Spotlight's own order."),
+                   "Browse what's installed when the name won't come to you."]),
     "files": PanelInfo(
         body: "Spotlight's Files panel searches the same index Finder does, but only documents and folders. No apps, no web results, nothing else in the way.",
         examples: ["Jump to a document you had open yesterday.",
-                   "Open a folder buried deep without walking Finder down to it."],
-        suggestion: "⌃⌥⌘/ — the path separator: this is the one that finds things."),
+                   "Open a folder buried deep without walking Finder down to it."]),
     "actions": PanelInfo(
         body: "Every Shortcut you've built, plus macOS's own quick actions, run by typing a name. It's the closest thing your Mac has to a command palette.",
         examples: ["Run a Shortcut by name instead of finding it in the app.",
-                   "Fire off a system action in the middle of something else."],
-        suggestion: "⌃⌥⌘\\ — the escape character: this is the one that does things."),
+                   "Fire off a system action in the middle of something else."]),
     "clipboard": PanelInfo(
         body: "Your Mac keeps a clipboard history of its own. This opens it, so you can paste something from a while back. Nothing extra to install or leave running.",
         examples: ["Recover a link you copied an hour ago.",
-                   "Grab the second-to-last thing you copied, without redoing the work."],
-        suggestion: "⌃⌥⌘V — the paste key, for the paste history."),
+                   "Grab the second-to-last thing you copied, without redoing the work."]),
     "settings": PanelInfo(
         body: "Opens System Settings from wherever you are. With Smart Toggle on, pressing the shortcut again hides it and drops you back where you were.",
         examples: ["Flip a toggle mid-task and land straight back where you were.",
-                   "Reach Wi-Fi, Sound or Displays without touching the menu bar."],
-        suggestion: "⌃⌥⌘, — the preferences key every Mac app already uses."),
+                   "Reach Wi-Fi, Sound or Displays without touching the menu bar."]),
     "colorpicker": PanelInfo(
         body: "Brings up the system loupe and copies the pixel you click, as Hex, RGB, HSL or SwiftUI. Apple's own process does the sampling, so it needs no Screen Recording. Every pick is saved to Color History.",
         examples: ["Lift a hex out of a screenshot and straight into CSS.",
-                   "Match a brand color you can only see on screen."],
-        suggestion: "⌃⌥⌘L — L for loupe."),
+                   "Match a brand color you can only see on screen."]),
     "colorhistory": PanelInfo(
         body: "Every color you've picked, in one window. Click a swatch to copy it again, drag one out as a PNG, or pin the keepers. It holds the last 20.",
         examples: ["Recover a color you sampled earlier without picking it again.",
-                   "Keep a palette pinned beside you while you design."],
-        suggestion: "⌃⌥⌘H — H for history, beside the picker's ⌃⌥⌘L."),
+                   "Keep a palette pinned beside you while you design."]),
     "keepawake": PanelInfo(
         body: "Holds a power assertion so your Mac stays up — the same thing caffeinate does, not a fake mouse jiggle. A cup appears in the menu bar, and clicking it turns it off. Quitting always releases it.",
         examples: ["Keep a long render, download or backup alive.",
-                   "Stop the screen sleeping halfway through a presentation."],
-        suggestion: "⌃⌥⌘K — K for Keep Awake."),
+                   "Stop the screen sleeping halfway through a presentation."]),
     "textcapture": PanelInfo(
         body: "Drag a box around anything on screen and the text inside it lands on your clipboard. Apple's Vision framework reads it right on your Mac, so it works offline.",
         examples: ["Copy text out of a screenshot, a PDF, or a paused video.",
-                   "Grab an error message from a dialog that won't let you select it."],
-        suggestion: "⌃⌥⌘O — O for OCR."),
+                   "Grab an error message from a dialog that won't let you select it."]),
     "speakclipboard": PanelInfo(
         body: "Your Mac already reads text aloud, in the same voices Siri uses. This doesn't add a second engine — it shows the shortcut macOS gave it, and Set Up… opens Spoken Content.",
         examples: ["Have a long article read to you while you do something else.",
-                   "Proofread by ear — the mistakes you skim past are audible."],
-        suggestion: "Set in System Settings, not here — macOS owns this shortcut."),
+                   "Proofread by ear — the mistakes you skim past are audible."]),
     "dictation": PanelInfo(
         body: "Hold a key, talk, let go. Your Mac does the transcribing on-device, so nothing you say leaves it. What it won't do is hold-to-talk, and that's the only thing this adds. The meter is green while listening, amber while dictation catches up, purple while Auto-Correct rewrites.",
         examples: ["Get a long reply down without typing it all out.",
-                   "Talk out a rough paragraph, then correct it by hand."],
-        suggestion: "Hold Right ⌥ — nothing else claims it, and it's easy to find without looking."),
+                   "Talk out a rough paragraph, then correct it by hand."]),
     "polish": PanelInfo(
         body: "Fixes spelling, grammar and punctuation with Apple Intelligence, running on your Mac. It keeps two sets of instructions for two jobs: proofreading what you selected, and cleaning up dictated speech. Both are yours to edit.",
         examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
-                   "Turn a rambling dictation into something you'd actually send."],
-        suggestion: "⌃⌥⌘P — P for proofread."),
+                   "Turn a rambling dictation into something you'd actually send."]),
 ]
 
 /// Panels shown in the "System Utilities" group rather than the "Spotlight" group,
@@ -2563,13 +2550,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 line.frame.origin.y = y
                 doc.addSubview(line)
                 y = line.frame.maxY + 2
-            }
-            if let suggestion = info?.suggestion {
-                let line = label("Suggested: " + suggestion, size: 11, weight: .regular,
-                                 color: .tertiaryLabelColor, x: textX, width: textW)
-                line.frame.origin.y = y + 3
-                doc.addSubview(line)
-                y = line.frame.maxY
             }
         }
         doc.frame = NSRect(x: 0, y: 0, width: innerW, height: y)
