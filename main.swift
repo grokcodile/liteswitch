@@ -1225,7 +1225,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             Self.setClipboardQuietly(Self.rewrap(result, like: text), on: pb)
             self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
-            self.hud.showMessage("Tidied", symbol: "checkmark.circle.fill", tint: .systemGreen)
+            // Auto-Tidy names itself; the manual one doesn't need to. You pressed
+            // the shortcut for that one, so what just happened isn't in question —
+            // but Auto-Tidy runs on its own, and if your words come back changed
+            // it should be clear which thing changed them.
+            self.hud.showMessage(dictated ? "Auto-Tidied" : "Tidied",
+                                 symbol: "checkmark.circle.fill", tint: .systemGreen)
             // Give the paste a moment to land before handing the clipboard back —
             // and only release the hold key once it has, since that paste is the
             // thing a new dictation would otherwise land in the middle of.
