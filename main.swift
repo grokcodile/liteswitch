@@ -302,6 +302,18 @@ extension UserDefaults {
         Keep the original wording, tone and meaning — do not rephrase, shorten, \
         reorder or add anything.
         """
+    /// The "those removals are the only ones" paragraph is doing specific work.
+    /// Without it, three sentences here tell the model to remove things and the
+    /// guard only forbade *adding* — so "remove filler" read as a general licence
+    /// to trim, and it cut words the speaker meant. "I'm not sure if anybody else
+    /// can get this working well or not" came back without the "or not" every
+    /// time; "worth it or not honestly" lost the "or not" and moved the
+    /// "honestly".
+    ///
+    /// Adding "or leave anything out" to the guard alone barely helped — 1 case in
+    /// 3. Closing the list is what fixed it: 3 in 3, on both, while still
+    /// stripping the um and uh. The lesson matches the one on the set above: this
+    /// model needs the *scope* of an instruction bounded, or it generalises it.
     static let defaultDictationInstructions = """
         Turn dictated speech into clean written text.
 
@@ -315,9 +327,12 @@ extension UserDefaults {
         misrecognized words only when the intended word is unmistakable from \
         context.
 
+        Those removals are the only ones. Every other word the speaker said \
+        stays, including words that add no new information.
+
         Keep the speaker's own words, voice and meaning. Do not summarise, \
-        expand, reorder the ideas, make it more formal, or add anything that \
-        wasn't said.
+        expand, reorder the ideas, make it more formal, add anything that \
+        wasn't said, or leave anything out.
         """
     var polishInstructions: String {
         get { string(forKey: "polishInstructions") ?? UserDefaults.defaultPolishInstructions }
