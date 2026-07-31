@@ -1232,6 +1232,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Whether the model talked *about* the text instead of rewriting it.
+    ///
+    /// Given something it can't make sense of, it doesn't fail — it explains:
+    /// "I cannot rewrite this text because it appears to be a typo or corrupted
+    /// input." That sentence was then pasted into the document in place of what
+    /// was there, which is worse than doing nothing.
+    ///
+    /// Both signals are required, because either alone gets it wrong. Refusal
+    /// phrasing catches real writing — "i cannot make it tomorrow sorry" tidies
+    /// quite properly to "I cannot make it tomorrow. Sorry.", and so do "I am
+    /// unable to attend the meeting" and "unfortunately the original message was
+    /// lost". Low overlap catches real work too — "teh" becoming "the" keeps
+    /// nothing, and stripping filler out of dictation keeps little. Together they
+    /// separate cleanly: over the collected outputs, refusals kept none of the
+    /// input's words while rewrites kept nearly all of them.
+    private static func isRefusal(_ output: String, for input: String) -> Bool {
+        let markers = ["cannot rewrite", "can't rewrite", "cannot assist", "can't assist",
+                       "cannot process", "can't process", "cannot help", "can't help",
+                       "unable to rewrite", "unable to process", "cannot determine",
+                       "can't determine", "please provide", "different request",
+                       "ready to assist", "does not contain", "no meaningful",
+                       "random characters", "random sequence", "corrupted input"]
+        let lower = output.lowercased()
+        guard markers.contains(where: { lower.contains($0) }) else { return false }
+
+        func words(_ s: String) -> Set<String> {
+            Set(s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        }
+        // A refusal sometimes quotes the text back at you — "I cannot rewrite the
+        // text "xkcd flurb wozzle" as it does not contain meaningful content" —
+        // and the quoted copy would otherwise read as the input having survived,
+        // which let exactly that one through. Quoted material is the model citing,
+        // not rewriting, so it doesn't count towards survival.
+        func unquoted(_ s: String) -> String {
+            var out = "", inside = false
+            for c in s {
+                if c == "\"" || c == "\u{201C}" || c == "\u{201D}" { inside.toggle(); continue }
+                if !inside { out.append(c) }
+            }
+            return out
+        }
+        let before = words(input)
+        guard !before.isEmpty else { return false }   // punctuation only; nothing to compare
+        let after = words(unquoted(output))
+        return Double(before.filter { after.contains($0) }.count) / Double(before.count) < 0.5
+    }
+
     /// Run `text` through Apple Intelligence's on-device model with the saved
     /// instructions. Nothing leaves the Mac. `done` is called on the main queue,
     /// with nil if the model is unavailable or refuses.
@@ -1254,8 +1301,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } catch {
                 output = nil
             }
-            let result = output
-            await MainActor.run { done(result?.isEmpty == false ? result : nil) }
+            // A refusal is a valid-looking string, so it has to be caught here or
+            // it gets pasted over the user's text as though it were the rewrite.
+            // nil is the existing "couldn't do it" signal: the HUD says so and the
+            // text is left alone.
+            var result = output
+            if let out = result, Self.isRefusal(out, for: text) { result = nil }
+            let final = result
+            await MainActor.run { done(final?.isEmpty == false ? final : nil) }
         }
     }
 
