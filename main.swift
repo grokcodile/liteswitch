@@ -64,7 +64,7 @@ let panels: [Panel] = [
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your recent picks — click to copy a code, drag one out as a PNG, pin the keepers.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Mirrors macOS's own Speak selection — set it up in Accessibility settings.", spotlightKey: 0, defaultsKey: "speakclipboard"),
     Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Select a region of the screen and its text is recognized and copied.", spotlightKey: 0, defaultsKey: "textcapture"),
-    Panel(name: "Tidy Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Correct Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Rewrite the selected text with Apple Intelligence, on-device, following instructions you set.", spotlightKey: 0, defaultsKey: "polish"),
     Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and it dictates, release and it stops — the hold-to-talk dictation macOS itself doesn't offer.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
@@ -128,12 +128,12 @@ let panelInfo: [String: PanelInfo] = [
                    "Proofread by ear — the mistakes you skim past are audible."],
         suggestion: "Set in System Settings, not here — macOS owns this shortcut."),
     "dictation": PanelInfo(
-        body: "Hold a key and it transcribes what you say; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so hold-to-talk is the one thing it doesn't offer, and the only thing this adds. Transcription is macOS's, running on-device with the offline model for your language (Apple Intelligence manages it on supported Macs), so your audio never leaves the Mac. The meter reads green while listening, then amber for a beat while dictation catches up — press again during the amber to carry straight on. With Auto-Tidy on it goes purple while the model rewrites, and the hold key is ignored until that finishes, so a rewrite can't land in the middle of your next sentence.",
+        body: "Hold a key and it transcribes what you say; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so hold-to-talk is the one thing it doesn't offer, and the only thing this adds. Transcription is macOS's, running on-device with the offline model for your language (Apple Intelligence manages it on supported Macs), so your audio never leaves the Mac. The meter reads green while listening, then amber for a beat while dictation catches up — press again during the amber to carry straight on. With Auto-Correct on it goes purple while the model rewrites, and the hold key is ignored until that finishes, so a rewrite can't land in the middle of your next sentence.",
         examples: ["Get a long reply down without typing it all out.",
-                   "Talk out a rough paragraph, then tidy it up by hand."],
+                   "Talk out a rough paragraph, then correct it by hand."],
         suggestion: "Hold Right ⌥ — nothing else claims it, and it's easy to find without looking."),
     "polish": PanelInfo(
-        body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone — with nothing selected it takes the whole field; switch on Auto-Tidy on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
+        body: "Rewrites text with Apple Intelligence's model, running on your Mac — no account, no API key, no per-word cost, and nothing uploaded. It keeps two sets of instructions because it does two jobs: run the shortcut on a selection and it proofreads lightly, fixing spelling, grammar and punctuation while leaving your wording alone — with nothing selected it takes the whole field; switch on Auto-Correct on the Dictate Text card and it cleans up speech instead, dropping filler words, false starts and doubled words and breaking run-on talk into sentences. Both sets are yours to rewrite under Instructions… — tell it to keep things short, or match a house style, or anything else.",
         examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
                    "Turn a rambling dictation into something you'd actually send."],
         suggestion: "⌃⌥⌘P — P for proofread."),
@@ -255,7 +255,7 @@ extension UserDefaults {
         get { object(forKey: "keepAwakeAllowDisplaySleep") as? Bool ?? true }
         set { set(newValue, forKey: "keepAwakeAllowDisplaySleep") }
     }
-    /// Tidy Text: what to tell the on-device model. Two sets, because tidying
+    /// Correct Text: what to tell the on-device model. Two sets, because correcting
     /// text you typed and cleaning up speech are different jobs.
     /// Spelled out deliberately. "Correct spelling, grammar, capitalisation and
     /// punctuation" on its own reads to this model as permission to fix only the
@@ -338,7 +338,7 @@ extension UserDefaults {
     /// Instructions window and clicking Save without typing anything is enough to
     /// do that, and from then on the saved copy wins and every later improvement
     /// to the default silently never arrives — which is exactly what happened
-    /// when Auto-Tidy kept dropping words after the wording was supposedly fixed.
+    /// when Auto-Correct kept dropping words after the wording was supposedly fixed.
     /// Nothing stored means "follow the default", so store nothing unless it
     /// genuinely differs.
     var polishInstructions: String {
@@ -361,7 +361,7 @@ extension UserDefaults {
             }
         }
     }
-    /// Tidy Text: run dictated text through the model as soon as it lands. On by
+    /// Correct Text: run dictated text through the model as soon as it lands. On by
     /// default — speech nearly always wants the filler stripped.
     var polishDictation: Bool {
         get { object(forKey: "polishDictation") as? Bool ?? true }
@@ -655,18 +655,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // have dictation running right now.
     private var holdMonitors: [Any] = []
     private var dictating = false
-    /// True from the moment dictation stops until Auto-Tidy has finished with the
+    /// True from the moment dictation stops until Auto-Correct has finished with the
     /// text. `dictating` can't stand in for this: it clears the instant dictation
     /// stops, while the round trip that follows — select, copy, run the model,
     /// paste — keeps running for seconds afterwards. Dictating again inside that
     /// window lets the pending paste land in the middle of the new utterance,
     /// which is exactly how the text came back doubled and jumbled.
-    private var tidying = false
+    private var correcting = false
     /// Insurance for the flag above. The model call has no timeout of its own, so
-    /// without this one hung request would leave `tidying` set and the hold key
+    /// without this one hung request would leave `correcting` set and the hold key
     /// dead until the app restarts. Long enough not to fire during a normal
     /// rewrite; short enough that a wedge recovers on its own.
-    private var tidyWatchdog: DispatchWorkItem?
+    private var correctionWatchdog: DispatchWorkItem?
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
     /// cancelled if the key goes back down within the grace period.
     private var pendingDictationStop: DispatchWorkItem?
@@ -763,7 +763,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// Two copies do not share nicely. Each registers the same global hotkeys and
     /// installs its own dictation monitor, so one keypress fires twice and two
-    /// Auto-Tidy passes rewrite the same sentence while the other is pasting into
+    /// Auto-Correct passes rewrite the same sentence while the other is pasting into
     /// it — which reads as dictated text coming back mangled and repeated.
     ///
     /// This asks which processes are running rather than setting
@@ -1035,7 +1035,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             trigger: Shortcut.load(panel).map { CGKeyCode($0.keyCode) })
     }
 
-    // MARK: Tidy Text
+    // MARK: Correct Text
 
     /// Rewrite the selection in place: copy it, run it through the on-device
     /// model with the user's instructions, and paste the result back. The
@@ -1043,7 +1043,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// With nothing selected, it takes the whole field — ⌘A then copy — so the
     /// shortcut does something useful when you just want the thing you're looking
-    /// at tidied. That fallback is deliberately NOT used for Auto-Tidy: after
+    /// at corrected. That fallback is deliberately NOT used for Auto-Correct: after
     /// dictation the selection is an estimate, and if it came back empty,
     /// selecting all would rewrite the entire document instead of the sentence
     /// you just spoke.
@@ -1054,10 +1054,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // reached by pressing the shortcut twice. The dictated path claimed this
         // back in stopDictation; a manual press hasn't.
         if !dictated {
-            if tidying { NSSound.beep(); return }
-            beginTidying()
+            if correcting { NSSound.beep(); return }
+            beginCorrecting()
         }
-        guard hasAccessibility else { endTidying(); promptForAccessibility(); return }
+        guard hasAccessibility else { endCorrecting(); promptForAccessibility(); return }
         let pb = NSPasteboard.general
         let saved = pb.string(forType: .string)
 
@@ -1077,7 +1077,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let text {
                 self.runPolish(text, dictated: dictated, restoring: saved)   // ends it
             } else if dictated {
-                self.endTidying()
+                self.endCorrecting()
                 self.hud.hide()          // nothing to work on; leave the text alone
                 Self.restoreClipboard(saved, on: pb)
             } else {
@@ -1096,8 +1096,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     self.copySelectionText { all in
                         guard let all else {
-                            self.endTidying()
-                            self.hud.showMessage("No text to tidy", symbol: "text.badge.xmark", tint: .systemRed)
+                            self.endCorrecting()
+                            self.hud.showMessage("No text to correct", symbol: "text.badge.xmark", tint: .systemRed)
                             Self.restoreClipboard(saved, on: pb)
                             return
                         }
@@ -1177,7 +1177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Put text on the clipboard without it turning up in clipboard history.
     ///
-    /// Tidy Text only uses the clipboard as a courier: the rewritten text goes on
+    /// Correct Text only uses the clipboard as a courier: the rewritten text goes on
     /// it so ⌘V can carry it into the app, and the original goes straight back
     /// after. Neither is something you copied, and both used to land in the very
     /// history the Clipboard panel shows — so one tidy left two stray entries.
@@ -1214,7 +1214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         polish(text, dictated: dictated) { [weak self] result in
             guard let self else { return }
             guard let result else {
-                self.endTidying()
+                self.endCorrecting()
                 // Not the red warning triangle the other failures use. Those are
                 // things you have to go and fix; this one is the model shrugging,
                 // and your text is exactly where you left it.
@@ -1225,18 +1225,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             Self.setClipboardQuietly(Self.rewrap(result, like: text), on: pb)
             self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
-            // Auto-Tidy names itself; the manual one doesn't need to. You pressed
+            // Auto-Correct names itself; the manual one doesn't need to. You pressed
             // the shortcut for that one, so what just happened isn't in question —
-            // but Auto-Tidy runs on its own, and if your words come back changed
+            // but Auto-Correct runs on its own, and if your words come back changed
             // it should be clear which thing changed them.
-            self.hud.showMessage(dictated ? "Auto-Tidied" : "Tidied",
+            self.hud.showMessage(dictated ? "Auto-Corrected" : "Corrected",
                                  symbol: "checkmark.circle.fill", tint: .systemGreen)
             // Give the paste a moment to land before handing the clipboard back —
             // and only release the hold key once it has, since that paste is the
             // thing a new dictation would otherwise land in the middle of.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 Self.restoreClipboard(saved, on: pb)
-                self.endTidying()
+                self.endCorrecting()
             }
         }
     }
@@ -1364,9 +1364,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.hud.showWaveform(tint: .systemGreen)
                     return
                 }
-                // Not while Auto-Tidy still has the text: starting again here is
+                // Not while Auto-Correct still has the text: starting again here is
                 // what let the previous rewrite paste itself into this sentence.
-                if !self.dictating && !self.tidying { self.armDictation() }
+                if !self.dictating && !self.correcting { self.armDictation() }
             } else {
                 self.disarmDictation()          // let go inside the dead zone: nothing happened
                 if self.dictating { self.scheduleDictationStop() }
@@ -1475,23 +1475,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + grace, execute: work)
     }
 
-    /// Claim the text for the Auto-Tidy round trip. Every path that finishes with
-    /// it — including the ones that give up — has to call `endTidying`, or the
+    /// Claim the text for the Auto-Correct round trip. Every path that finishes with
+    /// it — including the ones that give up — has to call `endCorrecting`, or the
     /// hold key stays dead until the watchdog fires.
-    private func beginTidying() {
-        tidying = true
-        tidyWatchdog?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.endTidying() }
-        tidyWatchdog = work
+    private func beginCorrecting() {
+        correcting = true
+        correctionWatchdog?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.endCorrecting() }
+        correctionWatchdog = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: work)
     }
 
     /// Safe to call when no tidy is in flight, so the shared paths can call it
     /// unconditionally rather than each having to know how they were reached.
-    private func endTidying() {
-        tidying = false
-        tidyWatchdog?.cancel()
-        tidyWatchdog = nil
+    private func endCorrecting() {
+        correcting = false
+        correctionWatchdog?.cancel()
+        correctionWatchdog = nil
     }
 
     private func stopDictation() {
@@ -1503,11 +1503,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !pressDictationMenuItem(starting: false) { post(CGKeyCode(kVK_Escape), []) }
 
         guard UserDefaults.standard.polishDictation else { hud.hide(); return }
-        // Auto-Tidy: select what was just dictated and rewrite it in place.
+        // Auto-Correct: select what was just dictated and rewrite it in place.
         // Dictation leaves the caret at the end of its insertion, so shift-select
         // back over it — that's the only handle we have on "the dictated text",
         // since it lands in the app, not in us.
-        beginTidying()
+        beginCorrecting()
         // Purple, not the amber above. The two waits look the same to the user but
         // aren't: amber is the grace period, where pressing again deliberately
         // carries straight on, and this one is the rewrite, where pressing again
@@ -2382,7 +2382,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 v.addSubview(btn)
             }
             if panel.defaultsKey == "dictation" {
-                centeredCheckbox("Auto-Tidy", on: UserDefaults.standard.polishDictation,
+                centeredCheckbox("Auto-Correct", on: UserDefaults.standard.polishDictation,
                                  action: #selector(polishDictationChanged(_:)))
             }
             if panel.defaultsKey == "colorpicker" {
@@ -2821,8 +2821,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 }
 
-/// The editor for what Tidy Text tells the on-device model. Two sets, because
-/// the tool does two different jobs: tidying text you selected, and cleaning up
+/// The editor for what Correct Text tells the on-device model. Two sets, because
+/// the tool does two different jobs: correcting text you selected, and cleaning up
 /// what you just dictated.
 final class InstructionsWindow: NSWindow {
     private let selectionView = NSTextView()
@@ -2832,7 +2832,7 @@ final class InstructionsWindow: NSWindow {
         let w: CGFloat = 520, h: CGFloat = 520
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Tidy Text Instructions"
+        title = "Correct Text Instructions"
         isReleasedWhenClosed = false
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
@@ -2875,7 +2875,7 @@ final class InstructionsWindow: NSWindow {
         section("Typed Text Instructions", "Used when you run the shortcut on text you've selected.",
                 selectionView, text: UserDefaults.standard.polishInstructions,
                 y: 356, boxH: 74, resetAction: #selector(restoreSelection))
-        section("Dictated Text Instructions", "Used by Auto-Tidy, on what Dictate Text just typed.",
+        section("Dictated Text Instructions", "Used by Auto-Correct, on what Dictate Text just typed.",
                 dictationView, text: UserDefaults.standard.dictationInstructions,
                 y: 80, boxH: 216, resetAction: #selector(restoreDictation))
 
