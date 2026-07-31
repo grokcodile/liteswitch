@@ -1218,7 +1218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Not the red warning triangle the other failures use. Those are
                 // things you have to go and fix; this one is the model shrugging,
                 // and your text is exactly where you left it.
-                self.hud.showMessage("I can’t fix that", symbol: "questionmark.circle.fill",
+                self.hud.showMessage("Nonsense", symbol: "questionmark.circle.fill",
                                      tint: .systemOrange)
                 Self.restoreClipboard(saved, on: pb)
                 return
