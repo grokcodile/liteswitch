@@ -128,7 +128,7 @@ let panelInfo: [String: PanelInfo] = [
                    "Proofread by ear — the mistakes you skim past are audible."],
         suggestion: "Set in System Settings, not here — macOS owns this shortcut."),
     "dictation": PanelInfo(
-        body: "Hold a key and it transcribes what you say; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so hold-to-talk is the one thing it doesn't offer, and the only thing this adds. Transcription is macOS's, running on-device with the offline model for your language (Apple Intelligence manages it on supported Macs), so your audio never leaves the Mac. The meter reads green while listening, then amber for a beat while dictation catches up — press again during the amber to carry straight on.",
+        body: "Hold a key and it transcribes what you say; let go and it stops. macOS's own dictation is toggle-only — press to start, press again to stop — so hold-to-talk is the one thing it doesn't offer, and the only thing this adds. Transcription is macOS's, running on-device with the offline model for your language (Apple Intelligence manages it on supported Macs), so your audio never leaves the Mac. The meter reads green while listening, then amber for a beat while dictation catches up — press again during the amber to carry straight on. With Auto-Tidy on it goes purple while the model rewrites, and the hold key is ignored until that finishes, so a rewrite can't land in the middle of your next sentence.",
         examples: ["Get a long reply down without typing it all out.",
                    "Talk out a rough paragraph, then tidy it up by hand."],
         suggestion: "Hold Right ⌥ — nothing else claims it, and it's easy to find without looking."),
@@ -578,6 +578,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // have dictation running right now.
     private var holdMonitors: [Any] = []
     private var dictating = false
+    /// True from the moment dictation stops until Auto-Tidy has finished with the
+    /// text. `dictating` can't stand in for this: it clears the instant dictation
+    /// stops, while the round trip that follows — select, copy, run the model,
+    /// paste — keeps running for seconds afterwards. Dictating again inside that
+    /// window lets the pending paste land in the middle of the new utterance,
+    /// which is exactly how the text came back doubled and jumbled.
+    private var tidying = false
+    /// Insurance for the flag above. The model call has no timeout of its own, so
+    /// without this one hung request would leave `tidying` set and the hold key
+    /// dead until the app restarts. Long enough not to fire during a normal
+    /// rewrite; short enough that a wedge recovers on its own.
+    private var tidyWatchdog: DispatchWorkItem?
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
     /// cancelled if the key goes back down within the grace period.
     private var pendingDictationStop: DispatchWorkItem?
@@ -891,15 +903,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// selecting all would rewrite the entire document instead of the sentence
     /// you just spoke.
     func polishSelection(dictated: Bool = false) {
-        guard hasAccessibility else { promptForAccessibility(); return }
+        // One round trip at a time. Two overlapping ones race over the clipboard
+        // and the selection, and the loser's paste lands wherever the caret has
+        // got to by then — the same failure as dictating again mid-rewrite, just
+        // reached by pressing the shortcut twice. The dictated path claimed this
+        // back in stopDictation; a manual press hasn't.
+        if !dictated {
+            if tidying { NSSound.beep(); return }
+            beginTidying()
+        }
+        guard hasAccessibility else { endTidying(); promptForAccessibility(); return }
         let pb = NSPasteboard.general
         let saved = pb.string(forType: .string)
 
         copySelectionText { [weak self] text in
             guard let self else { return }
             if let text {
-                self.runPolish(text, dictated: dictated, restoring: saved)
+                self.runPolish(text, dictated: dictated, restoring: saved)   // ends it
             } else if dictated {
+                self.endTidying()
                 self.hud.hide()          // nothing to work on; leave the text alone
                 if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
             } else {
@@ -908,6 +930,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                     self.copySelectionText { all in
                         guard let all else {
+                            self.endTidying()
                             self.hud.showMessage("No text to tidy", symbol: "text.badge.xmark", tint: .systemRed)
                             if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
                             return
@@ -925,20 +948,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let before = pb.changeCount
         post(CGKeyCode(kVK_ANSI_C), .maskCommand)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            guard pb.changeCount != before, let text = pb.string(forType: .string),
+            guard pb.changeCount != before, let text = Self.selectedText(from: pb),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else { then(nil); return }
             then(text)
         }
     }
 
+    /// What was actually selected, in characters.
+    ///
+    /// The plain-text flavor can't be trusted for this, because a rich editor
+    /// flattens structure into it. Copy a checklist item in Notes and the plain
+    /// flavor reads "- [ ] Buy milk" — but the checkbox is a paragraph attribute
+    /// (an NSTextList), and the only characters selected are "Buy milk". Feed the
+    /// flattened version to the model and paste the result back and the marker
+    /// arrives as literal text in a paragraph that still draws its own checkbox,
+    /// so the bullet appears twice: once drawn, once spelled out.
+    ///
+    /// The rich flavor is the honest one — its attributed string holds exactly the
+    /// characters, with the list left as an attribute where it belongs. So prefer
+    /// it whenever it's there, and take its absence as the signal that the source
+    /// is a plain-text editor, where "- [ ]" really is content and has to survive
+    /// untouched. That distinction is the whole point: the two cases need opposite
+    /// handling, and which flavors the app offers is what tells them apart.
+    private static func selectedText(from pb: NSPasteboard) -> String? {
+        let plain = pb.string(forType: .string)
+        for (type, doc) in [(NSPasteboard.PasteboardType.rtfd, NSAttributedString.DocumentType.rtfd),
+                            (NSPasteboard.PasteboardType.rtf, NSAttributedString.DocumentType.rtf)] {
+            guard let data = pb.data(forType: type),
+                  let attr = try? NSAttributedString(data: data, options: [.documentType: doc],
+                                                     documentAttributes: nil),
+                  !attr.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { continue }
+            var rich = attr.string
+            // The rich flavor carries the paragraph's terminating newline where the
+            // plain one doesn't; pasting that back would open a second list item.
+            while rich.hasSuffix("\n") && plain?.hasSuffix("\n") != true { rich.removeLast() }
+            return rich
+        }
+        return plain
+    }
+
     /// Run the text through the model and paste the result over the selection.
     private func runPolish(_ text: String, dictated: Bool, restoring saved: String?) {
         let pb = NSPasteboard.general
-        hud.showWaveform(tint: .systemOrange, mode: .processing)
+        hud.showWaveform(tint: .systemPurple, mode: .processing)
         polish(text, dictated: dictated) { [weak self] result in
             guard let self else { return }
             guard let result else {
+                self.endTidying()
                 self.hud.showMessage("Couldn't rewrite that", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
                 if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
                 return
@@ -947,9 +1005,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pb.setString(result, forType: .string)
             self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
             self.hud.showMessage("Tidied", symbol: "checkmark.circle.fill", tint: .systemGreen)
-            // Give the paste a moment to land before handing the clipboard back.
+            // Give the paste a moment to land before handing the clipboard back —
+            // and only release the hold key once it has, since that paste is the
+            // thing a new dictation would otherwise land in the middle of.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 if let saved { pb.clearContents(); pb.setString(saved, forType: .string) }
+                self.endTidying()
             }
         }
     }
@@ -1006,7 +1067,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.hud.showWaveform(tint: .systemGreen)
                     return
                 }
-                if !self.dictating { self.armDictation() }
+                // Not while Auto-Tidy still has the text: starting again here is
+                // what let the previous rewrite paste itself into this sentence.
+                if !self.dictating && !self.tidying { self.armDictation() }
             } else {
                 self.disarmDictation()          // let go inside the dead zone: nothing happened
                 if self.dictating { self.scheduleDictationStop() }
@@ -1115,6 +1178,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + grace, execute: work)
     }
 
+    /// Claim the text for the Auto-Tidy round trip. Every path that finishes with
+    /// it — including the ones that give up — has to call `endTidying`, or the
+    /// hold key stays dead until the watchdog fires.
+    private func beginTidying() {
+        tidying = true
+        tidyWatchdog?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.endTidying() }
+        tidyWatchdog = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: work)
+    }
+
+    /// Safe to call when no tidy is in flight, so the shared paths can call it
+    /// unconditionally rather than each having to know how they were reached.
+    private func endTidying() {
+        tidying = false
+        tidyWatchdog?.cancel()
+        tidyWatchdog = nil
+    }
+
     private func stopDictation() {
         dictating = false
         pendingDictationStop?.cancel()
@@ -1128,7 +1210,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Dictation leaves the caret at the end of its insertion, so shift-select
         // back over it — that's the only handle we have on "the dictated text",
         // since it lands in the app, not in us.
-        hud.showWaveform(tint: .systemOrange, mode: .processing)
+        beginTidying()
+        // Purple, not the amber above. The two waits look the same to the user but
+        // aren't: amber is the grace period, where pressing again deliberately
+        // carries straight on, and this one is the rewrite, where pressing again
+        // used to drop the pending paste into the next sentence. Different states
+        // that behave differently should not wear the same colour.
+        hud.showWaveform(tint: .systemPurple, mode: .processing)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self else { return }
             if !self.selectDictatedRunExactly() { self.selectDictatedRun() }
