@@ -1239,6 +1239,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// input." That sentence was then pasted into the document in place of what
     /// was there, which is worse than doing nothing.
     ///
+    /// Guessing at this from the text is unsatisfying, so the two principled
+    /// routes were tried first and both lost.
+    ///
+    /// The framework does define `GenerationError.refusal` and
+    /// `.guardrailViolation`, but they are for safety-policy blocks, not for
+    /// this: over a run of deliberately unreadable inputs, zero errors were
+    /// thrown and five refusals arrived as ordinary, successful content. As far
+    /// as the API is concerned the model did its job.
+    ///
+    /// Guided generation does give a real typed flag — reachable on this
+    /// toolchain via DynamicGenerationSchema, since the @Generable macro needs
+    /// Xcode's plugin and build.sh uses plain swiftc. The flag is not worth
+    /// having: it fired on one of six unreadable inputs and disagreed with itself
+    /// across passes on the same input, "scasdassdfsadone" came back silently
+    /// truncated to "sadone" with the flag clear, and forcing the schema lost the
+    /// full stop off the end of most sentences — the very thing the instructions
+    /// above exist to get right.
+    ///
     /// Both signals are required, because either alone gets it wrong. Refusal
     /// phrasing catches real writing — "i cannot make it tomorrow sorry" tidies
     /// quite properly to "I cannot make it tomorrow. Sorry.", and so do "I am
