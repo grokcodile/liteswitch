@@ -334,13 +334,32 @@ extension UserDefaults {
         expand, reorder the ideas, make it more formal, add anything that \
         wasn't said, or leave anything out.
         """
+    /// Storing text identical to the default would quietly pin it. Opening the
+    /// Instructions window and clicking Save without typing anything is enough to
+    /// do that, and from then on the saved copy wins and every later improvement
+    /// to the default silently never arrives — which is exactly what happened
+    /// when Auto-Tidy kept dropping words after the wording was supposedly fixed.
+    /// Nothing stored means "follow the default", so store nothing unless it
+    /// genuinely differs.
     var polishInstructions: String {
         get { string(forKey: "polishInstructions") ?? UserDefaults.defaultPolishInstructions }
-        set { set(newValue, forKey: "polishInstructions") }
+        set {
+            if newValue == UserDefaults.defaultPolishInstructions {
+                removeObject(forKey: "polishInstructions")
+            } else {
+                set(newValue, forKey: "polishInstructions")
+            }
+        }
     }
     var dictationInstructions: String {
         get { string(forKey: "dictationInstructions") ?? UserDefaults.defaultDictationInstructions }
-        set { set(newValue, forKey: "dictationInstructions") }
+        set {
+            if newValue == UserDefaults.defaultDictationInstructions {
+                removeObject(forKey: "dictationInstructions")
+            } else {
+                set(newValue, forKey: "dictationInstructions")
+            }
+        }
     }
     /// Tidy Text: run dictated text through the model as soon as it lands. On by
     /// default — speech nearly always wants the filler stripped.
