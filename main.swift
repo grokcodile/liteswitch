@@ -633,6 +633,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything registers: hand over to the copy already running, if
+        // there is one. Has to come first, since the damage a second instance
+        // does is done by the very things below this line.
+        if yieldToRunningInstance() { return }
+        // A duplicate that quit needs somewhere to send the user, and this is it.
+        DistributedNotificationCenter.default.addObserver(
+            self, selector: #selector(showSettingsForDuplicateLaunch),
+            name: Self.showSettingsNotification, object: nil)
         seedDefaultShortcutsIfNeeded()
         // The system broadcasts this when Appearance changes (including on the
         // automatic light/dark schedule). A view-level callback isn't dependable
@@ -664,6 +672,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !launchedAsLoginItem {
             showSettings()
         }
+    }
+
+    /// Sent by a duplicate on its way out, so the copy that's staying brings up
+    /// settings — otherwise opening the app would look like nothing happened.
+    private static let showSettingsNotification =
+        NSNotification.Name("com.ethan.liteswitch.showSettings")
+
+    @objc private func showSettingsForDuplicateLaunch() { showSettings() }
+
+    /// Quit if another copy is already running, after pointing the user at it.
+    /// Returns true when this instance is the one that should go away.
+    ///
+    /// Two copies do not share nicely. Each registers the same global hotkeys and
+    /// installs its own dictation monitor, so one keypress fires twice and two
+    /// Auto-Tidy passes rewrite the same sentence while the other is pasting into
+    /// it — which reads as dictated text coming back mangled and repeated.
+    ///
+    /// This asks which processes are running rather than setting
+    /// LSMultipleInstancesProhibited, because LaunchServices keys that on the
+    /// bundle it finds on disk. The way copies actually stacked up here was a
+    /// rebuild replacing the bundle underneath a running instance: the new bundle
+    /// looks like a different app to LaunchServices, so it would happily launch
+    /// it — but the orphan still answers to this bundle id, so it is caught here.
+    private func yieldToRunningInstance() -> Bool {
+        guard let id = Bundle.main.bundleIdentifier else { return false }
+        let mine = ProcessInfo.processInfo.processIdentifier
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: id)
+            .filter { $0.processIdentifier != mine && !$0.isTerminated }
+        guard !others.isEmpty else { return false }
+
+        // Launched together, each would see the other and both would quit. So the
+        // one that started first stays, and an identical timestamp is settled by
+        // the lower pid — any rule works as long as both sides reach the same one.
+        //
+        // The two fallbacks lean opposite ways on purpose, and both lean towards
+        // yielding. A process launched by running the executable directly has no
+        // launchDate at all, so dating ourselves `.distantPast` would make the
+        // newcomer believe it was the incumbent and stay — which is exactly how
+        // copies used to stack. Unknown self means "just started"; unknown other
+        // means "already here".
+        let launched = NSRunningApplication.current.launchDate ?? Date()
+        let incumbent = others.first {
+            let theirs = $0.launchDate ?? .distantPast
+            return theirs == launched ? $0.processIdentifier < mine : theirs < launched
+        }
+        guard let incumbent else { return false }
+
+        // A login launch that finds a copy running just goes quietly. A launch the
+        // user asked for means they wanted the window, so the incumbent shows it.
+        if !launchedAsLoginItem {
+            DistributedNotificationCenter.default().postNotificationName(
+                Self.showSettingsNotification, object: nil, userInfo: nil,
+                deliverImmediately: true)
+            incumbent.activate()
+        }
+        // exit() rather than NSApp.terminate: nothing has been registered yet, so
+        // there is nothing to unwind, and this cannot be delayed by the usual
+        // should-terminate path. deliverImmediately above has already handed the
+        // notification over.
+        exit(0)
     }
 
     /// Whether launchd auto-started us at login (vs. the user opening the app).
