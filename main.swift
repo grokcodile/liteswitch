@@ -1215,7 +1215,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             guard let result else {
                 self.endTidying()
-                self.hud.showMessage("Couldn't rewrite that", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
+                // Not the red warning triangle the other failures use. Those are
+                // things you have to go and fix; this one is the model shrugging,
+                // and your text is exactly where you left it.
+                self.hud.showMessage("I can’t fix that", symbol: "questionmark.circle.fill",
+                                     tint: .systemOrange, emoji: "🤔")
                 Self.restoreClipboard(saved, on: pb)
                 return
             }
@@ -3050,7 +3054,11 @@ final class HUD {
     /// SF Symbol + message (Capture Text confirmations), styled like the color pill.
     /// `sticky` leaves the pill up until `hide()` — for states that last as long
     /// as you hold a key, rather than momentary confirmations.
-    func showMessage(_ message: String, symbol: String, tint: NSColor, sticky: Bool = false) {
+    /// `emoji` stands in for the symbol when given, rather than sitting next to
+    /// it — two glyphs in a pill this size is one too many. It ignores `tint`,
+    /// since emoji carry their own colour; the tint is still what a symbol uses.
+    func showMessage(_ message: String, symbol: String, tint: NSColor,
+                     emoji: String? = nil, sticky: Bool = false) {
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
         let measured = ceil((message as NSString).size(withAttributes: [.font: font]).width)
         let textW = measured, textH = ceil(font.ascender - font.descender)
@@ -3058,12 +3066,20 @@ final class HUD {
         let width = padH + iconD + gap + textW + padH
         let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
 
-        let icon = NSImageView(frame: NSRect(x: padH, y: (panelH - iconD) / 2, width: iconD, height: iconD))
-        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 15, weight: .semibold))
-        icon.contentTintColor = tint
-        icon.imageScaling = .scaleProportionallyDown
-        content.addSubview(icon)
+        if let emoji {
+            let glyph = NSTextField(labelWithString: emoji)
+            glyph.font = .systemFont(ofSize: 15)
+            glyph.alignment = .center
+            glyph.frame = NSRect(x: padH, y: (panelH - iconD) / 2 - 1, width: iconD, height: iconD)
+            content.addSubview(glyph)
+        } else {
+            let icon = NSImageView(frame: NSRect(x: padH, y: (panelH - iconD) / 2, width: iconD, height: iconD))
+            icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 15, weight: .semibold))
+            icon.contentTintColor = tint
+            icon.imageScaling = .scaleProportionallyDown
+            content.addSubview(icon)
+        }
 
         let label = NSTextField(labelWithString: message)
         label.font = font
