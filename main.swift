@@ -989,6 +989,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return plain
     }
 
+    /// Put back the whitespace the model trimmed off the ends.
+    ///
+    /// The model is asked to rewrite a sentence and returns exactly that, trimmed
+    /// — which is right for the words and wrong for what surrounds them. The space
+    /// on either side of a selection belongs to the document, not the sentence:
+    /// when the line didn't already end in one, macOS dictation puts a space at
+    /// the front of what it inserts, and the exact-selection diff quite correctly
+    /// includes it. Trim that away on the way back and the new sentence lands
+    /// flush against the previous one.
+    private static func rewrap(_ rewritten: String, like original: String) -> String {
+        // Can't happen — a blank selection is rejected before the model sees it —
+        // but if it did, lead and trail would both be the whole string.
+        guard !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return rewritten
+        }
+        let lead = String(original.prefix { $0.isWhitespace })
+        let trail = String(original.reversed().prefix { $0.isWhitespace }.reversed())
+        return lead + rewritten + trail
+    }
+
     /// Run the text through the model and paste the result over the selection.
     private func runPolish(_ text: String, dictated: Bool, restoring saved: String?) {
         let pb = NSPasteboard.general
@@ -1002,7 +1022,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             pb.clearContents()
-            pb.setString(result, forType: .string)
+            pb.setString(Self.rewrap(result, like: text), forType: .string)
             self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
             self.hud.showMessage("Tidied", symbol: "checkmark.circle.fill", tint: .systemGreen)
             // Give the paste a moment to land before handing the clipboard back —
