@@ -2722,7 +2722,8 @@ enum MoreInfo {
         let icon: CGFloat = 64, btnH: CGFloat = 30, rowGap: CGFloat = 6, capH: CGFloat = 14
 
         let tagline = NSTextField(wrappingLabelWithString:
-            "A global shortcut for things your Mac already knows how to do.")
+            "The most powerful things macOS can do are often the hardest to reach "
+            + "— Liteswitch puts them at your fingertips.")
         tagline.font = .systemFont(ofSize: 12)
         tagline.textColor = .secondaryLabelColor
         tagline.alignment = .center

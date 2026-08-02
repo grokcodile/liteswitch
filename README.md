@@ -5,7 +5,7 @@
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111111)](#requirements)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-**Liteswitch puts a global shortcut on things your Mac already knows how to do.**
+**The most powerful things macOS can do are often the hardest to reach — Liteswitch puts them at your fingertips.**
 
 macOS ships the hard part and leaves out the key. Screen OCR, color sampling, sleep prevention, dictation, on-device text cleanup — the engines are all in the box, on-device, already paid for, and mostly a menu dive or a Settings pane away. That gap is a whole category of paid utilities: apps that bundle their own engine, or their own subscription, to sell you a keystroke. Liteswitch is a dozen of those keystrokes in one background agent — one Swift file, no dependencies, no menu bar item, no account, no subscription, nothing leaving your Mac.
 
