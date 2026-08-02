@@ -3169,6 +3169,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         titleField.font = .systemFont(ofSize: 12)
         titleField.target = self
         titleField.action = #selector(titleEdited)
+        titleField.delegate = self
         v.addSubview(titleField)
 
         label("Shortcut", x: ex + ew - 140, listTop - 15, 120)
@@ -3237,6 +3238,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
     @objc private func toggleEnabled(_ sender: NSButton) {
         guard sets.indices.contains(sender.tag) else { return }
+        commitEditor()          // or a title typed but not yet committed is saved over
         sets[sender.tag].enabled = sender.state == .on
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
@@ -3250,7 +3252,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
     /// Pull the editor's fields into the model. Called before anything that
     /// changes which set is showing, so nothing typed is lost by clicking away.
-    private func commitEditor() {
+    fileprivate func commitEditor() {
         guard ready, sets.indices.contains(selected) else { return }
         // A blank title keeps the one it had — inventing "Untitled" for someone
         // who cleared the field to retype it is worse than leaving it alone.
@@ -3285,10 +3287,14 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         }
     }
 
-    @objc private func titleEdited() {
-        commitEditor()
-        table.reloadData()
-        table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+    @objc private func titleEdited() { commitEditor(); refreshRow() }
+
+    /// Redraw just the edited row, so the list tracks the title as it's typed
+    /// without a full reload taking focus out of the field.
+    fileprivate func refreshRow() {
+        guard sets.indices.contains(selected) else { return }
+        table.reloadData(forRowIndexes: IndexSet(integer: selected),
+                         columnIndexes: IndexSet(integer: 0))
     }
 
     @objc private func addSet() {
@@ -3313,7 +3319,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         saveQuietly()
     }
 
-    private func saveQuietly() {
+    fileprivate func saveQuietly() {
         UserDefaults.standard.correctSets = sets
         onChange()
     }
@@ -3325,7 +3331,18 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
     }
 }
 
-extension InstructionsWindow: NSTextViewDelegate {}
+/// Live commits. Waiting for Return or for Save is how an edit gets lost by
+/// clicking somewhere else first — which is exactly what happened when the
+/// something else was a checkbox that saved on the spot.
+extension InstructionsWindow: NSTextViewDelegate, NSTextFieldDelegate {
+    func controlTextDidChange(_ notification: Notification) {
+        commitEditor()
+        refreshRow()
+    }
+    func controlTextDidEndEditing(_ notification: Notification) { commitEditor(); saveQuietly() }
+    func textDidChange(_ notification: Notification) { commitEditor() }
+    func textDidEndEditing(_ notification: Notification) { commitEditor(); saveQuietly() }
+}
 
 /// Everything Dictate Text needs set up: which key you hold, whether Auto-Correct
 /// runs on what you just said, and what it tells the model when it does.
