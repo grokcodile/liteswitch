@@ -2988,14 +2988,13 @@ final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelega
         let h: CGFloat = 380
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Pause in Apps"
+        title = "Protected Apps"
         isReleasedWhenClosed = false
         bundleIDs = UserDefaults.standard.pausedApps
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
         let intro = NSTextField(wrappingLabelWithString:
-            "Liteswitch's shortcuts stand down while any of these apps is in front, so they "
-            + "can't shadow the app's own. Dictation's hold key stands down too.")
+            "Liteswitch shortcuts will be disabled when using these apps.")
         intro.font = .systemFont(ofSize: 11)
         intro.textColor = .secondaryLabelColor
         intro.preferredMaxLayoutWidth = w - pad * 2
@@ -3073,7 +3072,7 @@ final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelega
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.prompt = "Add"
-        panel.message = "Choose apps that should have the keyboard to themselves."
+        panel.message = "Choose apps to disable Liteswitch in."
         panel.beginSheetModal(for: self) { [weak self] response in
             guard let self, response == .OK else { return }
             for url in panel.urls {
@@ -3139,7 +3138,7 @@ enum MoreInfo {
             ("Support Liteswitch", "Tip jar — it's free and stays free",       tip),
             ("Source on GitHub",   "Code, releases, and issues",               repo),
             ("Help",               "What each tool does",                      help),
-            ("Pause in Apps…",     "Stand down while chosen apps are in front", pause),
+            ("Protected app…",     "Disable Liteswitch when using these apps",  pause),
         ]
         // Bottom up: rows, tagline, version, name, icon.
         var y = pad
