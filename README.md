@@ -27,7 +27,7 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **Color History** | Liteswitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
 | **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its Siri voices, its shortcut | text-to-speech utilities |
 | **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
-| **Correct Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
+| **Rewrite Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
 | **Dictate Text** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
 
 The four Spotlight panels are the starkest case: an app launcher, a file searcher, a command runner and a clipboard history are four separate paid utilities in most people's setups, and macOS 26 ships all four — behind one keystroke and a number. They just needed keys of their own.
@@ -35,7 +35,7 @@ The four Spotlight panels are the starkest case: an app launcher, a file searche
 Two more that make the point:
 
 - **Dictate Text** — dictation apps sell push-to-talk with their own speech model and a monthly bill. Your Mac already transcribes on-device, for free, at least as well. The *only* thing it lacks is hold-to-talk: macOS dictation is toggle-only. So that's all this adds — the missing key, on top of Apple's transcription.
-- **Correct Text** — cleaning up dictated speech is exactly what an on-device LLM is for, and macOS 26 ships one. No API key, no per-token cost, no text uploaded anywhere.
+- **Rewrite Text** — cleaning up, restyling or translating text is exactly what an on-device LLM is for, and macOS 26 ships one. No API key, no per-token cost, no text uploaded anywhere.
 
 ## Features
 
@@ -56,7 +56,7 @@ Two more that make the point:
 
 - **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Configure…** opens a window walking through switching it on in Read & Speak. It mirrors rather than re-implements for a measured reason: the Siri voices are the ones worth listening to, and no public API vends them. `AVSpeechSynthesizer` refuses them outright and silently substitutes a fallback; `NSSpeechSynthesizer` exposes exactly one, and is deprecated besides. Voices sitting on disk as several hundred megabytes of neural model — `nora`, `quinn` — render byte-identical audio to a made-up voice name when requested through either. macOS is the only thing that can read to you in them, so macOS does the talking.
 - **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
-- **Correct Text** — rewrites the selected text with Apple Intelligence's on-device model, or the whole field if nothing is selected, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Correct** on the Dictate Text card runs the dictated set automatically on what you just spoke.
+- **Rewrite Text** — rewrites the selected text with Apple Intelligence's on-device model, or the whole field if nothing is selected. It holds any number of named **rewrite actions** — Clean Up ships built in, alongside Professional, Friendly, Shorten, Translate to Spanish and Wrap in HTML — and the shortcut offers a menu of the ones you've selected. Tick none and it just cleans up; tick one and it runs straight through. Any action can also take a shortcut of its own, which skips the menu whether or not it's ticked. **Auto-Correct** on the Dictate Text card keeps its own instructions and stays out of the menu.
 - **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on. With **Auto-Correct** on it turns purple while the model rewrites, and the hold key is ignored until that's done: the two waits behave differently, so they don't look the same.
 
 **Throughout**
@@ -108,9 +108,9 @@ The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the v
 ## Requirements
 
 - **macOS 26 or later** (the four-panel Spotlight).
-- **Accessibility** — for anything that synthesizes keystrokes or reads another app's menus: Files, Actions, Clipboard, the System Settings shortcut, Dictate Text, and Correct Text.
+- **Accessibility** — for anything that synthesizes keystrokes or reads another app's menus: Files, Actions, Clipboard, the System Settings shortcut, Dictate Text, and Rewrite Text.
 - **Screen Recording** — for **Capture Text** only (macOS 26 gates the region selector behind it).
-- **Apple Intelligence** — for **Correct Text**, which uses the on-device model. Without it that one tool is unavailable; everything else is unaffected.
+- **Apple Intelligence** — for **Rewrite Text**, which uses the on-device model. Without it that one tool is unavailable; everything else is unaffected.
 
 Nothing needs setting up in advance: macOS prompts the first time a shortcut needs a permission. The settings window shows a light for each, and clicking a red one asks for it directly.
 
@@ -130,7 +130,7 @@ A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a
 |---|---|---|---|
 | ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘V Clipboard |
 | ⌃⌥⌘, System Settings | ⌃⌥⌘K Keep Awake | ⌃⌥⌘L Color Picker | ⌃⌥⌘H Color History |
-| Speak Text: macOS's own | ⌃⌥⌘O Capture Text | ⌃⌥⌘P Correct Text | Hold **Right ⌥** to dictate |
+| Speak Text: macOS's own | ⌃⌥⌘O Capture Text | ⌃⌥⌘P Rewrite Text | Hold **Right ⌥** to dictate |
 
 Three modifiers look heavy written down, but the left hand takes them as one shape and never moves, so every trigger key sits under the right — no chord crosses the keyboard. It's also the one combination nothing else claims: ⌃ alone hits the text-editing bindings macOS puts in every field (⌃A, ⌃K, ⌃H), ⌥ alone eats the character it would otherwise type, and ⌘ belongs to whatever app is frontmost.
 
@@ -145,7 +145,7 @@ Two tools work differently, because a recorded chord isn't the right control for
 - **Dictate Text** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
 - **Speak Text** has no Liteswitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
 
-Each card carries one option: **Smart Toggle** for System Settings (on), **Screen Sleep** for Keep Awake (on), the copy **format** for Color Picker (Hex), **View…** for Color History, **Remove Breaks** for Capture Text (on), **Instructions…** for Correct Text, and **Auto-Correct** for Dictate Text (on).
+Each card carries one option: **Smart Toggle** for System Settings (on), **Screen Sleep** for Keep Awake (on), the copy **format** for Color Picker (Hex), **View…** for Color History, **Remove Breaks** for Capture Text (on), **Settings** for Rewrite Text, and **Auto-Correct** for Dictate Text (on).
 
 ## How it works
 
@@ -159,7 +159,7 @@ Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) �
 
 **Dictate Text** watches the chosen modifier with `flagsChanged` monitors, since Carbon hotkeys report presses but never releases. Starting dictation took some ruling out: the mic key on F5 can't be synthesized — macOS takes it at the HID layer, so it never becomes an event an app can post — and by default dictation has no ordinary shortcut to send either. So Liteswitch presses the frontmost app's **Edit ▸ Start / Stop Dictation** item through the **Accessibility API**, which leaves your own dictation setup untouched. The stop is deferred ~1.5 s because dictation keeps transcribing after you stop speaking; pressing the key again inside that window carries on rather than restarting.
 
-**Correct Text** runs the text through **`FoundationModels`**, Apple Intelligence's on-device model, with your instructions. Nothing is sent anywhere and there's no API key. The selection is copied, rewritten, and pasted back, with the clipboard borrowed and restored around the round trip. With nothing selected it presses ⌘A first and takes the whole field — except after dictation, where the selection is an estimate and selecting all would rewrite the document rather than the sentence you just spoke.
+**Rewrite Text** runs the text through **`FoundationModels`**, Apple Intelligence's on-device model, with your instructions. Nothing is sent anywhere and there's no API key. The selection is copied, rewritten, and pasted back, with the clipboard borrowed and restored around the round trip. With nothing selected it presses ⌘A first and takes the whole field — except after dictation, where the selection is an estimate and selecting all would rewrite the document rather than the sentence you just spoke.
 
 ## Built on macOS, and moving with it
 

@@ -79,12 +79,12 @@ Your Mac reads the selection aloud in a Siri voice, on a shortcut macOS owns rat
 - Have a long article read to you while you do something else.
 - Proofread by ear — the mistakes you skim past are audible.
 
-### Correct Text
+### Rewrite Text
 
-Fixes spelling, grammar and punctuation with Apple Intelligence, running on your Mac. It keeps two sets of instructions for two jobs: proofreading what you selected, and cleaning up dictated speech. Both are yours to edit.
+Rewrites whatever you've selected with Apple Intelligence, running on your Mac. It holds any number of named **rewrite actions** — clean up, restyle, shorten, translate, wrap in HTML — and the shortcut asks which to use when more than one is selected. An action can also take a shortcut of its own, which skips the menu and runs it directly. With nothing selected it takes the whole field.
 
 - Clean up a paragraph you typed in a hurry, without it being reworded.
-- Turn a rambling dictation into something you'd actually send.
+- Translate a note into Spanish, or restyle it for a work email.
 
 ### Dictate Text
 

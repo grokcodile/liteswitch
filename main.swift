@@ -66,7 +66,7 @@ let panels: [Panel] = [
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your last twenty picks, ready to copy again, drag out as a swatch, or pin.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Pull the text off anything on screen — a screenshot, a PDF, a paused video.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Have your Mac read the text you've selected out loud, in a Siri voice.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Correct Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Fix the spelling, grammar, and punctuation of what you've selected, on your Mac.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Rewrite Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Clean up, restyle, shorten or translate what you've selected, on your Mac.", spotlightKey: 0, defaultsKey: "polish"),
     Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and speak; let go and what you said is typed where the cursor is.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
@@ -163,7 +163,8 @@ enum HoldKey: Int, CaseIterable {
     }
 }
 
-/// One named set of instructions for Correct Text.
+/// One named rewrite action: a title, the instructions behind it, and an
+/// optional shortcut of its own.
 ///
 /// More than one turns the tool's own shortcut into a chooser; a set can also
 /// carry a shortcut of its own, which skips the chooser and runs it directly.
@@ -226,7 +227,7 @@ extension UserDefaults {
             + "elements, styles, or classes. Keep the wording exactly as given."),
     ]
 
-    /// Correct Text's instruction sets, in the order the user put them.
+    /// Rewrite Text's actions, in the order the user put them.
     ///
     /// Migrated on read from the single string that preceded them, so an upgrade
     /// keeps whatever was written there rather than resetting it. Nothing is
@@ -289,7 +290,7 @@ extension UserDefaults {
         get { object(forKey: "keepAwakeAllowDisplaySleep") as? Bool ?? true }
         set { set(newValue, forKey: "keepAwakeAllowDisplaySleep") }
     }
-    /// Correct Text: what to tell the on-device model. Two sets, because correcting
+    /// Rewrite Text: what to tell the on-device model. Two sets, because rewriting
     /// text you typed and cleaning up speech are different jobs.
     /// Spelled out deliberately. "Correct spelling, grammar, capitalization and
     /// punctuation" on its own reads to this model as permission to fix only the
@@ -395,7 +396,7 @@ extension UserDefaults {
             }
         }
     }
-    /// Correct Text: run dictated text through the model as soon as it lands. On by
+    /// Rewrite Text: run dictated text through the model as soon as it lands. On by
     /// default — speech nearly always wants the filler stripped.
     var autoCorrectDictation: Bool {
         get { object(forKey: "polishDictation") as? Bool ?? true }
@@ -1010,7 +1011,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Instruction sets that carry a shortcut of their own, so they can be run
         // without stopping at the chooser. They need the same Accessibility as
-        // Correct Text itself, since they read and replace the selection.
+        // Rewrite Text itself, since they read and replace the selection.
         guard hasAccessibility else { return }
         for (i, set) in UserDefaults.standard.correctSets.enumerated() {
             // Not gated on `enabled`: that only decides whether the action is
@@ -1096,7 +1097,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             trigger: Shortcut.load(panel).map { CGKeyCode($0.keyCode) })
     }
 
-    // MARK: Correct Text
+    // MARK: Rewrite Text
 
     /// Rewrite the selection in place: copy it, run it through the on-device
     /// model with the user's instructions, and paste the result back. The
@@ -1158,7 +1159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.copySelectionText { all in
                         guard let all else {
                             self.endCorrecting()
-                            self.hud.showMessage("No text to correct", symbol: "text.badge.xmark", tint: .systemRed)
+                            self.hud.showMessage("No text to rewrite", symbol: "text.badge.xmark", tint: .systemRed)
                             Self.restoreClipboard(saved, on: pb)
                             return
                         }
@@ -1238,7 +1239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Put text on the clipboard without it turning up in clipboard history.
     ///
-    /// Correct Text only uses the clipboard as a courier: the rewritten text goes on
+    /// Rewrite Text only uses the clipboard as a courier: the rewritten text goes on
     /// it so ⌘V can carry it into the app, and the original goes straight back
     /// after. Neither is something you copied, and both used to land in the very
     /// history the Clipboard panel shows — so one tidy left two stray entries.
@@ -1348,7 +1349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // the shortcut for that one, so what just happened isn't in question —
             // but Auto-Correct runs on its own, and if your words come back changed
             // it should be clear which thing changed them.
-            self.hud.showMessage(dictated ? "Auto-Corrected" : "Corrected",
+            self.hud.showMessage(dictated ? "Auto-Corrected" : "Rewritten",
                                  symbol: "checkmark.circle.fill", tint: .systemGreen)
             // Give the paste a moment to land before handing the clipboard back —
             // and only release the hold key once it has, since that paste is the
@@ -2561,7 +2562,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             if panel.defaultsKey == "polish" {
                 let btn = NSButton(title: "Settings", target: self,
                                    action: #selector(editCorrectInstructions))
-                btn.toolTip = "Edit what Correct Text tells the model."
+                btn.toolTip = "Add and edit rewrite actions."
                 btn.bezelStyle = .rounded
                 btn.controlSize = .small
                 btn.font = .systemFont(ofSize: 11)
@@ -3092,7 +3093,7 @@ final class SpeakSetupWindow: NSWindow {
     }
 }
 
-/// The editor for what Correct Text tells the on-device model. Two sets, because
+/// The editor for Rewrite Text's actions. Two sets, because
 /// the tool does two different jobs: correcting text you selected, and cleaning up
 /// what you just dictated.
 final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelegate {
@@ -3118,16 +3119,16 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         let h: CGFloat = 500
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Correct Text Settings"
+        title = "Rewrite Text Settings"
         isReleasedWhenClosed = false
         sets = UserDefaults.standard.correctSets
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
 
         let intro = NSTextField(wrappingLabelWithString:
-            "Create and select the intelligent actions you want to choose from when running "
+            "Create and select the rewrite actions you want to choose from when running "
             + "the global shortcut. Selecting only one will skip the main shortcut menu. "
-            + "Set a direct shortcut to bypass the menu and immediately run that intelligent action.")
+            + "Set a direct shortcut to bypass the menu and immediately run that action.")
         intro.font = .systemFont(ofSize: 11)
         intro.textColor = .secondaryLabelColor
         intro.preferredMaxLayoutWidth = w - pad * 2
@@ -3136,7 +3137,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         intro.frame = NSRect(x: pad, y: h - pad - introH, width: w - pad * 2, height: introH)
         v.addSubview(intro)
 
-        let listHead = NSTextField(labelWithString: "Intelligent Actions")
+        let listHead = NSTextField(labelWithString: "Rewrite Actions")
         listHead.font = .systemFont(ofSize: 12, weight: .semibold)
         listHead.frame = NSRect(x: pad, y: intro.frame.minY - 28, width: 300, height: 18)
         v.addSubview(listHead)
@@ -3372,7 +3373,7 @@ extension InstructionsWindow: NSTextViewDelegate, NSTextFieldDelegate {
 /// Everything Dictate Text needs set up: which key you hold, whether Auto-Correct
 /// runs on what you just said, and what it tells the model when it does.
 ///
-/// Auto-Correct's instructions live here rather than with Correct Text's. They
+/// Auto-Correct's instructions live here rather than with Rewrite Text's. They
 /// are the same model doing a different job — stripping the fillers and false
 /// starts out of speech, not proofreading something you typed — and keeping them
 /// beside the switch that runs them is where you go looking.
