@@ -61,7 +61,7 @@ Two more that make the point:
 
 **Throughout**
 
-- Every control has a one-line tooltip, and the **ⓘ** in the titlebar opens **About Liteswitch** — links to [HELP.md](HELP.md), the source, and the tip jar. What each of the twelve tools does, with a couple of uses each, lives in [HELP.md](HELP.md) rather than in the app.
+- Every control has a one-line tooltip, and the **ⓘ** in the titlebar opens a popover — links to [HELP.md](HELP.md), the source, and the tip jar. What each of the twelve tools does, with a couple of uses each, lives in [HELP.md](HELP.md) rather than in the app.
 - Shortcut conflicts with other apps are surfaced in the settings window rather than failing silently.
 - Runs as a background agent — no Dock icon, no menu bar item — and starts at login. Opening it again brings up settings.
 

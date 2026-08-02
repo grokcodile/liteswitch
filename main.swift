@@ -2018,7 +2018,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var helpButton: NSButton?
     private var speakSetupWindow: SpeakSetupWindow?
     private var dictationSetupWindow: DictationSetupWindow?
-    private var moreInfoWindow: MoreInfoWindow?
+    private var infoPopover: NSPopover?
     private var instructionsWindow: InstructionsWindow?
 
     init(delegate: AppDelegate) {
@@ -2045,7 +2045,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         guard helpButton == nil else { return }
         let titlebarH: CGFloat = 28
         let size: CGFloat = 22
-        let btn = NSButton(title: "", target: self, action: #selector(openMoreInfo))
+        let btn = NSButton(title: "", target: self, action: #selector(openMoreInfo(_:)))
         btn.isBordered = false
         btn.imagePosition = .imageOnly
         btn.contentTintColor = .secondaryLabelColor
@@ -2067,12 +2067,28 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         helpButton?.toolTip = "About Liteswitch"
     }
 
-    @objc private func openMoreInfo() {
-        if moreInfoWindow == nil { moreInfoWindow = MoreInfoWindow() }
-        moreInfoWindow?.center()
-        NSApp.activate(ignoringOtherApps: true)
-        moreInfoWindow?.makeKeyAndOrderFront(nil)
+    @objc private func openMoreInfo(_ sender: NSButton) {
+        let vc = NSViewController()
+        vc.view = MoreInfo.makeContent(target: self, help: #selector(openHelpDoc),
+                                       repo: #selector(openRepo), tip: #selector(openTipJar))
+        let pop = NSPopover()
+        pop.contentViewController = vc
+        pop.contentSize = vc.view.frame.size
+        pop.behavior = .transient       // clicking anywhere else puts it away
+        infoPopover = pop
+        // Below the button: it sits at the top-right of the titlebar, so the
+        // window is the only direction with room.
+        pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
     }
+
+    private func openLink(_ url: String) {
+        guard let u = URL(string: url) else { return }
+        infoPopover?.performClose(nil)
+        NSWorkspace.shared.open(u)
+    }
+    @objc private func openHelpDoc() { openLink(MoreInfo.helpURL) }
+    @objc private func openRepo()    { openLink(MoreInfo.repoURL) }
+    @objc private func openTipJar()  { openLink(MoreInfo.tipURL) }
 
     /// Recreate the whole content from the current shortcuts, so rows grow and
     /// shrink as bindings are added or removed. Called on init and after any
@@ -2663,7 +2679,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         speakSetupWindow?.close()
         dictationSetupWindow?.close()
         instructionsWindow?.close()
-        moreInfoWindow?.close()
+        infoPopover?.performClose(nil)
     }
     func windowDidResignKey(_ notification: Notification) {
         RecorderButton.active?.cancelRecording()
@@ -2681,100 +2697,97 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 }
 
-/// The window behind the ⓘ in the titlebar: what this is, where the source and
-/// the help live, and a way to say thanks.
+/// What the ⓘ in the titlebar shows: the app, where its source and help live,
+/// and a way to say thanks. A popover rather than a window — it is anchored to
+/// the control that opened it, dismisses itself the moment you click elsewhere,
+/// and never becomes another window to find and close.
 ///
 /// The help document is linked rather than bundled. It is one markdown file in
 /// the repo, so linking it means one copy to keep current instead of a second
-/// one baked into every build — and the app has no business shipping a document
-/// viewer to read its own manual.
-final class MoreInfoWindow: NSWindow {
+/// baked into every build — and the app has no business shipping a viewer to
+/// read its own manual.
+enum MoreInfo {
     /// blob/HEAD rather than blob/main: HEAD resolves to whatever the default
-    /// branch is called, so the link survives the repo being created with either.
-    private static let repoURL = "https://github.com/grokcodile/liteswitch"
-    private static let helpURL = "https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md"
-    private static let tipURL  = "https://ko-fi.com/grokcodile"
+    /// branch is called, so the link survives the repo being made with either.
+    static let repoURL = "https://github.com/grokcodile/liteswitch"
+    static let helpURL = "https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md"
+    static let tipURL  = "https://ko-fi.com/grokcodile"
 
-    init() {
-        let w: CGFloat = 380, pad: CGFloat = 24
-        var placed: [(NSView, CGFloat)] = []
+    /// Built bottom-up, the way AppKit lays out an unflipped view, with the
+    /// wrapped tagline measured first so the popover is exactly as tall as its
+    /// content — a copy change can't clip it.
+    static func makeContent(target: AnyObject,
+                            help: Selector, repo: Selector, tip: Selector) -> NSView {
+        let w: CGFloat = 300, pad: CGFloat = 16
+        let icon: CGFloat = 64, btnH: CGFloat = 30, rowGap: CGFloat = 6, capH: CGFloat = 14
+
+        let tagline = NSTextField(wrappingLabelWithString:
+            "A global shortcut for things your Mac already knows how to do.")
+        tagline.font = .systemFont(ofSize: 12)
+        tagline.textColor = .secondaryLabelColor
+        tagline.alignment = .center
+        let taglineW = w - pad * 2
+        let taglineH = ceil(tagline.sizeThatFits(
+            NSSize(width: taglineW, height: .greatestFiniteMagnitude)).height)
+
+        let rows: [(String, String, Selector)] = [
+            ("Support Liteswitch", "Tip jar — it's free and stays free", tip),
+            ("Source on GitHub",   "Code, releases, and issues",         repo),
+            ("Help",               "What each tool does",                help),
+        ]
+        // Bottom up: rows, tagline, version, name, icon.
         var y = pad
+        var rowFrames: [(CGFloat, CGFloat)] = []      // captionY, buttonY
+        for _ in rows {
+            rowFrames.append((y, y + capH + 3))
+            y += capH + 3 + btnH + rowGap * 2
+        }
+        y += 2
+        let taglineY = y;            y += taglineH + 12
+        let versionY = y;            y += 15 + 2
+        let nameY    = y;            y += 24 + 10
+        let iconY    = y;            y += icon
+        let h = y + pad
 
-        let icon = NSImageView(frame: NSRect(x: (w - 64) / 2, y: 0, width: 64, height: 64))
-        icon.image = NSApp.applicationIconImage
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        placed.append((icon, y))
-        y += 64 + 12
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
 
-        func centered(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) {
-            let f = NSTextField(wrappingLabelWithString: text)
+        let iconView = NSImageView(frame: NSRect(x: (w - icon) / 2, y: iconY, width: icon, height: icon))
+        iconView.image = NSApp.applicationIconImage
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        v.addSubview(iconView)
+
+        func centered(_ text: String, _ y: CGFloat, _ height: CGFloat,
+                      size: CGFloat, weight: NSFont.Weight, color: NSColor) {
+            let f = NSTextField(labelWithString: text)
             f.font = .systemFont(ofSize: size, weight: weight)
             f.textColor = color
             f.alignment = .center
-            f.isSelectable = false
-            f.preferredMaxLayoutWidth = w - pad * 2
-            let h = ceil(f.sizeThatFits(NSSize(width: w - pad * 2, height: .greatestFiniteMagnitude)).height)
-            f.frame = NSRect(x: pad, y: 0, width: w - pad * 2, height: h)
-            placed.append((f, y))
-            y += h
+            f.frame = NSRect(x: pad, y: y, width: w - pad * 2, height: height)
+            v.addSubview(f)
         }
-
-        centered("Liteswitch", size: 20, weight: .bold, color: .labelColor)
-        y += 2
+        centered("Liteswitch", nameY, 24, size: 20, weight: .bold, color: .labelColor)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
-        centered("Version \(version)", size: 11, weight: .regular, color: .secondaryLabelColor)
-        y += 10
-        centered("A global shortcut for things your Mac already knows how to do.",
-                 size: 12, weight: .regular, color: .secondaryLabelColor)
-        y += 20
+        centered("Version \(version)", versionY, 15, size: 11, weight: .regular, color: .secondaryLabelColor)
 
-        let rows: [(String, String, Selector)] = [
-            ("Help", "What each tool does", #selector(openHelp)),
-            ("Source on GitHub", "Code, releases, and issues", #selector(openRepo)),
-            ("Support Liteswitch", "Tip jar — it's free and stays free", #selector(openTipJar)),
-        ]
-        var links: [NSButton] = []          // targeted after super.init
-        for (title, caption, action) in rows {
-            let btn = NSButton(title: title, target: nil, action: action)
-            links.append(btn)
+        tagline.frame = NSRect(x: pad, y: taglineY, width: taglineW, height: taglineH)
+        v.addSubview(tagline)
+
+        for (i, row) in rows.enumerated() {
+            let (capY, btnY) = rowFrames[i]
+            let btn = NSButton(title: row.0, target: target, action: row.2)
             btn.bezelStyle = .rounded
-            btn.frame = NSRect(x: pad, y: 0, width: w - pad * 2, height: 30)
-            placed.append((btn, y))
-            y += 30 + 3
+            btn.frame = NSRect(x: pad, y: btnY, width: w - pad * 2, height: btnH)
+            v.addSubview(btn)
 
-            let sub = NSTextField(labelWithString: caption)
-            sub.font = .systemFont(ofSize: 11)
-            sub.textColor = .secondaryLabelColor
-            sub.alignment = .center
-            sub.frame = NSRect(x: pad, y: 0, width: w - pad * 2, height: 14)
-            placed.append((sub, y))
-            y += 14 + 14
+            let caption = NSTextField(labelWithString: row.1)
+            caption.font = .systemFont(ofSize: 11)
+            caption.textColor = .secondaryLabelColor
+            caption.alignment = .center
+            caption.frame = NSRect(x: pad, y: capY, width: w - pad * 2, height: capH)
+            v.addSubview(caption)
         }
-        y += 2
-
-        let h = y + pad
-        super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
-                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "About Liteswitch"
-        isReleasedWhenClosed = false
-
-        links.forEach { $0.target = self }
-
-        let v = FlippedView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-        for (view, top) in placed {
-            view.frame.origin.y = top
-            v.addSubview(view)
-        }
-        contentView = v
+        return v
     }
-
-    private func open(_ url: String) {
-        guard let u = URL(string: url) else { return }
-        NSWorkspace.shared.open(u)
-    }
-    @objc private func openHelp()   { open(Self.helpURL) }
-    @objc private func openRepo()   { open(Self.repoURL) }
-    @objc private func openTipJar() { open(Self.tipURL) }
 }
 
 /// How to switch on macOS's "Speak selection", written out, with the button that
