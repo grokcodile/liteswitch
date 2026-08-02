@@ -25,7 +25,7 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
 | **Color Picker** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
 | **Color History** | Liteswitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
-| **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its voices, its shortcut | text-to-speech utilities |
+| **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its Siri voices, its shortcut | text-to-speech utilities |
 | **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
 | **Correct Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
 | **Dictate Text** | **macOS Dictation**, on-device — driven through the Accessibility API | Wispr Flow, superwhisper (subscriptions) |
@@ -54,14 +54,14 @@ Two more that make the point:
 
 **Text Tools**
 
-- **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. Liteswitch reflects that state; macOS does the talking.
+- **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Set Up… / Change…** opens Spoken Content. It mirrors rather than re-implements for a measured reason: the Siri voices are the ones worth listening to, and no public API vends them. `AVSpeechSynthesizer` refuses them outright and silently substitutes a fallback; `NSSpeechSynthesizer` exposes exactly one, and is deprecated besides. Voices sitting on disk as several hundred megabytes of neural model — `nora`, `quinn` — render byte-identical audio to a made-up voice name when requested through either. macOS is the only thing that can read to you in them, so macOS does the talking.
 - **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
 - **Correct Text** — rewrites the selected text with Apple Intelligence's on-device model, or the whole field if nothing is selected, following instructions you set. Two sets, for two jobs: light proofreading for text you selected, and disfluency-stripping for dictation (fillers, false starts, doubled words, run-on speech). **Auto-Correct** on the Dictate Text card runs the dictated set automatically on what you just spoke.
 - **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. A waveform meter shows green while listening, then amber for a moment while dictation catches up — press again during that to carry straight on. With **Auto-Correct** on it turns purple while the model rewrites, and the hold key is ignored until that's done: the two waits behave differently, so they don't look the same.
 
 **Throughout**
 
-- Each of the three groups has a **ⓘ** that lays a help sheet over it, explaining each tool with examples and a suggested shortcut.
+- Every control has a one-line tooltip, and the **ⓘ** in the titlebar turns the window over to **Liteswitch Help** — what all twelve tools do, with a couple of uses each, in the same three titled groups you were just looking at. The same button becomes the **✕** that puts the controls back; Esc does it too.
 - Shortcut conflicts with other apps are surfaced in the settings window rather than failing silently.
 - Runs as a background agent — no Dock icon, no menu bar item — and starts at login. Opening it again brings up settings.
 
