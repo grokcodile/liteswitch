@@ -239,7 +239,7 @@ extension UserDefaults {
                                        shortcut: nil, enabled: true)]
                      + UserDefaults.starterSets
             }
-            return raw.compactMap { d in
+            var decoded = raw.compactMap { d -> InstructionSet? in
                 guard let t = d["t"] as? String, let i = d["i"] as? String else { return nil }
                 let sc = (d["k"] as? Int).map {
                     Shortcut(keyCode: UInt32($0), modifiers: UInt32(d["m"] as? Int ?? 0))
@@ -247,6 +247,16 @@ extension UserDefaults {
                 return InstructionSet(title: t, instructions: i, shortcut: sc,
                                       enabled: d["e"] as? Bool ?? true)
             }
+            // Self-heal: the first set is the built-in one and can never be
+            // empty. An earlier build could blank it on opening the window, and
+            // an empty first set means the fallback has nothing to run.
+            if decoded.isEmpty || decoded[0].instructions.isEmpty {
+                let builtIn = InstructionSet(title: UserDefaults.cleanUpTitle,
+                                             instructions: UserDefaults.defaultCorrectInstructions,
+                                             shortcut: decoded.first?.shortcut, enabled: true)
+                if decoded.isEmpty { decoded = [builtIn] } else { decoded[0] = builtIn }
+            }
+            return decoded
         }
         set {
             let raw = newValue.map { s -> [String: Any] in
@@ -3086,6 +3096,10 @@ final class SpeakSetupWindow: NSWindow {
 final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelegate {
     private var sets: [InstructionSet] = []
     private var selected = 0
+    /// Selecting a row during init fires the delegate before the editor fields
+    /// have been filled — committing those blanks wiped the first set every time
+    /// the window opened. Nothing commits until the first load is done.
+    private var ready = false
     private weak var appDelegate: AppDelegate?
     private let table = NSTableView()
     private let titleField = NSTextField()
@@ -3143,26 +3157,26 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
         // ── the editor ─────────────────────────────────────────────────
         let ex = pad + listW + 20, ew = w - ex - pad
-        func label(_ text: String, _ y: CGFloat, _ width: CGFloat) {
+        func label(_ text: String, x: CGFloat, _ y: CGFloat, _ width: CGFloat) {
             let f = NSTextField(labelWithString: text)
             f.font = .systemFont(ofSize: 11, weight: .semibold)
             f.textColor = .secondaryLabelColor
-            f.frame = NSRect(x: ex, y: y, width: width, height: 15)
+            f.frame = NSRect(x: x, y: y, width: width, height: 15)
             v.addSubview(f)
         }
-        label("Title", listTop - 15, 120)
+        label("Title", x: ex, listTop - 15, 120)
         titleField.frame = NSRect(x: ex, y: listTop - 42, width: ew - 150, height: 22)
         titleField.font = .systemFont(ofSize: 12)
         titleField.target = self
         titleField.action = #selector(titleEdited)
         v.addSubview(titleField)
 
-        label("Shortcut", listTop - 15, 120)
+        label("Shortcut", x: ex + ew - 140, listTop - 15, 120)
         let box = NSView(frame: NSRect(x: ex + ew - 140, y: listTop - 42, width: 140, height: 22))
         v.addSubview(box)
         recorderBox = box
 
-        label("Instructions", listTop - 70, 200)
+        label("Instructions", x: ex, listTop - 70, 200)
         // Top stops 78pt below the list's top, clearing the Title row and the
         // Instructions label above it.
         let insScroll = NSScrollView(frame: NSRect(x: ex, y: listBottom, width: ew,
@@ -3196,6 +3210,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         loadSelected()
+        ready = true
     }
 
     // MARK: list
@@ -3236,9 +3251,11 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
     /// Pull the editor's fields into the model. Called before anything that
     /// changes which set is showing, so nothing typed is lost by clicking away.
     private func commitEditor() {
-        guard sets.indices.contains(selected) else { return }
+        guard ready, sets.indices.contains(selected) else { return }
+        // A blank title keeps the one it had — inventing "Untitled" for someone
+        // who cleared the field to retype it is worse than leaving it alone.
         let t = titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        sets[selected].title = t.isEmpty ? "Untitled" : t
+        if !t.isEmpty { sets[selected].title = t }
         sets[selected].instructions = textView.string
     }
 
