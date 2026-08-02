@@ -66,18 +66,18 @@ let panels: [Panel] = [
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your last twenty picks, ready to copy again, drag out as a swatch, or pin.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Pull the text off anything on screen — a screenshot, a PDF, a paused video.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Have your Mac read the text you've selected out loud, in a Siri voice.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Rewrite Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Clean up, restyle, shorten or translate what you've selected, on your Mac.", spotlightKey: 0, defaultsKey: "polish"),
+    Panel(name: "Rewrite Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Clean up, restyle, shorten or translate what you've selected, on your Mac.", spotlightKey: 0, defaultsKey: "rewrite"),
     Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and speak; let go and what you said is typed where the cursor is.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
 /// Panels shown in the "System Utilities" group rather than the "Spotlight" group,
 /// and — like Applications — driven without needing Accessibility.
-let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "dictation", "speakclipboard", "polish"]
+let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "dictation", "speakclipboard", "rewrite"]
 func isUtility(_ panel: Panel) -> Bool { utilityKeys.contains(panel.defaultsKey) }
 /// The tools that work on text, grouped apart from the system ones — they read
 /// as a set (capture it, speak it, dictate it, tidy it) and it keeps each group
 /// to a single row.
-let textKeys: Set<String> = ["textcapture", "speakclipboard", "dictation", "polish"]
+let textKeys: Set<String> = ["textcapture", "speakclipboard", "dictation", "rewrite"]
 func isTextTool(_ panel: Panel) -> Bool { textKeys.contains(panel.defaultsKey) }
 /// Rows of option controls a card shows below its shortcut field: every System
 /// Tool has one (a checkbox or select menu); Spotlight panels have none.
@@ -117,7 +117,7 @@ let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃�
     "colorhistory": 4,    // H        History
     "keepawake": 40,      // K        Keep awake
     "textcapture": 31,    // O        OCR
-    "polish": 35,         // P        Proofread
+    "rewrite": 35,        // P        Proofread
 ]
 
 /// Dictation is push-to-talk: it needs the key's release as well as its press,
@@ -168,7 +168,7 @@ enum HoldKey: Int, CaseIterable {
 ///
 /// More than one turns the tool's own shortcut into a chooser; a set can also
 /// carry a shortcut of its own, which skips the chooser and runs it directly.
-struct InstructionSet: Equatable {
+struct RewriteAction: Equatable {
     var title: String
     var instructions: String
     var shortcut: Shortcut?
@@ -198,30 +198,30 @@ extension UserDefaults {
     /// written by eye — see the notes on each. The model over-applies anything
     /// that tells it to transform, so each one names what to keep as well as
     /// what to change.
-    static let starterSets: [InstructionSet] = [
-        InstructionSet(title: "Professional", shortcutless:
+    static let starterActions: [RewriteAction] = [
+        RewriteAction(title: "Professional", shortcutless:
             "Rewrite the text in a professional tone suitable for workplace correspondence. "
             + "Keep every line of the original, including any heading or introductory line. "
             + "Keep every fact, name, number and request exactly as given. "
             + "Do not add information and do not remove information."),
         // "Keep every line" is load-bearing: without it the model dropped a
         // list's heading outright.
-        InstructionSet(title: "Friendly", shortcutless:
+        RewriteAction(title: "Friendly", shortcutless:
             "Rewrite the text in a warm, casual tone, as if writing to someone you know well. "
             + "Keep every fact, name, number and request exactly as given. "
             + "Do not add information and do not remove information."),
-        InstructionSet(title: "Shorten", shortcutless:
+        RewriteAction(title: "Shorten", shortcutless:
             "Rewrite the text so it can be read and answered in a few seconds: shorter "
             + "sentences, no filler, the main point first. Keep every fact, name, number, "
             + "request, heading and list item that is present. Do not add a subject line, "
             + "a greeting, a sign-off, or any information that is not already there."),
         // Without the "do not add a subject line" clause it invented one every
         // time, including for text that was not an email.
-        InstructionSet(title: "Translate to Spanish", shortcutless:
+        RewriteAction(title: "Translate to Spanish", shortcutless:
             "Translate the text into Spanish. Translate everything, including headings and "
             + "list items. Keep names, numbers, URLs, email addresses and code exactly as "
             + "they appear. Do not add a note about the translation."),
-        InstructionSet(title: "Wrap in HTML", shortcutless:
+        RewriteAction(title: "Wrap in HTML", shortcutless:
             "Convert the text into HTML. Wrap each paragraph in <p> tags and each list in "
             + "<ul> with <li> items. Do not add a document structure, <html> or <body> "
             + "elements, styles, or classes. Keep the wording exactly as given."),
@@ -232,28 +232,28 @@ extension UserDefaults {
     /// Migrated on read from the single string that preceded them, so an upgrade
     /// keeps whatever was written there rather than resetting it. Nothing is
     /// persisted until a set is actually edited.
-    var correctSets: [InstructionSet] {
+    var rewriteActions: [RewriteAction] {
         get {
-            guard let raw = array(forKey: "correctSets") as? [[String: Any]], !raw.isEmpty else {
-                return [InstructionSet(title: UserDefaults.cleanUpTitle,
-                                       instructions: correctInstructions,
+            guard let raw = array(forKey: "rewriteActions") as? [[String: Any]], !raw.isEmpty else {
+                return [RewriteAction(title: UserDefaults.cleanUpTitle,
+                                       instructions: rewriteInstructions,
                                        shortcut: nil, enabled: true)]
-                     + UserDefaults.starterSets
+                     + UserDefaults.starterActions
             }
-            var decoded = raw.compactMap { d -> InstructionSet? in
+            var decoded = raw.compactMap { d -> RewriteAction? in
                 guard let t = d["t"] as? String, let i = d["i"] as? String else { return nil }
                 let sc = (d["k"] as? Int).map {
                     Shortcut(keyCode: UInt32($0), modifiers: UInt32(d["m"] as? Int ?? 0))
                 }
-                return InstructionSet(title: t, instructions: i, shortcut: sc,
+                return RewriteAction(title: t, instructions: i, shortcut: sc,
                                       enabled: d["e"] as? Bool ?? true)
             }
             // Self-heal: the first set is the built-in one and can never be
             // empty. An earlier build could blank it on opening the window, and
             // an empty first set means the fallback has nothing to run.
             if decoded.isEmpty || decoded[0].instructions.isEmpty {
-                let builtIn = InstructionSet(title: UserDefaults.cleanUpTitle,
-                                             instructions: UserDefaults.defaultCorrectInstructions,
+                let builtIn = RewriteAction(title: UserDefaults.cleanUpTitle,
+                                             instructions: UserDefaults.defaultRewriteInstructions,
                                              shortcut: decoded.first?.shortcut, enabled: true)
                 if decoded.isEmpty { decoded = [builtIn] } else { decoded[0] = builtIn }
             }
@@ -265,7 +265,7 @@ extension UserDefaults {
                 if let sc = s.shortcut { d["k"] = Int(sc.keyCode); d["m"] = Int(sc.modifiers) }
                 return d
             }
-            self.set(raw, forKey: "correctSets")
+            self.set(raw, forKey: "rewriteActions")
         }
     }
     var settingsToggle: Bool {
@@ -296,7 +296,7 @@ extension UserDefaults {
     /// punctuation" on its own reads to this model as permission to fix only the
     /// safe, local thing — it would mend a misspelling and hand back a sentence
     /// with no capital and no full stop, and sometimes answer a question instead
-    /// of correcting it. Naming the mechanics fixes both, consistently.
+    /// of rewriting it. Naming the mechanics fixes both, consistently.
     ///
     /// Naming them is also as far as it should go. Three drafts that lost, so
     /// they don't get tried again:
@@ -313,7 +313,7 @@ extension UserDefaults {
     ///
     /// Simpler wordings lose differently. "Fix spelling, grammar, and make any
     /// corrections needed" keeps contractions properly, but answers instead of
-    /// correcting, rewrites "the thing is" into "The issue is", drops openers
+    /// rewriting, rewrites "the thing is" into "The issue is", drops openers
     /// entirely, and leaks "Sure, here's the rewritten text:" into the output —
     /// which then gets pasted into the document. The mechanical framing here is
     /// what stops the model reading this as a chat request.
@@ -329,7 +329,7 @@ extension UserDefaults {
     /// tell it to transform, and ignores NARROW rules that tell it to hold back —
     /// but the broad "keep the wording" guard is load-bearing, which the
     /// contraction result on its own would have wrongly suggested it wasn't.
-    static let defaultCorrectInstructions = """
+    static let defaultRewriteInstructions = """
         Fix every spelling, grammar, capitalization and punctuation error. \
         Capitalize the first word of every sentence and the pronoun I. End every \
         sentence with the punctuation it needs. Split run-on sentences.
@@ -376,13 +376,13 @@ extension UserDefaults {
     /// when Auto-Correct kept dropping words after the wording was supposedly fixed.
     /// Nothing stored means "follow the default", so store nothing unless it
     /// genuinely differs.
-    var correctInstructions: String {
-        get { string(forKey: "polishInstructions") ?? UserDefaults.defaultCorrectInstructions }
+    var rewriteInstructions: String {
+        get { string(forKey: "rewriteInstructions") ?? UserDefaults.defaultRewriteInstructions }
         set {
-            if newValue == UserDefaults.defaultCorrectInstructions {
-                removeObject(forKey: "polishInstructions")
+            if newValue == UserDefaults.defaultRewriteInstructions {
+                removeObject(forKey: "rewriteInstructions")
             } else {
-                set(newValue, forKey: "polishInstructions")
+                set(newValue, forKey: "rewriteInstructions")
             }
         }
     }
@@ -399,8 +399,8 @@ extension UserDefaults {
     /// Rewrite Text: run dictated text through the model as soon as it lands. On by
     /// default — speech nearly always wants the filler stripped.
     var autoCorrectDictation: Bool {
-        get { object(forKey: "polishDictation") as? Bool ?? true }
-        set { set(newValue, forKey: "polishDictation") }
+        get { object(forKey: "autoCorrectDictation") as? Bool ?? true }
+        set { set(newValue, forKey: "autoCorrectDictation") }
     }
     /// Dictation: which modifier is held to talk (Off = the tool is idle).
     /// Right ⌥ by default — nothing else claims it, so the tool works out of the
@@ -697,14 +697,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// paste — keeps running for seconds afterwards. Dictating again inside that
     /// window lets the pending paste land in the middle of the new utterance,
     /// which is exactly how the text came back doubled and jumbled.
-    private var correcting = false
+    private var rewriting = false
     /// Insurance for the flag above. The model call has no timeout of its own, so
-    /// without this one hung request would leave `correcting` set and the hold key
+    /// without this one hung request would leave `rewriting` set and the hold key
     /// dead until the app restarts. Long enough not to fire during a normal
     /// rewrite; short enough that a wedge recovers on its own.
-    private var correctionWatchdog: DispatchWorkItem?
+    private var rewriteWatchdog: DispatchWorkItem?
     /// Which set the chooser landed on, read straight after the menu closes.
-    private var pendingSetChoice: Int?
+    private var pendingActionChoice: Int?
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
     /// canceled if the key goes back down within the grace period.
     private var pendingDictationStop: DispatchWorkItem?
@@ -756,6 +756,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default.addObserver(
             self, selector: #selector(showSettingsForDuplicateLaunch),
             name: Self.showSettingsNotification, object: nil)
+        migrateRenamedKeys()
         seedDefaultShortcutsIfNeeded()
         // The system broadcasts this when Appearance changes (including on the
         // automatic light/dark schedule). A view-level callback isn't dependable
@@ -862,6 +863,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Give a fresh install the default set. Runs once, and skips any tool that
     /// already has a shortcut, so it can never overwrite something you chose.
+    /// The on-disk keys still carried the tool's old names. Renaming them
+    /// outright would have silently dropped everyone's actions and shortcuts, so
+    /// each is carried across once and the old key removed. Guarded on the new
+    /// key being absent, so it can't undo later edits if it ever runs twice.
+    private func migrateRenamedKeys() {
+        let d = UserDefaults.standard
+        for (old, new) in [("polishShortcuts", "rewriteShortcuts"),
+                           ("polishKeyCode", "rewriteKeyCode"),
+                           ("polishModifiers", "rewriteModifiers"),
+                           ("polishInstructions", "rewriteInstructions"),
+                           ("polishDictation", "autoCorrectDictation"),
+                           ("correctSets", "rewriteActions")] {
+            guard d.object(forKey: new) == nil, let value = d.object(forKey: old) else { continue }
+            d.set(value, forKey: new)
+            d.removeObject(forKey: old)
+        }
+        // Left behind by an in-app speech engine that was tried and reverted.
+        d.removeObject(forKey: "speakVoiceIdentifier")
+    }
+
     private func seedDefaultShortcutsIfNeeded() {
         let d = UserDefaults.standard
         guard !d.bool(forKey: "didSeedShortcuts") else { return }
@@ -966,7 +987,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                               MemoryLayout<EventHotKeyID>.size, nil, &id)
             let me = Unmanaged<AppDelegate>.fromOpaque(userInfo!).takeUnretainedValue()
             if let set = me.idToSet[id.id] {
-                DispatchQueue.main.async { me.correctSelection(setIndex: set) }
+                DispatchQueue.main.async { me.rewriteSelection(setIndex: set) }
                 return noErr
             }
             if let index = me.idToPanel[id.id] {
@@ -1013,7 +1034,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // without stopping at the chooser. They need the same Accessibility as
         // Rewrite Text itself, since they read and replace the selection.
         guard hasAccessibility else { return }
-        for (i, set) in UserDefaults.standard.correctSets.enumerated() {
+        for (i, set) in UserDefaults.standard.rewriteActions.enumerated() {
             // Not gated on `enabled`: that only decides whether the action is
             // offered in the menu. A shortcut you set deliberately should fire.
             guard let sc = set.shortcut else { continue }
@@ -1046,8 +1067,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        if panel.defaultsKey == "polish" {
-            correctSelection()
+        if panel.defaultsKey == "rewrite" {
+            rewriteSelection()
             return
         }
 
@@ -1109,17 +1130,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dictation the selection is an estimate, and if it came back empty,
     /// selecting all would rewrite the entire document instead of the sentence
     /// you just spoke.
-    func correctSelection(dictated: Bool = false, known: String? = nil, setIndex: Int? = nil) {
+    func rewriteSelection(dictated: Bool = false, known: String? = nil, setIndex: Int? = nil) {
         // One round trip at a time. Two overlapping ones race over the clipboard
         // and the selection, and the loser's paste lands wherever the caret has
         // got to by then — the same failure as dictating again mid-rewrite, just
         // reached by pressing the shortcut twice. The dictated path claimed this
         // back in stopDictation; a manual press hasn't.
         if !dictated {
-            if correcting { NSSound.beep(); return }
-            beginCorrecting()
+            if rewriting { NSSound.beep(); return }
+            beginRewriting()
         }
-        guard hasAccessibility else { endCorrecting(); promptForAccessibility(); return }
+        guard hasAccessibility else { endRewriting(); promptForAccessibility(); return }
         let pb = NSPasteboard.general
         let saved = pb.string(forType: .string)
 
@@ -1139,7 +1160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let text {
                 self.resolveThenRun(text, dictated: dictated, restoring: saved, setIndex: setIndex)   // ends it
             } else if dictated {
-                self.endCorrecting()
+                self.endRewriting()
                 self.hud.hide()          // nothing to work on; leave the text alone
                 Self.restoreClipboard(saved, on: pb)
             } else {
@@ -1158,7 +1179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     self.copySelectionText { all in
                         guard let all else {
-                            self.endCorrecting()
+                            self.endRewriting()
                             self.hud.showMessage("No text to rewrite", symbol: "text.badge.xmark", tint: .systemRed)
                             Self.restoreClipboard(saved, on: pb)
                             return
@@ -1278,13 +1299,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func resolveThenRun(_ text: String, dictated: Bool,
                                 restoring saved: String?, setIndex: Int?) {
         if dictated {
-            runCorrection(text, instructions: UserDefaults.standard.dictationInstructions,
+            runRewrite(text, instructions: UserDefaults.standard.dictationInstructions,
                           dictated: true, restoring: saved)
             return
         }
-        let sets = UserDefaults.standard.correctSets
+        let sets = UserDefaults.standard.rewriteActions
         if let i = setIndex, let set = sets[safe: i] {            // a set's own shortcut
-            runCorrection(text, instructions: set.instructions, dictated: false, restoring: saved)
+            runRewrite(text, instructions: set.instructions, dictated: false, restoring: saved)
             return
         }
         // Nothing enabled falls back to the built-in Clean Up, so the shortcut
@@ -1293,48 +1314,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let active = sets.filter(\.enabled)
         if active.count <= 1 {
             let only = active.first ?? sets.first
-            runCorrection(text, instructions: only?.instructions ?? UserDefaults.defaultCorrectInstructions,
+            runRewrite(text, instructions: only?.instructions ?? UserDefaults.defaultRewriteInstructions,
                           dictated: false, restoring: saved)
             return
         }
-        guard let chosen = chooseInstructionSet(active) else {    // Esc, or clicked away
-            endCorrecting()
+        guard let chosen = chooseRewriteAction(active) else {    // Esc, or clicked away
+            endRewriting()
             hud.hide()
             Self.restoreClipboard(saved, on: NSPasteboard.general)
             return
         }
-        runCorrection(text, instructions: chosen.instructions, dictated: false, restoring: saved)
+        runRewrite(text, instructions: chosen.instructions, dictated: false, restoring: saved)
     }
 
     /// The chooser: a plain menu at the pointer, numbered so a set is one
     /// keypress away. `popUp` runs its own event loop and returns when the menu
     /// closes, so the answer is ready on the next line.
-    private func chooseInstructionSet(_ sets: [InstructionSet]) -> InstructionSet? {
-        pendingSetChoice = nil
+    private func chooseRewriteAction(_ sets: [RewriteAction]) -> RewriteAction? {
+        pendingActionChoice = nil
         let menu = NSMenu()
         menu.autoenablesItems = false
         for (i, set) in sets.enumerated() {
-            let item = NSMenuItem(title: set.title, action: #selector(pickInstructionSet(_:)),
+            let item = NSMenuItem(title: set.title, action: #selector(pickRewriteAction(_:)),
                                   keyEquivalent: i < 9 ? String(i + 1) : "")
             item.keyEquivalentModifierMask = []
             item.target = self
             item.tag = i
             menu.addItem(item)
         }
+        // Highlight the first item, so Return runs it without touching the mouse
+        // — and so the highlight itself shows the arrow keys are live. NSMenu
+        // exposes no selection API, so this hands its tracking loop a Down arrow
+        // to consume as it opens.
+        let down = String(UnicodeScalar(NSDownArrowFunctionKey)!)
+        if let arrow = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                                        timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: 0, context: nil,
+                                        characters: down, charactersIgnoringModifiers: down,
+                                        isARepeat: false, keyCode: UInt16(kVK_DownArrow)) {
+            NSApp.postEvent(arrow, atStart: true)
+        }
         menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-        return pendingSetChoice.flatMap { sets[safe: $0] }
+        return pendingActionChoice.flatMap { sets[safe: $0] }
     }
 
-    @objc private func pickInstructionSet(_ sender: NSMenuItem) { pendingSetChoice = sender.tag }
+    @objc private func pickRewriteAction(_ sender: NSMenuItem) { pendingActionChoice = sender.tag }
 
-    private func runCorrection(_ text: String, instructions: String,
+    private func runRewrite(_ text: String, instructions: String,
                                dictated: Bool, restoring saved: String?) {
         let pb = NSPasteboard.general
         hud.showWaveform(tint: .systemPurple, mode: .processing)
-        correctText(text, instructions: instructions) { [weak self] result in
+        rewriteText(text, instructions: instructions) { [weak self] result in
             guard let self else { return }
             guard let result else {
-                self.endCorrecting()
+                self.endRewriting()
                 // Not the red warning triangle the other failures use. Those are
                 // things you have to go and fix; this one is the model shrugging,
                 // and your text is exactly where you left it.
@@ -1356,7 +1389,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // thing a new dictation would otherwise land in the middle of.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 Self.restoreClipboard(saved, on: pb)
-                self.endCorrecting()
+                self.endRewriting()
             }
         }
     }
@@ -1429,7 +1462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Run `text` through Apple Intelligence's on-device model with the saved
     /// instructions. Nothing leaves the Mac. `done` is called on the main queue,
     /// with nil if the model is unavailable or refuses.
-    func correctText(_ text: String, instructions: String, done: @escaping (String?) -> Void) {
+    func rewriteText(_ text: String, instructions: String, done: @escaping (String?) -> Void) {
         guard case .available = SystemLanguageModel.default.availability else {
             DispatchQueue.main.async { done(nil) }
             return
@@ -1484,7 +1517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 // Not while Auto-Correct still has the text: starting again here is
                 // what let the previous rewrite paste itself into this sentence.
-                if !self.dictating && !self.correcting { self.armDictation() }
+                if !self.dictating && !self.rewriting { self.armDictation() }
             } else {
                 self.disarmDictation()          // let go inside the dead zone: nothing happened
                 if self.dictating { self.scheduleDictationStop() }
@@ -1595,22 +1628,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Claim the text for the Auto-Correct round trip. Every path that finishes with
-    /// it — including the ones that give up — has to call `endCorrecting`, or the
+    /// it — including the ones that give up — has to call `endRewriting`, or the
     /// hold key stays dead until the watchdog fires.
-    private func beginCorrecting() {
-        correcting = true
-        correctionWatchdog?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.endCorrecting() }
-        correctionWatchdog = work
+    private func beginRewriting() {
+        rewriting = true
+        rewriteWatchdog?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.endRewriting() }
+        rewriteWatchdog = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: work)
     }
 
     /// Safe to call when no tidy is in flight, so the shared paths can call it
     /// unconditionally rather than each having to know how they were reached.
-    private func endCorrecting() {
-        correcting = false
-        correctionWatchdog?.cancel()
-        correctionWatchdog = nil
+    private func endRewriting() {
+        rewriting = false
+        rewriteWatchdog?.cancel()
+        rewriteWatchdog = nil
     }
 
     private func stopDictation() {
@@ -1626,7 +1659,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Dictation leaves the caret at the end of its insertion, so shift-select
         // back over it — that's the only handle we have on "the dictated text",
         // since it lands in the app, not in us.
-        beginCorrecting()
+        beginRewriting()
         // Purple, not the amber above. The two waits look the same to the user but
         // aren't: amber is the grace period, where pressing again deliberately
         // carries straight on, and this one is the rewrite, where pressing again
@@ -1640,7 +1673,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let dictatedText = self.selectDictatedRunExactly()
             if dictatedText == nil { self.selectDictatedRun() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                self.correctSelection(dictated: true, known: dictatedText)
+                self.rewriteSelection(dictated: true, known: dictatedText)
             }
         }
     }
@@ -2559,7 +2592,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 v.addSubview(btn)
             }
 
-            if panel.defaultsKey == "polish" {
+            if panel.defaultsKey == "rewrite" {
                 let btn = NSButton(title: "Settings", target: self,
                                    action: #selector(editCorrectInstructions))
                 btn.toolTip = "Add and edit rewrite actions."
@@ -3094,10 +3127,10 @@ final class SpeakSetupWindow: NSWindow {
 }
 
 /// The editor for Rewrite Text's actions. Two sets, because
-/// the tool does two different jobs: correcting text you selected, and cleaning up
+/// the tool does two different jobs: rewriting text you selected, and cleaning up
 /// what you just dictated.
 final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelegate {
-    private var sets: [InstructionSet] = []
+    private var sets: [RewriteAction] = []
     private var selected = 0
     /// Selecting a row during init fires the delegate before the editor fields
     /// have been filled — committing those blanks wiped the first set every time
@@ -3121,7 +3154,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
         title = "Rewrite Text Settings"
         isReleasedWhenClosed = false
-        sets = UserDefaults.standard.correctSets
+        sets = UserDefaults.standard.rewriteActions
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
 
@@ -3325,7 +3358,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
     @objc private func addSet() {
         commitEditor()
-        sets.append(InstructionSet(title: "New Set", instructions: "", shortcut: nil, enabled: true))
+        sets.append(RewriteAction(title: "New Set", instructions: "", shortcut: nil, enabled: true))
         selected = sets.count - 1
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
@@ -3346,7 +3379,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
     }
 
     fileprivate func saveQuietly() {
-        UserDefaults.standard.correctSets = sets
+        UserDefaults.standard.rewriteActions = sets
         onChange()
     }
 
