@@ -62,7 +62,7 @@ Two more that make the point:
 **Throughout**
 
 - Every control has a one-line tooltip, and the **ⓘ** in the titlebar opens a popover — links to [HELP.md](HELP.md), the source, and the tip jar. What each of the twelve tools does, with a couple of uses each, lives in [HELP.md](HELP.md) rather than in the app.
-- **Protected app…** (in the ⓘ popover) disables Liteswitch while you're using the apps you list — a remote session, a game, anything that owns the same chords. It unregisters its shortcuts while one of them is frontmost and takes them back on the way out, so there is nothing to shadow the app's own bindings.
+- **Protected apps…** (in the ⓘ popover) disables Liteswitch while you're using the apps you list — a remote session, a game, anything that owns the same chords. It unregisters its shortcuts while one of them is frontmost and takes them back on the way out, so there is nothing to shadow the app's own bindings.
 - Shortcut conflicts with other apps are surfaced in the settings window rather than failing silently.
 - Runs as a background agent — no Dock icon, no menu bar item — and starts at login. Opening it again brings up settings.
 

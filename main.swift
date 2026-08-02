@@ -3138,7 +3138,7 @@ enum MoreInfo {
             ("Support Liteswitch", "Tip jar — it's free and stays free",       tip),
             ("Source on GitHub",   "Code, releases, and issues",               repo),
             ("Help",               "What each tool does",                      help),
-            ("Protected app…",     "Disable Liteswitch when using these apps",  pause),
+            ("Protected apps…",    "Disable Liteswitch when using these apps",  pause),
         ]
         // Bottom up: rows, tagline, version, name, icon.
         var y = pad
