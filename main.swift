@@ -19,7 +19,7 @@
 // OCR → clipboard); Keep Awake (an IOKit power assertion that blocks sleep); and
 // Speak Text — which doesn't re-implement speech at all: it mirrors macOS's own
 // "Speak selection" (Accessibility → Read & Speak), showing the shortcut that
-// feature is assigned, with a Set up… window walking through switching it on.
+// feature is assigned, with a Configure… window walking through switching it on.
 // Measured, not assumed: the Siri voices worth having are reachable from no
 // public speech API, so macOS is the only thing that can read to you in them.
 //
@@ -146,7 +146,7 @@ func worksWithoutAX(_ panel: Panel) -> Bool {
 }
 /// Speak Text owns no Liteswitch shortcut — it mirrors macOS's built-in "Speak
 /// selection" hotkey — so it registers nothing and its card shows a read-only
-/// field plus a Set up… button explaining how to switch that feature on.
+/// field plus a Configure… button explaining how to switch that feature on.
 func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
 
 /// What a fresh install starts with: ⌃⌥⌘ plus a key under your right hand.
@@ -2311,14 +2311,14 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             if usesHoldKey(panel) {
                 // Driven by holding a modifier rather than a recorded shortcut, so
                 // this reads out the key in use instead of offering a field — the
-                // same shape as Speak Text, and set in Set up… below.
+                // same shape as Speak Text, and set in Settings below.
                 let key = UserDefaults.standard.dictationHoldKey
                 readOnlyShortcut(key == .off ? "Not Set Up" : key.label,
                                  opens: #selector(openDictationSetup))
             } else if mirrorsMacOSHotkey(panel) {
                 // Read-only mirror of the macOS "Speak selection" shortcut: unlike
                 // the editable recorders it's set in Read & Speak, behind the
-                // Set up… button.
+                // Configure… button.
                 let spoken = SpokenSelection.current
                 readOnlyShortcut(spoken.enabled ? (spoken.shortcut ?? "On") : "Not Set Up",
                                  opens: #selector(openSpeakSetup))
@@ -2384,7 +2384,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 v.addSubview(btn)
             }
             if panel.defaultsKey == "speakclipboard" {
-                // Always "Set Up…", never "Change…": the window behind it is the
+                // Always "Configure…", never "Change…": the window behind it is the
                 // same three steps either way, and a label that changes with
                 // state just makes you wonder what you missed.
                 let btn = NSButton(title: "Configure…", target: self, action: #selector(openSpeakSetup))
@@ -2942,7 +2942,7 @@ final class SpeakSetupWindow: NSWindow {
 
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Set Up Speak Text"
+        title = "Configure Speak Text"
         isReleasedWhenClosed = false
 
         let v = FlippedView(frame: NSRect(x: 0, y: 0, width: w, height: h))
@@ -2984,7 +2984,7 @@ final class InstructionsWindow: NSWindow {
         let w: CGFloat = 520, h: CGFloat = 300
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Correct Text Instructions"
+        title = "Correct Text Settings"
         isReleasedWhenClosed = false
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
@@ -3066,7 +3066,7 @@ final class DictationSetupWindow: NSWindow {
         let w: CGFloat = 520, h: CGFloat = 450
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Set Up Dictate Text"
+        title = "Dictate Text Settings"
         isReleasedWhenClosed = false
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
