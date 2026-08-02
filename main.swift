@@ -171,19 +171,27 @@ struct InstructionSet: Equatable {
     var title: String
     var instructions: String
     var shortcut: Shortcut?
+    /// Off means inert: not offered in the chooser, and its own shortcut is not
+    /// registered. The starter sets ship off, so a fresh install behaves exactly
+    /// as it did before any of them existed.
+    var enabled: Bool
 
-    /// A set that ships without a shortcut — the starter ones, which shouldn't
-    /// claim keys the user hasn't asked for.
+    /// A starter set: no shortcut of its own, and off until you want it.
     init(title: String, shortcutless instructions: String) {
-        self.init(title: title, instructions: instructions, shortcut: nil)
+        self.init(title: title, instructions: instructions, shortcut: nil, enabled: false)
     }
-    init(title: String, instructions: String, shortcut: Shortcut?) {
-        self.title = title; self.instructions = instructions; self.shortcut = shortcut
+    init(title: String, instructions: String, shortcut: Shortcut?, enabled: Bool) {
+        self.title = title; self.instructions = instructions
+        self.shortcut = shortcut; self.enabled = enabled
     }
 }
 
 extension UserDefaults {
-    /// The sets a fresh install starts with, beyond the migrated Proofread one.
+    /// The first set is the built-in one and can't be removed: with nothing
+    /// enabled it is still what runs, so the shortcut always does something.
+    static let cleanUpTitle = "Clean Up"
+
+    /// The sets a fresh install starts with, beyond the built-in Clean Up.
     ///
     /// Every wording here was measured against the on-device model rather than
     /// written by eye — see the notes on each. The model over-applies anything
@@ -226,8 +234,9 @@ extension UserDefaults {
     var correctSets: [InstructionSet] {
         get {
             guard let raw = array(forKey: "correctSets") as? [[String: Any]], !raw.isEmpty else {
-                return [InstructionSet(title: "Proofread",
-                                       instructions: correctInstructions, shortcut: nil)]
+                return [InstructionSet(title: UserDefaults.cleanUpTitle,
+                                       instructions: correctInstructions,
+                                       shortcut: nil, enabled: true)]
                      + UserDefaults.starterSets
             }
             return raw.compactMap { d in
@@ -235,12 +244,13 @@ extension UserDefaults {
                 let sc = (d["k"] as? Int).map {
                     Shortcut(keyCode: UInt32($0), modifiers: UInt32(d["m"] as? Int ?? 0))
                 }
-                return InstructionSet(title: t, instructions: i, shortcut: sc)
+                return InstructionSet(title: t, instructions: i, shortcut: sc,
+                                      enabled: d["e"] as? Bool ?? true)
             }
         }
         set {
             let raw = newValue.map { s -> [String: Any] in
-                var d: [String: Any] = ["t": s.title, "i": s.instructions]
+                var d: [String: Any] = ["t": s.title, "i": s.instructions, "e": s.enabled]
                 if let sc = s.shortcut { d["k"] = Int(sc.keyCode); d["m"] = Int(sc.modifiers) }
                 return d
             }
@@ -993,7 +1003,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Correct Text itself, since they read and replace the selection.
         guard hasAccessibility else { return }
         for (i, set) in UserDefaults.standard.correctSets.enumerated() {
-            guard let sc = set.shortcut else { continue }
+            guard set.enabled, let sc = set.shortcut else { continue }
             let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */, id: nextId)
             var ref: EventHotKeyRef?
             if RegisterEventHotKey(sc.keyCode, sc.modifiers, id,
@@ -1260,16 +1270,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let sets = UserDefaults.standard.correctSets
-        if let i = setIndex, let set = sets[safe: i] {
+        if let i = setIndex, let set = sets[safe: i] {            // a set's own shortcut
             runCorrection(text, instructions: set.instructions, dictated: false, restoring: saved)
             return
         }
-        if sets.count <= 1 {
-            runCorrection(text, instructions: sets.first?.instructions ?? UserDefaults.defaultCorrectInstructions,
+        // Nothing enabled falls back to the built-in Clean Up, so the shortcut
+        // always does something; one enabled runs straight through; more than
+        // one is the only case worth interrupting for.
+        let active = sets.filter(\.enabled)
+        if active.count <= 1 {
+            let only = active.first ?? sets.first
+            runCorrection(text, instructions: only?.instructions ?? UserDefaults.defaultCorrectInstructions,
                           dictated: false, restoring: saved)
             return
         }
-        guard let chosen = chooseInstructionSet(sets) else {      // Esc, or clicked away
+        guard let chosen = chooseInstructionSet(active) else {    // Esc, or clicked away
             endCorrecting()
             hud.hide()
             Self.restoreClipboard(saved, on: NSPasteboard.general)
@@ -3095,7 +3110,8 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         let listTop = h - 56, listBottom: CGFloat = 96
 
         let intro = NSTextField(labelWithString:
-            "Each set is a different job. With more than one, the shortcut asks which to use.")
+            "Tick the sets you want. None runs Clean Up, one runs straight through, "
+            + "more than one asks which.")
         intro.font = .systemFont(ofSize: 11)
         intro.textColor = .secondaryLabelColor
         intro.frame = NSRect(x: pad, y: h - 44, width: w - pad * 2, height: 16)
@@ -3184,8 +3200,32 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
     // MARK: list
     func numberOfRows(in tableView: NSTableView) -> Int { sets.count }
-    func tableView(_ t: NSTableView, objectValueFor c: NSTableColumn?, row: Int) -> Any? {
-        sets[safe: row]?.title
+
+    /// A checkbox and a title per row, so which sets are live is visible without
+    /// selecting each one.
+    func tableView(_ t: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
+        guard let set = sets[safe: row] else { return nil }
+        let cell = NSView(frame: NSRect(x: 0, y: 0, width: listW - 24, height: 22))
+        let check = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleEnabled(_:)))
+        check.state = set.enabled ? .on : .off
+        check.tag = row
+        check.frame = NSRect(x: 2, y: 2, width: 18, height: 18)
+        cell.addSubview(check)
+        let label = NSTextField(labelWithString: set.title)
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = set.enabled ? .labelColor : .secondaryLabelColor
+        label.lineBreakMode = .byTruncatingTail
+        label.frame = NSRect(x: 24, y: 2, width: listW - 52, height: 17)
+        cell.addSubview(label)
+        return cell
+    }
+
+    @objc private func toggleEnabled(_ sender: NSButton) {
+        guard sets.indices.contains(sender.tag) else { return }
+        sets[sender.tag].enabled = sender.state == .on
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+        saveQuietly()
     }
     func tableViewSelectionDidChange(_ notification: Notification) {
         commitEditor()
@@ -3236,17 +3276,18 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
     @objc private func addSet() {
         commitEditor()
-        sets.append(InstructionSet(title: "New Set", shortcutless: ""))
+        sets.append(InstructionSet(title: "New Set", instructions: "", shortcut: nil, enabled: true))
         selected = sets.count - 1
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
         loadSelected()
     }
 
-    /// The last set can't be removed — with none left the shortcut would have
-    /// nothing to run, which reads as the tool being broken rather than empty.
+    /// The first set is the built-in Clean Up and stays: it is what runs when
+    /// nothing is enabled, so removing it would leave the shortcut with nothing
+    /// to fall back on.
     @objc private func removeSet() {
-        guard sets.count > 1, sets.indices.contains(selected) else { NSSound.beep(); return }
+        guard selected > 0, sets.indices.contains(selected) else { NSSound.beep(); return }
         sets.remove(at: selected)
         selected = min(selected, sets.count - 1)
         table.reloadData()
