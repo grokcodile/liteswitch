@@ -283,7 +283,7 @@ extension UserDefaults {
     /// tell it to transform, and ignores NARROW rules that tell it to hold back —
     /// but the broad "keep the wording" guard is load-bearing, which the
     /// contraction result on its own would have wrongly suggested it wasn't.
-    static let defaultPolishInstructions = """
+    static let defaultCorrectInstructions = """
         Fix every spelling, grammar, capitalization and punctuation error. \
         Capitalize the first word of every sentence and the pronoun I. End every \
         sentence with the punctuation it needs. Split run-on sentences.
@@ -330,10 +330,10 @@ extension UserDefaults {
     /// when Auto-Correct kept dropping words after the wording was supposedly fixed.
     /// Nothing stored means "follow the default", so store nothing unless it
     /// genuinely differs.
-    var polishInstructions: String {
-        get { string(forKey: "polishInstructions") ?? UserDefaults.defaultPolishInstructions }
+    var correctInstructions: String {
+        get { string(forKey: "polishInstructions") ?? UserDefaults.defaultCorrectInstructions }
         set {
-            if newValue == UserDefaults.defaultPolishInstructions {
+            if newValue == UserDefaults.defaultCorrectInstructions {
                 removeObject(forKey: "polishInstructions")
             } else {
                 set(newValue, forKey: "polishInstructions")
@@ -352,7 +352,7 @@ extension UserDefaults {
     }
     /// Correct Text: run dictated text through the model as soon as it lands. On by
     /// default — speech nearly always wants the filler stripped.
-    var polishDictation: Bool {
+    var autoCorrectDictation: Bool {
         get { object(forKey: "polishDictation") as? Bool ?? true }
         set { set(newValue, forKey: "polishDictation") }
     }
@@ -607,7 +607,7 @@ struct Shortcut: Equatable {
 }
 
 /// A read-only view of macOS's built-in "Speak selection" hotkey (System
-/// Settings → Accessibility → Spoken Content). Liteswitch doesn't own this
+/// Settings → Accessibility → Read & Speak). Liteswitch doesn't own this
 /// shortcut; the Speak Text card only reflects whatever macOS has assigned.
 struct SpokenSelection: Equatable {
     let enabled: Bool
@@ -867,7 +867,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSNotification.Name("com.apple.accessibility.api"), object: nil)
         axChanged()
         syncDictationMonitor()
-
     }
 
     /// Redraw anything holding baked layer colors. The notification can arrive
@@ -974,7 +973,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if panel.defaultsKey == "polish" {
-            polishSelection()
+            correctSelection()
             return
         }
 
@@ -1036,7 +1035,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dictation the selection is an estimate, and if it came back empty,
     /// selecting all would rewrite the entire document instead of the sentence
     /// you just spoke.
-    func polishSelection(dictated: Bool = false, known: String? = nil) {
+    func correctSelection(dictated: Bool = false, known: String? = nil) {
         // One round trip at a time. Two overlapping ones race over the clipboard
         // and the selection, and the loser's paste lands wherever the caret has
         // got to by then — the same failure as dictating again mid-rewrite, just
@@ -1053,18 +1052,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Three ways to learn what's selected, cheapest first. Only the last one
         // touches the clipboard, and it's the only one that leaves a trace there.
         if let known {
-            runPolish(known, dictated: dictated, restoring: saved)
+            runCorrection(known, dictated: dictated, restoring: saved)
             return
         }
         if let viaAX = selectedTextViaAX() {
-            runPolish(viaAX, dictated: dictated, restoring: saved)
+            runCorrection(viaAX, dictated: dictated, restoring: saved)
             return
         }
 
         copySelectionText { [weak self] text in
             guard let self else { return }
             if let text {
-                self.runPolish(text, dictated: dictated, restoring: saved)   // ends it
+                self.runCorrection(text, dictated: dictated, restoring: saved)   // ends it
             } else if dictated {
                 self.endCorrecting()
                 self.hud.hide()          // nothing to work on; leave the text alone
@@ -1080,7 +1079,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // the shortcut was used without selecting anything first, the
                     // ordinary way to tidy something you just typed.
                     if let viaAX = self.selectedTextViaAX() {
-                        self.runPolish(viaAX, dictated: dictated, restoring: saved)
+                        self.runCorrection(viaAX, dictated: dictated, restoring: saved)
                         return
                     }
                     self.copySelectionText { all in
@@ -1090,7 +1089,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             Self.restoreClipboard(saved, on: pb)
                             return
                         }
-                        self.runPolish(all, dictated: dictated, restoring: saved)
+                        self.runCorrection(all, dictated: dictated, restoring: saved)
                     }
                 }
             }
@@ -1197,10 +1196,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Run the text through the model and paste the result over the selection.
-    private func runPolish(_ text: String, dictated: Bool, restoring saved: String?) {
+    private func runCorrection(_ text: String, dictated: Bool, restoring saved: String?) {
         let pb = NSPasteboard.general
         hud.showWaveform(tint: .systemPurple, mode: .processing)
-        polish(text, dictated: dictated) { [weak self] result in
+        correctText(text, dictated: dictated) { [weak self] result in
             guard let self else { return }
             guard let result else {
                 self.endCorrecting()
@@ -1298,9 +1297,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Run `text` through Apple Intelligence's on-device model with the saved
     /// instructions. Nothing leaves the Mac. `done` is called on the main queue,
     /// with nil if the model is unavailable or refuses.
-    func polish(_ text: String, dictated: Bool = false, done: @escaping (String?) -> Void) {
+    func correctText(_ text: String, dictated: Bool = false, done: @escaping (String?) -> Void) {
         let instructions = dictated ? UserDefaults.standard.dictationInstructions
-                                    : UserDefaults.standard.polishInstructions
+                                    : UserDefaults.standard.correctInstructions
         guard case .available = SystemLanguageModel.default.availability else {
             DispatchQueue.main.async { done(nil) }
             return
@@ -1385,7 +1384,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ax = AXUIElementCreateApplication(app.processIdentifier)
         var menuBarRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(ax, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
-              let menuBar = menuBarRef else { return false }
+              let menuBar = menuBarRef, CFGetTypeID(menuBar) == AXUIElementGetTypeID()
+        else { return false }
 
         // Depth-first through the menu bar for the dictation item. Matching on a
         // "dictation" substring keeps it working when the wording shifts.
@@ -1491,7 +1491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // dictation while keeping whatever has already been transcribed.
         if !pressDictationMenuItem(starting: false) { post(CGKeyCode(kVK_Escape), []) }
 
-        guard UserDefaults.standard.polishDictation else { hud.hide(); return }
+        guard UserDefaults.standard.autoCorrectDictation else { hud.hide(); return }
         // Auto-Correct: select what was just dictated and rewrite it in place.
         // Dictation leaves the caret at the end of its insertion, so shift-select
         // back over it — that's the only handle we have on "the dictated text",
@@ -1510,7 +1510,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let dictatedText = self.selectDictatedRunExactly()
             if dictatedText == nil { self.selectDictatedRun() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                self.polishSelection(dictated: true, known: dictatedText)
+                self.correctSelection(dictated: true, known: dictatedText)
             }
         }
     }
@@ -1524,7 +1524,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(),
                                             kAXFocusedUIElementAttribute as CFString,
                                             &focused) == .success,
-              let element = focused else { return }
+              let element = focused, CFGetTypeID(element) == AXUIElementGetTypeID()
+        else { return }
         let field = element as! AXUIElement
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
@@ -1821,6 +1822,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         synthesizing = true
         syncHotkeys()
         post(CGKeyCode(kVK_Space), .maskCommand)
+        // Undocumented escape hatch: `defaults write com.ethan.liteswitch
+        // panelDelay 0.08` if a machine needs longer between ⌘Space and ⌘N.
+        // Clamped, because a stray value here would park the panel keys.
         let gap = (UserDefaults.standard.object(forKey: "panelDelay")
                    as? Double).map { min(max($0, 0), 1) } ?? 0.03
         DispatchQueue.main.asyncAfter(deadline: .now() + gap) { [weak self] in
@@ -2060,7 +2064,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var textPanels: [(index: Int, panel: Panel)] {
         panels.enumerated().filter { isTextTool($0.element) }.map { ($0.offset, $0.element) }
     }
-    /// Permission / Spoken Content state the current content was built for, so
+    /// Permission / Read & Speak state the current content was built for, so
     /// returning from System Settings rebuilds (and re-lights the strip) when any
     /// of them changed.
     /// The appearance the current content was built for, so a theme flip forces
@@ -2401,7 +2405,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
             if panel.defaultsKey == "polish" {
                 let btn = NSButton(title: "Settings", target: self,
-                                   action: #selector(editPolishInstructions))
+                                   action: #selector(editCorrectInstructions))
                 btn.toolTip = "Edit what Correct Text tells the model."
                 btn.bezelStyle = .rounded
                 btn.controlSize = .small
@@ -2783,7 +2787,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         dictationSetupWindow?.makeKeyAndOrderFront(nil)
     }
 
-    @objc private func editPolishInstructions() {
+    @objc private func editCorrectInstructions() {
         if instructionsWindow == nil { instructionsWindow = InstructionsWindow() }
         instructionsWindow?.center()
         NSApp.activate(ignoringOtherApps: true)
@@ -3013,7 +3017,7 @@ final class InstructionsWindow: NSWindow {
         let scroll = NSScrollView(frame: NSRect(x: 20, y: y, width: w - 40, height: boxH))
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
-        selectionView.string = UserDefaults.standard.polishInstructions
+        selectionView.string = UserDefaults.standard.correctInstructions
         selectionView.font = .systemFont(ofSize: 12)
         selectionView.isRichText = false
         selectionView.isVerticallyResizable = true
@@ -3039,11 +3043,11 @@ final class InstructionsWindow: NSWindow {
         contentView = v
     }
 
-    @objc private func restoreSelection() { selectionView.string = UserDefaults.defaultPolishInstructions }
+    @objc private func restoreSelection() { selectionView.string = UserDefaults.defaultCorrectInstructions }
 
     @objc private func save() {
         let t = selectionView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        UserDefaults.standard.polishInstructions = t.isEmpty ? UserDefaults.defaultPolishInstructions : t
+        UserDefaults.standard.correctInstructions = t.isEmpty ? UserDefaults.defaultCorrectInstructions : t
         close()
     }
 }
@@ -3102,7 +3106,7 @@ final class DictationSetupWindow: NSWindow {
         caption("Clean up what you said as soon as you stop talking.", y: h - 136, width: 340)
 
         let sw = NSSwitch()
-        sw.state = UserDefaults.standard.polishDictation ? .on : .off
+        sw.state = UserDefaults.standard.autoCorrectDictation ? .on : .off
         sw.target = self
         sw.action = #selector(autoCorrectChanged(_:))
         let swSize = sw.intrinsicContentSize
@@ -3166,7 +3170,7 @@ final class DictationSetupWindow: NSWindow {
     }
 
     @objc private func autoCorrectChanged(_ sender: NSSwitch) {
-        UserDefaults.standard.polishDictation = sender.state == .on
+        UserDefaults.standard.autoCorrectDictation = sender.state == .on
     }
 
     @objc private func restoreDefaults() {

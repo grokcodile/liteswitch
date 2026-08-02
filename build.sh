@@ -23,7 +23,11 @@ mkdir -p "${BUILD_DIR}/Contents/Resources"
 
 # Spotlight's four-panel UI is macOS 26+, so unlike Key54 there is no reason
 # to target anything older.
-swiftc -O main.swift \
+# -Osize rather than -O: this app spends its life idle waiting on a hotkey, and
+# the work that isn't idle (OCR, the on-device model, speech) happens inside
+# system frameworks rather than here — so the size is worth more than the last
+# few percent of throughput. Measured on this source: 536KB at -O, 491KB here.
+swiftc -Osize main.swift \
     -target "$(uname -m)-apple-macos26.0" \
     -framework Cocoa \
     -framework Carbon \
@@ -32,6 +36,12 @@ swiftc -O main.swift \
     -framework IOKit \
     -framework FoundationModels \
     -o "${BUILD_DIR}/Contents/MacOS/${APP_NAME}"
+
+# Local symbols are a third of the binary and nothing reads them at runtime —
+# Swift reflection uses its own metadata sections, not the symbol table. Measured:
+# 491KB down to 296KB. Has to happen before codesign, or it breaks the signature.
+# (-x keeps global symbols; a full strip can break Swift binaries.)
+strip -x "${BUILD_DIR}/Contents/MacOS/${APP_NAME}"
 
 cp Info.plist "${BUILD_DIR}/Contents/Info.plist"
 cp icon/AppIcon.icns "${BUILD_DIR}/Contents/Resources/AppIcon.icns"
