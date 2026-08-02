@@ -272,6 +272,14 @@ extension UserDefaults {
         get { object(forKey: "settingsToggle") as? Bool ?? true }
         set { set(newValue, forKey: "settingsToggle") }
     }
+    /// Bundle ids of apps that should have the keyboard to themselves. While one
+    /// of them is in front, Liteswitch's shortcuts and its dictation hold key
+    /// stand down — a safety net for apps that own the same chords, and for
+    /// anything that takes the whole keyboard like a remote session or a game.
+    var pausedApps: [String] {
+        get { stringArray(forKey: "pausedApps") ?? [] }
+        set { set(newValue, forKey: "pausedApps") }
+    }
     var colorFormat: ColorFormat {
         get { ColorFormat(rawValue: integer(forKey: "colorFormat")) ?? .hex }
         set { set(newValue.rawValue, forKey: "colorFormat") }
@@ -703,6 +711,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dead until the app restarts. Long enough not to fire during a normal
     /// rewrite; short enough that a wedge recovers on its own.
     private var rewriteWatchdog: DispatchWorkItem?
+    /// True while an app the user has excluded is frontmost.
+    private var pausedForFrontApp = false
     /// Which set the chooser landed on, read straight after the menu closes.
     private var pendingActionChoice: Int?
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
@@ -779,6 +789,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(appDidActivate(_:)),
             name: NSWorkspace.didActivateApplicationNotification, object: nil)
         installHandler()
+        updatePause(for: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
         syncHotkeys()
         watchAccessibility()
         // A user-initiated launch (Finder / Spotlight / Launchpad / Dock / `open`)
@@ -923,8 +934,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
                 as? NSRunningApplication,
               let bundleID = app.bundleIdentifier else { return }
+        updatePause(for: bundleID)
         if bundleID == "com.apple.systempreferences" || bundleID == Bundle.main.bundleIdentifier { return }
         previousApp = app
+    }
+
+    /// Hand the keyboard back while an excluded app is in front, and take it
+    /// again when that app goes away. Registering and unregistering is the whole
+    /// mechanism — a hotkey we don't hold can't shadow the app's own.
+    func updatePause(for bundleID: String?) {
+        let paused = bundleID.map { UserDefaults.standard.pausedApps.contains($0) } ?? false
+        guard paused != pausedForFrontApp else { return }
+        pausedForFrontApp = paused
+        syncHotkeys()
+        syncDictationMonitor()
     }
 
     // MARK: Accessibility
@@ -1010,7 +1033,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         idToSet = [:]
         conflicted = []
         defer { settings?.refreshBanner() }
-        guard appEnabled && !recording && !synthesizing else { return }
+        guard appEnabled && !recording && !synthesizing && !pausedForFrontApp else { return }
         var nextId: UInt32 = 1
         for (i, panel) in panels.enumerated() {
             if mirrorsMacOSHotkey(panel) { continue }   // macOS owns Speak Text's hotkey
@@ -1501,7 +1524,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if dictating { stopDictation() }
 
         let hold = UserDefaults.standard.dictationHoldKey
-        guard appEnabled, hold != .off, let code = hold.keyCode, let flag = hold.flag else { return }
+        guard appEnabled, !pausedForFrontApp,
+              hold != .off, let code = hold.keyCode, let flag = hold.flag else { return }
 
         let handle: (NSEvent) -> Void = { [weak self] event in
             guard let self, event.keyCode == code else { return }
@@ -2246,6 +2270,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var speakSetupWindow: SpeakSetupWindow?
     private var dictationSetupWindow: DictationSetupWindow?
     private var infoPopover: NSPopover?
+    private var pausedAppsWindow: PausedAppsWindow?
     private var instructionsWindow: InstructionsWindow?
 
     init(delegate: AppDelegate) {
@@ -2296,7 +2321,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
     @objc private func openMoreInfo(_ sender: NSButton) {
         let vc = NSViewController()
-        vc.view = MoreInfo.makeContent(target: self, help: #selector(openHelpDoc),
+        vc.view = MoreInfo.makeContent(target: self, pause: #selector(openPausedApps),
+                                       help: #selector(openHelpDoc),
                                        repo: #selector(openRepo), tip: #selector(openTipJar))
         let pop = NSPopover()
         pop.contentViewController = vc
@@ -2313,6 +2339,20 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         infoPopover?.performClose(nil)
         NSWorkspace.shared.open(u)
     }
+    @objc private func openPausedApps() {
+        infoPopover?.performClose(nil)
+        if pausedAppsWindow == nil {
+            pausedAppsWindow = PausedAppsWindow { [weak self] in
+                // Re-evaluate straight away: the app you just excluded may be
+                // the one you came from.
+                self?.appDelegate?.updatePause(for: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+            }
+        }
+        pausedAppsWindow?.center()
+        NSApp.activate(ignoringOtherApps: true)
+        pausedAppsWindow?.makeKeyAndOrderFront(nil)
+    }
+
     @objc private func openHelpDoc() { openLink(MoreInfo.helpURL) }
     @objc private func openRepo()    { openLink(MoreInfo.repoURL) }
     @objc private func openTipJar()  { openLink(MoreInfo.tipURL) }
@@ -2911,6 +2951,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         speakSetupWindow?.close()
         dictationSetupWindow?.close()
         instructionsWindow?.close()
+        pausedAppsWindow?.close()
         infoPopover?.performClose(nil)
     }
     func windowDidResignKey(_ notification: Notification) {
@@ -2927,6 +2968,137 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         if CGPreflightScreenCaptureAccess() != builtScreenRec
             || SpokenSelection.current != builtSpoken { rebuild() }
     }
+}
+
+/// The apps that should have the keyboard to themselves.
+///
+/// A safety net rather than a setting most people will touch: some apps own the
+/// same chords, and some — a remote session, a game, a virtual machine — want
+/// every key. Liteswitch unregisters while one of them is frontmost, so there is
+/// nothing to shadow the app's own bindings, and takes the keys back on the way
+/// out.
+final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelegate {
+    private var bundleIDs: [String] = []
+    private let table = NSTableView()
+    private let onChange: () -> Void
+    private let w: CGFloat = 460, pad: CGFloat = 20
+
+    init(onChange: @escaping () -> Void) {
+        self.onChange = onChange
+        let h: CGFloat = 380
+        super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
+                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        title = "Pause in Apps"
+        isReleasedWhenClosed = false
+        bundleIDs = UserDefaults.standard.pausedApps
+
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        let intro = NSTextField(wrappingLabelWithString:
+            "Liteswitch's shortcuts stand down while any of these apps is in front, so they "
+            + "can't shadow the app's own. Dictation's hold key stands down too.")
+        intro.font = .systemFont(ofSize: 11)
+        intro.textColor = .secondaryLabelColor
+        intro.preferredMaxLayoutWidth = w - pad * 2
+        let introH = ceil(intro.sizeThatFits(
+            NSSize(width: w - pad * 2, height: .greatestFiniteMagnitude)).height)
+        intro.frame = NSRect(x: pad, y: h - pad - introH, width: w - pad * 2, height: introH)
+        v.addSubview(intro)
+
+        let listTop = intro.frame.minY - 12, listBottom: CGFloat = 66
+        let scroll = NSScrollView(frame: NSRect(x: pad, y: listBottom,
+                                                width: w - pad * 2, height: listTop - listBottom))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("app"))
+        col.width = w - pad * 2 - 24
+        table.addTableColumn(col)
+        table.headerView = nil
+        table.rowHeight = 28
+        table.dataSource = self
+        table.delegate = self
+        scroll.documentView = table
+        v.addSubview(scroll)
+
+        let add = NSButton(title: "+", target: self, action: #selector(addApp))
+        add.bezelStyle = .rounded
+        add.frame = NSRect(x: pad, y: listBottom - 34, width: 32, height: 26)
+        v.addSubview(add)
+        let remove = NSButton(title: "−", target: self, action: #selector(removeApp))
+        remove.bezelStyle = .rounded
+        remove.frame = NSRect(x: pad + 36, y: listBottom - 34, width: 32, height: 26)
+        v.addSubview(remove)
+
+        let done = NSButton(title: "Done", target: self, action: #selector(closeUp))
+        done.bezelStyle = .rounded
+        done.keyEquivalent = "\r"
+        done.frame = NSRect(x: w - pad - 90, y: listBottom - 36, width: 90, height: 30)
+        v.addSubview(done)
+
+        contentView = v
+        table.reloadData()
+    }
+
+    /// A bundle id is what's stored — it survives the app being renamed or moved
+    /// — so the name and icon are looked up fresh each time it's drawn.
+    private static func appURL(_ id: String) -> URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { bundleIDs.count }
+
+    func tableView(_ t: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
+        guard let id = bundleIDs[safe: row] else { return nil }
+        let cell = NSView(frame: NSRect(x: 0, y: 0, width: w - pad * 2 - 24, height: 28))
+        let url = Self.appURL(id)
+        let icon = NSImageView(frame: NSRect(x: 2, y: 3, width: 22, height: 22))
+        icon.image = url.map { NSWorkspace.shared.icon(forFile: $0.path) }
+        icon.imageScaling = .scaleProportionallyDown
+        cell.addSubview(icon)
+        let name = url.map { FileManager.default.displayName(atPath: $0.path) } ?? id
+        let label = NSTextField(labelWithString: name)
+        label.font = .systemFont(ofSize: 12)
+        // An app that isn't installed any more still holds its place, greyed, so
+        // the row can be removed rather than silently vanishing.
+        label.textColor = url == nil ? .tertiaryLabelColor : .labelColor
+        label.lineBreakMode = .byTruncatingTail
+        label.frame = NSRect(x: 30, y: 5, width: w - pad * 2 - 60, height: 18)
+        cell.addSubview(label)
+        return cell
+    }
+
+    @objc private func addApp() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.prompt = "Add"
+        panel.message = "Choose apps that should have the keyboard to themselves."
+        panel.beginSheetModal(for: self) { [weak self] response in
+            guard let self, response == .OK else { return }
+            for url in panel.urls {
+                guard let id = Bundle(url: url)?.bundleIdentifier,
+                      !self.bundleIDs.contains(id) else { continue }
+                self.bundleIDs.append(id)
+            }
+            self.save()
+        }
+    }
+
+    @objc private func removeApp() {
+        let row = table.selectedRow
+        guard bundleIDs.indices.contains(row) else { NSSound.beep(); return }
+        bundleIDs.remove(at: row)
+        save()
+    }
+
+    private func save() {
+        UserDefaults.standard.pausedApps = bundleIDs
+        table.reloadData()
+        onChange()
+    }
+
+    @objc private func closeUp() { close() }
 }
 
 /// What the ⓘ in the titlebar shows: the app, where its source and help live,
@@ -2948,7 +3120,7 @@ enum MoreInfo {
     /// Built bottom-up, the way AppKit lays out an unflipped view, with the
     /// wrapped tagline measured first so the popover is exactly as tall as its
     /// content — a copy change can't clip it.
-    static func makeContent(target: AnyObject,
+    static func makeContent(target: AnyObject, pause: Selector,
                             help: Selector, repo: Selector, tip: Selector) -> NSView {
         let w: CGFloat = 300, pad: CGFloat = 16
         let icon: CGFloat = 64, btnH: CGFloat = 30, rowGap: CGFloat = 6, capH: CGFloat = 14
@@ -2964,9 +3136,10 @@ enum MoreInfo {
             NSSize(width: taglineW, height: .greatestFiniteMagnitude)).height)
 
         let rows: [(String, String, Selector)] = [
-            ("Support Liteswitch", "Tip jar — it's free and stays free", tip),
-            ("Source on GitHub",   "Code, releases, and issues",         repo),
-            ("Help",               "What each tool does",                help),
+            ("Support Liteswitch", "Tip jar — it's free and stays free",       tip),
+            ("Source on GitHub",   "Code, releases, and issues",               repo),
+            ("Help",               "What each tool does",                      help),
+            ("Pause in Apps…",     "Stand down while chosen apps are in front", pause),
         ]
         // Bottom up: rows, tagline, version, name, icon.
         var y = pad
