@@ -3085,7 +3085,7 @@ final class DictationSetupWindow: NSWindow {
         }
 
         // Hold key.
-        let keyHead = NSTextField(labelWithString: "Hold Key")
+        let keyHead = NSTextField(labelWithString: "Keyboard Shortcut")
         keyHead.font = .systemFont(ofSize: 13, weight: .semibold)
         keyHead.frame = NSRect(x: 20, y: h - 62, width: 220, height: 20)
         v.addSubview(keyHead)
