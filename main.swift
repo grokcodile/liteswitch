@@ -163,7 +163,90 @@ enum HoldKey: Int, CaseIterable {
     }
 }
 
+/// One named set of instructions for Correct Text.
+///
+/// More than one turns the tool's own shortcut into a chooser; a set can also
+/// carry a shortcut of its own, which skips the chooser and runs it directly.
+struct InstructionSet: Equatable {
+    var title: String
+    var instructions: String
+    var shortcut: Shortcut?
+
+    /// A set that ships without a shortcut — the starter ones, which shouldn't
+    /// claim keys the user hasn't asked for.
+    init(title: String, shortcutless instructions: String) {
+        self.init(title: title, instructions: instructions, shortcut: nil)
+    }
+    init(title: String, instructions: String, shortcut: Shortcut?) {
+        self.title = title; self.instructions = instructions; self.shortcut = shortcut
+    }
+}
+
 extension UserDefaults {
+    /// The sets a fresh install starts with, beyond the migrated Proofread one.
+    ///
+    /// Every wording here was measured against the on-device model rather than
+    /// written by eye — see the notes on each. The model over-applies anything
+    /// that tells it to transform, so each one names what to keep as well as
+    /// what to change.
+    static let starterSets: [InstructionSet] = [
+        InstructionSet(title: "Professional", shortcutless:
+            "Rewrite the text in a professional tone suitable for workplace correspondence. "
+            + "Keep every line of the original, including any heading or introductory line. "
+            + "Keep every fact, name, number and request exactly as given. "
+            + "Do not add information and do not remove information."),
+        // "Keep every line" is load-bearing: without it the model dropped a
+        // list's heading outright.
+        InstructionSet(title: "Friendly", shortcutless:
+            "Rewrite the text in a warm, casual tone, as if writing to someone you know well. "
+            + "Keep every fact, name, number and request exactly as given. "
+            + "Do not add information and do not remove information."),
+        InstructionSet(title: "Shorten", shortcutless:
+            "Rewrite the text so it can be read and answered in a few seconds: shorter "
+            + "sentences, no filler, the main point first. Keep every fact, name, number, "
+            + "request, heading and list item that is present. Do not add a subject line, "
+            + "a greeting, a sign-off, or any information that is not already there."),
+        // Without the "do not add a subject line" clause it invented one every
+        // time, including for text that was not an email.
+        InstructionSet(title: "Translate to Spanish", shortcutless:
+            "Translate the text into Spanish. Translate everything, including headings and "
+            + "list items. Keep names, numbers, URLs, email addresses and code exactly as "
+            + "they appear. Do not add a note about the translation."),
+        InstructionSet(title: "Wrap in HTML", shortcutless:
+            "Convert the text into HTML. Wrap each paragraph in <p> tags and each list in "
+            + "<ul> with <li> items. Do not add a document structure, <html> or <body> "
+            + "elements, styles, or classes. Keep the wording exactly as given."),
+    ]
+
+    /// Correct Text's instruction sets, in the order the user put them.
+    ///
+    /// Migrated on read from the single string that preceded them, so an upgrade
+    /// keeps whatever was written there rather than resetting it. Nothing is
+    /// persisted until a set is actually edited.
+    var correctSets: [InstructionSet] {
+        get {
+            guard let raw = array(forKey: "correctSets") as? [[String: Any]], !raw.isEmpty else {
+                return [InstructionSet(title: "Proofread",
+                                       instructions: correctInstructions, shortcut: nil)]
+                     + UserDefaults.starterSets
+            }
+            return raw.compactMap { d in
+                guard let t = d["t"] as? String, let i = d["i"] as? String else { return nil }
+                let sc = (d["k"] as? Int).map {
+                    Shortcut(keyCode: UInt32($0), modifiers: UInt32(d["m"] as? Int ?? 0))
+                }
+                return InstructionSet(title: t, instructions: i, shortcut: sc)
+            }
+        }
+        set {
+            let raw = newValue.map { s -> [String: Any] in
+                var d: [String: Any] = ["t": s.title, "i": s.instructions]
+                if let sc = s.shortcut { d["k"] = Int(sc.keyCode); d["m"] = Int(sc.modifiers) }
+                return d
+            }
+            self.set(raw, forKey: "correctSets")
+        }
+    }
     var settingsToggle: Bool {
         get { object(forKey: "settingsToggle") as? Bool ?? true }
         set { set(newValue, forKey: "settingsToggle") }
@@ -577,6 +660,7 @@ struct SpokenSelection: Equatable {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyRefs: [EventHotKeyRef] = []
     private var idToPanel: [UInt32: Int] = [:]   // EventHotKeyID.id → panel index
+    private var idToSet: [UInt32: Int] = [:]     // EventHotKeyID.id → instruction-set index
     private var hotKeyHandler: EventHandlerRef?
     private var settings: SettingsWindow?
     private var colorHistoryPanel: ColorHistoryPanel?
@@ -598,6 +682,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dead until the app restarts. Long enough not to fire during a normal
     /// rewrite; short enough that a wedge recovers on its own.
     private var correctionWatchdog: DispatchWorkItem?
+    /// Which set the chooser landed on, read straight after the menu closes.
+    private var pendingSetChoice: Int?
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
     /// canceled if the key goes back down within the grace period.
     private var pendingDictationStop: DispatchWorkItem?
@@ -858,6 +944,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                               EventParamType(typeEventHotKeyID), nil,
                               MemoryLayout<EventHotKeyID>.size, nil, &id)
             let me = Unmanaged<AppDelegate>.fromOpaque(userInfo!).takeUnretainedValue()
+            if let set = me.idToSet[id.id] {
+                DispatchQueue.main.async { me.correctSelection(setIndex: set) }
+                return noErr
+            }
             if let index = me.idToPanel[id.id] {
                 DispatchQueue.main.async { me.openPanel(index) }
             }
@@ -875,6 +965,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for ref in hotKeyRefs { UnregisterEventHotKey(ref) }
         hotKeyRefs = []
         idToPanel = [:]
+        idToSet = [:]
         conflicted = []
         defer { settings?.refreshBanner() }
         guard appEnabled && !recording && !synthesizing else { return }
@@ -893,6 +984,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 idToPanel[nextId] = i
             } else {
                 conflicted.append("\(panel.name) (\(sc.label))")
+            }
+            nextId += 1
+        }
+
+        // Instruction sets that carry a shortcut of their own, so they can be run
+        // without stopping at the chooser. They need the same Accessibility as
+        // Correct Text itself, since they read and replace the selection.
+        guard hasAccessibility else { return }
+        for (i, set) in UserDefaults.standard.correctSets.enumerated() {
+            guard let sc = set.shortcut else { continue }
+            let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */, id: nextId)
+            var ref: EventHotKeyRef?
+            if RegisterEventHotKey(sc.keyCode, sc.modifiers, id,
+                                   GetEventDispatcherTarget(), 0, &ref) == noErr, let ref {
+                hotKeyRefs.append(ref)
+                idToSet[nextId] = i
+            } else {
+                conflicted.append("\(set.title) (\(sc.label))")
             }
             nextId += 1
         }
@@ -977,7 +1086,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dictation the selection is an estimate, and if it came back empty,
     /// selecting all would rewrite the entire document instead of the sentence
     /// you just spoke.
-    func correctSelection(dictated: Bool = false, known: String? = nil) {
+    func correctSelection(dictated: Bool = false, known: String? = nil, setIndex: Int? = nil) {
         // One round trip at a time. Two overlapping ones race over the clipboard
         // and the selection, and the loser's paste lands wherever the caret has
         // got to by then — the same failure as dictating again mid-rewrite, just
@@ -994,18 +1103,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Three ways to learn what's selected, cheapest first. Only the last one
         // touches the clipboard, and it's the only one that leaves a trace there.
         if let known {
-            runCorrection(known, dictated: dictated, restoring: saved)
+            resolveThenRun(known, dictated: dictated, restoring: saved, setIndex: setIndex)
             return
         }
         if let viaAX = selectedTextViaAX() {
-            runCorrection(viaAX, dictated: dictated, restoring: saved)
+            resolveThenRun(viaAX, dictated: dictated, restoring: saved, setIndex: setIndex)
             return
         }
 
         copySelectionText { [weak self] text in
             guard let self else { return }
             if let text {
-                self.runCorrection(text, dictated: dictated, restoring: saved)   // ends it
+                self.resolveThenRun(text, dictated: dictated, restoring: saved, setIndex: setIndex)   // ends it
             } else if dictated {
                 self.endCorrecting()
                 self.hud.hide()          // nothing to work on; leave the text alone
@@ -1021,7 +1130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // the shortcut was used without selecting anything first, the
                     // ordinary way to tidy something you just typed.
                     if let viaAX = self.selectedTextViaAX() {
-                        self.runCorrection(viaAX, dictated: dictated, restoring: saved)
+                        self.resolveThenRun(viaAX, dictated: dictated, restoring: saved, setIndex: setIndex)
                         return
                     }
                     self.copySelectionText { all in
@@ -1031,7 +1140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             Self.restoreClipboard(saved, on: pb)
                             return
                         }
-                        self.runCorrection(all, dictated: dictated, restoring: saved)
+                        self.resolveThenRun(all, dictated: dictated, restoring: saved, setIndex: setIndex)
                     }
                 }
             }
@@ -1138,10 +1247,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Run the text through the model and paste the result over the selection.
-    private func runCorrection(_ text: String, dictated: Bool, restoring saved: String?) {
+    /// Which instructions to run, decided once the text is in hand.
+    ///
+    /// The text is gathered before the chooser opens, deliberately: the menu
+    /// takes key events, and reading the selection afterwards would be reading
+    /// it through whatever the menu did to focus.
+    private func resolveThenRun(_ text: String, dictated: Bool,
+                                restoring saved: String?, setIndex: Int?) {
+        if dictated {
+            runCorrection(text, instructions: UserDefaults.standard.dictationInstructions,
+                          dictated: true, restoring: saved)
+            return
+        }
+        let sets = UserDefaults.standard.correctSets
+        if let i = setIndex, let set = sets[safe: i] {
+            runCorrection(text, instructions: set.instructions, dictated: false, restoring: saved)
+            return
+        }
+        if sets.count <= 1 {
+            runCorrection(text, instructions: sets.first?.instructions ?? UserDefaults.defaultCorrectInstructions,
+                          dictated: false, restoring: saved)
+            return
+        }
+        guard let chosen = chooseInstructionSet(sets) else {      // Esc, or clicked away
+            endCorrecting()
+            hud.hide()
+            Self.restoreClipboard(saved, on: NSPasteboard.general)
+            return
+        }
+        runCorrection(text, instructions: chosen.instructions, dictated: false, restoring: saved)
+    }
+
+    /// The chooser: a plain menu at the pointer, numbered so a set is one
+    /// keypress away. `popUp` runs its own event loop and returns when the menu
+    /// closes, so the answer is ready on the next line.
+    private func chooseInstructionSet(_ sets: [InstructionSet]) -> InstructionSet? {
+        pendingSetChoice = nil
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for (i, set) in sets.enumerated() {
+            let item = NSMenuItem(title: set.title, action: #selector(pickInstructionSet(_:)),
+                                  keyEquivalent: i < 9 ? String(i + 1) : "")
+            item.keyEquivalentModifierMask = []
+            item.target = self
+            item.tag = i
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        return pendingSetChoice.flatMap { sets[safe: $0] }
+    }
+
+    @objc private func pickInstructionSet(_ sender: NSMenuItem) { pendingSetChoice = sender.tag }
+
+    private func runCorrection(_ text: String, instructions: String,
+                               dictated: Bool, restoring saved: String?) {
         let pb = NSPasteboard.general
         hud.showWaveform(tint: .systemPurple, mode: .processing)
-        correctText(text, dictated: dictated) { [weak self] result in
+        correctText(text, instructions: instructions) { [weak self] result in
             guard let self else { return }
             guard let result else {
                 self.endCorrecting()
@@ -1239,9 +1401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Run `text` through Apple Intelligence's on-device model with the saved
     /// instructions. Nothing leaves the Mac. `done` is called on the main queue,
     /// with nil if the model is unavailable or refuses.
-    func correctText(_ text: String, dictated: Bool = false, done: @escaping (String?) -> Void) {
-        let instructions = dictated ? UserDefaults.standard.dictationInstructions
-                                    : UserDefaults.standard.correctInstructions
+    func correctText(_ text: String, instructions: String, done: @escaping (String?) -> Void) {
         guard case .available = SystemLanguageModel.default.availability else {
             DispatchQueue.main.async { done(nil) }
             return
@@ -1804,7 +1964,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// recorder captures at a time, and window close / focus loss cancels it —
 /// otherwise the parked hotkeys stay parked.
 final class RecorderButton: NSButton {
-    let panel: Panel
+    /// nil for a recorder that belongs to an instruction set rather than a
+    /// panel — it writes through `onSave` and claims no panel storage.
+    let panel: Panel?
+    /// Set for a non-panel recorder: called with the new binding, or nil to clear.
+    var onSave: ((Shortcut?) -> Void)?
     var restingTitle: String
     private var monitor: Any?
     weak var appDelegate: AppDelegate?
@@ -1816,7 +1980,7 @@ final class RecorderButton: NSButton {
     /// The one recorder currently capturing, if any.
     private(set) static weak var active: RecorderButton?
 
-    init(panel: Panel, appDelegate: AppDelegate?, restingTitle: String) {
+    init(panel: Panel?, appDelegate: AppDelegate?, restingTitle: String) {
         self.panel = panel
         self.appDelegate = appDelegate
         self.restingTitle = restingTitle
@@ -1891,7 +2055,7 @@ final class RecorderButton: NSButton {
             // Bare Esc cancels; bare Delete clears the binding (no ✕ button).
             if bare && Int(event.keyCode) == kVK_Escape { return nil }
             if bare && [kVK_Delete, kVK_ForwardDelete].contains(Int(event.keyCode)) {
-                Shortcut.save(nil, self.panel)
+                if let panel = self.panel { Shortcut.save(nil, panel) } else { self.onSave?(nil) }
                 return nil
             }
             // Return and Delete can't be bound at all. Return means "activate"
@@ -1911,15 +2075,17 @@ final class RecorderButton: NSButton {
             }
 
             let sc = Shortcut(keyCode: code, modifiers: mods)
-            // One chord belongs to one panel: recording a combo another panel
-            // already uses clears it there first.
-            for other in panels where other.defaultsKey != self.panel.defaultsKey {
+            // One chord belongs to one thing: recording a combo something else
+            // already uses clears it there first — panels and instruction sets
+            // share one keyboard, so they share one rule.
+            for other in panels where other.defaultsKey != self.panel?.defaultsKey {
                 if Shortcut.load(other) == sc { Shortcut.save(nil, other) }
             }
-            Shortcut.save(sc, self.panel)
+            if let panel = self.panel { Shortcut.save(sc, panel) } else { self.onSave?(sc) }
             // Synthesis panels need Accessibility — ask the moment the user
-            // records a binding that will require it.
-            if self.panel.defaultsKey != "apps",
+            // records a binding that will require it. An instruction set needs
+            // it too: it reads and replaces the selection.
+            if self.panel?.defaultsKey != "apps",
                let ad = self.appDelegate, !ad.hasAccessibility {
                 ad.promptForAccessibility()
             }
@@ -2609,7 +2775,12 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func editCorrectInstructions() {
-        if instructionsWindow == nil { instructionsWindow = InstructionsWindow() }
+        if instructionsWindow == nil {
+            instructionsWindow = InstructionsWindow(appDelegate: appDelegate) { [weak self] in
+                self?.appDelegate?.syncHotkeys()      // sets can carry shortcuts now
+                self?.refreshBanner()
+            }
+        }
         instructionsWindow?.center()
         NSApp.activate(ignoringOtherApps: true)
         instructionsWindow?.makeKeyAndOrderFront(nil)
@@ -2897,76 +3068,206 @@ final class SpeakSetupWindow: NSWindow {
 /// The editor for what Correct Text tells the on-device model. Two sets, because
 /// the tool does two different jobs: correcting text you selected, and cleaning up
 /// what you just dictated.
-final class InstructionsWindow: NSWindow {
-    private let selectionView = NSTextView()
+final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelegate {
+    private var sets: [InstructionSet] = []
+    private var selected = 0
+    private weak var appDelegate: AppDelegate?
+    private let table = NSTableView()
+    private let titleField = NSTextField()
+    private let textView = NSTextView()
+    private var recorderBox: NSView!
+    private let onChange: () -> Void
 
-    init() {
-        let w: CGFloat = 520, h: CGFloat = 300
+    private let w: CGFloat = 640, pad: CGFloat = 20
+    private let listW: CGFloat = 180
+
+    init(appDelegate: AppDelegate?, onChange: @escaping () -> Void) {
+        self.appDelegate = appDelegate
+        self.onChange = onChange
+        let h: CGFloat = 430
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
         title = "Correct Text Settings"
         isReleasedWhenClosed = false
+        sets = UserDefaults.standard.correctSets
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-        let boxH: CGFloat = 140, y: CGFloat = 90
+        let listTop = h - 56, listBottom: CGFloat = 96
 
-        let head = NSTextField(labelWithString: "Instructions")
-        head.font = .systemFont(ofSize: 13, weight: .semibold)
-        head.frame = NSRect(x: 20, y: y + boxH + 26, width: w - 160, height: 20)
-        v.addSubview(head)
+        let intro = NSTextField(labelWithString:
+            "Each set is a different job. With more than one, the shortcut asks which to use.")
+        intro.font = .systemFont(ofSize: 11)
+        intro.textColor = .secondaryLabelColor
+        intro.frame = NSRect(x: pad, y: h - 44, width: w - pad * 2, height: 16)
+        v.addSubview(intro)
 
-        let sub = NSTextField(labelWithString: "Used when you run the shortcut on text you've selected.")
-        sub.font = .systemFont(ofSize: 11)
-        sub.textColor = .secondaryLabelColor
-        sub.frame = NSRect(x: 20, y: y + boxH + 8, width: w - 160, height: 16)
-        v.addSubview(sub)
-
-        let reset = NSButton(title: "Restore Default", target: self, action: #selector(restoreSelection))
-        reset.bezelStyle = .rounded
-        reset.controlSize = .small
-        reset.font = .systemFont(ofSize: 11)
-        reset.sizeToFit()
-        let rw = ceil(reset.frame.width) + 10
-        reset.frame = NSRect(x: w - 20 - rw, y: y + boxH + 8, width: rw, height: 20)
-        v.addSubview(reset)
-
-        let scroll = NSScrollView(frame: NSRect(x: 20, y: y, width: w - 40, height: boxH))
+        // ── the list ───────────────────────────────────────────────────
+        let scroll = NSScrollView(frame: NSRect(x: pad, y: listBottom,
+                                                width: listW, height: listTop - listBottom))
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
-        selectionView.string = UserDefaults.standard.correctInstructions
-        selectionView.font = .systemFont(ofSize: 12)
-        selectionView.isRichText = false
-        selectionView.isVerticallyResizable = true
-        selectionView.autoresizingMask = [.width]
-        selectionView.textContainer?.widthTracksTextView = true
-        scroll.documentView = selectionView
+        let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("t"))
+        col.width = listW - 24
+        table.addTableColumn(col)
+        table.headerView = nil
+        table.rowHeight = 22
+        table.dataSource = self
+        table.delegate = self
+        scroll.documentView = table
         v.addSubview(scroll)
 
-        let save = NSButton(title: "Save", target: self, action: #selector(save))
-        save.bezelStyle = .rounded
-        save.keyEquivalent = "\r"
-        save.frame = NSRect(x: w - 110, y: 22, width: 90, height: 30)
-        v.addSubview(save)
+        let add = NSButton(title: "+", target: self, action: #selector(addSet))
+        add.bezelStyle = .rounded
+        add.frame = NSRect(x: pad, y: listBottom - 30, width: 32, height: 26)
+        v.addSubview(add)
+        let remove = NSButton(title: "−", target: self, action: #selector(removeSet))
+        remove.bezelStyle = .rounded
+        remove.frame = NSRect(x: pad + 36, y: listBottom - 30, width: 32, height: 26)
+        v.addSubview(remove)
 
+        // ── the editor ─────────────────────────────────────────────────
+        let ex = pad + listW + 20, ew = w - ex - pad
+        func label(_ text: String, _ y: CGFloat, _ width: CGFloat) {
+            let f = NSTextField(labelWithString: text)
+            f.font = .systemFont(ofSize: 11, weight: .semibold)
+            f.textColor = .secondaryLabelColor
+            f.frame = NSRect(x: ex, y: y, width: width, height: 15)
+            v.addSubview(f)
+        }
+        label("Title", listTop - 15, 120)
+        titleField.frame = NSRect(x: ex, y: listTop - 42, width: ew - 150, height: 22)
+        titleField.font = .systemFont(ofSize: 12)
+        titleField.target = self
+        titleField.action = #selector(titleEdited)
+        v.addSubview(titleField)
+
+        label("Shortcut", listTop - 15, 120)
+        let box = NSView(frame: NSRect(x: ex + ew - 140, y: listTop - 42, width: 140, height: 22))
+        v.addSubview(box)
+        recorderBox = box
+
+        label("Instructions", listTop - 70, 200)
+        // Top stops 78pt below the list's top, clearing the Title row and the
+        // Instructions label above it.
+        let insScroll = NSScrollView(frame: NSRect(x: ex, y: listBottom, width: ew,
+                                                   height: listTop - 78 - listBottom))
+        insScroll.hasVerticalScroller = true
+        insScroll.borderType = .bezelBorder
+        textView.font = .systemFont(ofSize: 12)
+        textView.isRichText = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.delegate = self
+        insScroll.documentView = textView
+        v.addSubview(insScroll)
+
+        // ── footer ─────────────────────────────────────────────────────
         let note = NSTextField(labelWithString:
             "Instructions for built-in AI — nothing leaves your computer.")
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
-        note.lineBreakMode = .byTruncatingTail
-        note.frame = NSRect(x: 20, y: 30, width: w - 140, height: 16)
+        note.frame = NSRect(x: pad, y: 30, width: w - 260, height: 16)
         v.addSubview(note)
 
+        let save = NSButton(title: "Save", target: self, action: #selector(saveAll))
+        save.bezelStyle = .rounded
+        save.keyEquivalent = "\r"
+        save.frame = NSRect(x: w - pad - 90, y: 22, width: 90, height: 30)
+        v.addSubview(save)
+
         contentView = v
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        loadSelected()
     }
 
-    @objc private func restoreSelection() { selectionView.string = UserDefaults.defaultCorrectInstructions }
+    // MARK: list
+    func numberOfRows(in tableView: NSTableView) -> Int { sets.count }
+    func tableView(_ t: NSTableView, objectValueFor c: NSTableColumn?, row: Int) -> Any? {
+        sets[safe: row]?.title
+    }
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        commitEditor()
+        selected = max(0, table.selectedRow)
+        loadSelected()
+    }
 
-    @objc private func save() {
-        let t = selectionView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        UserDefaults.standard.correctInstructions = t.isEmpty ? UserDefaults.defaultCorrectInstructions : t
+    /// Pull the editor's fields into the model. Called before anything that
+    /// changes which set is showing, so nothing typed is lost by clicking away.
+    private func commitEditor() {
+        guard sets.indices.contains(selected) else { return }
+        let t = titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        sets[selected].title = t.isEmpty ? "Untitled" : t
+        sets[selected].instructions = textView.string
+    }
+
+    private func loadSelected() {
+        guard let set = sets[safe: selected] else { return }
+        titleField.stringValue = set.title
+        textView.string = set.instructions
+        recorderBox.subviews.forEach { $0.removeFromSuperview() }
+        let rec = RecorderButton(panel: nil, appDelegate: appDelegate,
+                                 restingTitle: set.shortcut?.label ?? "Set Shortcut")
+        rec.alignment = .center
+        rec.frame = recorderBox.bounds
+        let index = selected
+        rec.onSave = { [weak self] sc in
+            guard let self, self.sets.indices.contains(index) else { return }
+            self.sets[index].shortcut = sc
+        }
+        rec.onChange = { [weak self] in self?.loadSelected(); self?.saveQuietly() }
+        recorderBox.addSubview(rec)
+        if set.shortcut != nil {
+            rec.enableClear { [weak self] in
+                guard let self, self.sets.indices.contains(index) else { return }
+                self.sets[index].shortcut = nil
+                self.loadSelected()
+                self.saveQuietly()
+            }
+        }
+    }
+
+    @objc private func titleEdited() {
+        commitEditor()
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+    }
+
+    @objc private func addSet() {
+        commitEditor()
+        sets.append(InstructionSet(title: "New Set", shortcutless: ""))
+        selected = sets.count - 1
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+        loadSelected()
+    }
+
+    /// The last set can't be removed — with none left the shortcut would have
+    /// nothing to run, which reads as the tool being broken rather than empty.
+    @objc private func removeSet() {
+        guard sets.count > 1, sets.indices.contains(selected) else { NSSound.beep(); return }
+        sets.remove(at: selected)
+        selected = min(selected, sets.count - 1)
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
+        loadSelected()
+        saveQuietly()
+    }
+
+    private func saveQuietly() {
+        UserDefaults.standard.correctSets = sets
+        onChange()
+    }
+
+    @objc private func saveAll() {
+        commitEditor()
+        saveQuietly()
         close()
     }
 }
+
+extension InstructionsWindow: NSTextViewDelegate {}
 
 /// Everything Dictate Text needs set up: which key you hold, whether Auto-Correct
 /// runs on what you just said, and what it tells the model when it does.
