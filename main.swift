@@ -3134,11 +3134,13 @@ enum MoreInfo {
         let taglineH = ceil(tagline.sizeThatFits(
             NSSize(width: taglineW, height: .greatestFiniteMagnitude)).height)
 
+        // Listed bottom-up, the way the view is built. Protected apps sits last on
+        // screen: it's the one row that changes behaviour rather than opening a link.
         let rows: [(String, String, Selector)] = [
+            ("Protected apps…",    "Disable Liteswitch when using these apps", pause),
             ("Support Liteswitch", "Tip jar — it's free and stays free",       tip),
             ("Source on GitHub",   "Code, releases, and issues",               repo),
             ("Help",               "What each tool does",                      help),
-            ("Protected apps…",    "Disable Liteswitch when using these apps",  pause),
         ]
         // Bottom up: rows, tagline, version, name, icon.
         var y = pad
