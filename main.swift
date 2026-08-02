@@ -70,64 +70,6 @@ let panels: [Panel] = [
     Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and speak; let go and what you said is typed where the cursor is.", spotlightKey: 0, defaultsKey: "dictation"),
 ]
 
-/// The long-form help behind each card: what a tool does, then a couple of
-/// concrete uses.
-struct PanelInfo {
-    let body: String
-    let examples: [String]
-}
-
-let panelInfo: [String: PanelInfo] = [
-    "apps": PanelInfo(
-        body: "Spotlight's Applications panel — every app you have, filtered by name. It opens through a system stub rather than faked keystrokes, so it's instant and needs no permissions at all.",
-        examples: ["Launch an app without hunting the Dock or Launchpad.",
-                   "Browse what's installed when the name won't come to you."]),
-    "files": PanelInfo(
-        body: "Spotlight's Files panel searches the same index Finder does, but only documents and folders. No apps, no web results, nothing else in the way.",
-        examples: ["Jump to a document you had open yesterday.",
-                   "Open a folder buried deep without walking Finder down to it."]),
-    "actions": PanelInfo(
-        body: "Every Shortcut you've built, plus macOS's own quick actions, run by typing a name. It's the closest thing your Mac has to a command palette.",
-        examples: ["Run a Shortcut by name instead of finding it in the app.",
-                   "Fire off a system action in the middle of something else."]),
-    "clipboard": PanelInfo(
-        body: "Your Mac keeps a clipboard history of its own. This opens it, so you can paste something from a while back. Nothing extra to install or leave running.",
-        examples: ["Recover a link you copied an hour ago.",
-                   "Grab the second-to-last thing you copied, without redoing the work."]),
-    "settings": PanelInfo(
-        body: "Opens System Settings from wherever you are. With Smart Toggle on, pressing the shortcut again hides it and drops you back where you were.",
-        examples: ["Flip a toggle mid-task and land straight back where you were.",
-                   "Reach Wi-Fi, Sound or Displays without touching the menu bar."]),
-    "colorpicker": PanelInfo(
-        body: "Brings up the system loupe and copies the pixel you click, as Hex, RGB, HSL or SwiftUI. Apple's own process does the sampling, so it needs no Screen Recording. Every pick is saved to Color History.",
-        examples: ["Lift a hex out of a screenshot and straight into CSS.",
-                   "Match a brand color you can only see on screen."]),
-    "colorhistory": PanelInfo(
-        body: "Every color you've picked, in one window. Click a swatch to copy it again, drag one out as a PNG, or pin the keepers. It holds the last 20.",
-        examples: ["Recover a color you sampled earlier without picking it again.",
-                   "Keep a palette pinned beside you while you design."]),
-    "keepawake": PanelInfo(
-        body: "Stops your Mac going to sleep on its own. Turn on Screen Sleep and the display still goes dark while everything else keeps running. Closing a laptop's lid on battery overrides all of it and sleeps anyway. While Keep Awake is on, a coffee cup sits in the menu bar. Click the cup or press the shortcut again to switch it off.",
-        examples: ["Keep a long render, download or backup alive.",
-                   "Stop the screen sleeping halfway through a presentation."]),
-    "textcapture": PanelInfo(
-        body: "Drag a box around anything on screen and the text inside it lands on your clipboard. Apple's Vision framework reads it right on your Mac, so it works offline.",
-        examples: ["Copy text out of a screenshot, a PDF, or a paused video.",
-                   "Grab an error message from a dialog that won't let you select it."]),
-    "speakclipboard": PanelInfo(
-        body: "Your Mac reads the selection aloud in a Siri voice, on a shortcut macOS owns rather than one set here. This mirrors that feature instead of doing its own speech for a plain reason: the Siri voices are the good ones, and no app can reach them — ask for one and the system quietly hands back a lesser voice.",
-        examples: ["Have a long article read to you while you do something else.",
-                   "Proofread by ear — the mistakes you skim past are audible."]),
-    "dictation": PanelInfo(
-        body: "Hold a key, talk, let go. Your Mac does the transcribing on-device, so nothing you say leaves it. What it won't do is hold-to-talk, and that's the only thing this adds. The meter is green while listening, amber while dictation catches up, purple while Auto-Correct rewrites.",
-        examples: ["Get a long reply down without typing it all out.",
-                   "Talk out a rough paragraph, then correct it by hand."]),
-    "polish": PanelInfo(
-        body: "Fixes spelling, grammar and punctuation with Apple Intelligence, running on your Mac. It keeps two sets of instructions for two jobs: proofreading what you selected, and cleaning up dictated speech. Both are yours to edit.",
-        examples: ["Clean up a paragraph you typed in a hurry, without it being reworded.",
-                   "Turn a rambling dictation into something you'd actually send."]),
-]
-
 /// Panels shown in the "System Utilities" group rather than the "Spotlight" group,
 /// and — like Applications — driven without needing Accessibility.
 let utilityKeys: Set<String> = ["settings", "colorpicker", "colorhistory", "textcapture", "keepawake", "dictation", "speakclipboard", "polish"]
@@ -2073,11 +2015,10 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var builtWithAX = true
     private var builtScreenRec = CGPreflightScreenCaptureAccess()
     private var builtSpoken = SpokenSelection.current
-    /// Whether the help overlay is covering the window.
-    private var helpOpen = false
     private var helpButton: NSButton?
     private var speakSetupWindow: SpeakSetupWindow?
     private var dictationSetupWindow: DictationSetupWindow?
+    private var moreInfoWindow: MoreInfoWindow?
     private var instructionsWindow: InstructionsWindow?
 
     init(delegate: AppDelegate) {
@@ -2104,7 +2045,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         guard helpButton == nil else { return }
         let titlebarH: CGFloat = 28
         let size: CGFloat = 22
-        let btn = NSButton(title: "", target: self, action: #selector(toggleHelp))
+        let btn = NSButton(title: "", target: self, action: #selector(openMoreInfo))
         btn.isBordered = false
         btn.imagePosition = .imageOnly
         btn.contentTintColor = .secondaryLabelColor
@@ -2119,13 +2060,18 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         syncHelpButton()
     }
 
-    /// ⓘ to open, ✕ to close — one control, so there's one place to look.
     private func syncHelpButton() {
-        helpButton?.image = NSImage(
-            systemSymbolName: helpOpen ? "xmark.circle.fill" : "info.circle",
-            accessibilityDescription: helpOpen ? "Close help" : "Help")?
+        helpButton?.image = NSImage(systemSymbolName: "info.circle",
+                                    accessibilityDescription: "About Liteswitch")?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
-        helpButton?.toolTip = helpOpen ? "Close help documentation" : "View help documentation"
+        helpButton?.toolTip = "About Liteswitch"
+    }
+
+    @objc private func openMoreInfo() {
+        if moreInfoWindow == nil { moreInfoWindow = MoreInfoWindow() }
+        moreInfoWindow?.center()
+        NSApp.activate(ignoringOtherApps: true)
+        moreInfoWindow?.makeKeyAndOrderFront(nil)
     }
 
     /// Recreate the whole content from the current shortcuts, so rows grow and
@@ -2497,154 +2443,13 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
         let done = NSButton(title: "Done", target: self, action: #selector(saveAndClose))
         done.bezelStyle = .rounded
-        // Unbound while Help is up, so Return there doesn't close the whole
-        // window when what you meant to close was the help.
-        done.keyEquivalent = helpOpen ? "" : "\r"
+        done.keyEquivalent = "\r"
         done.toolTip = "Save settings and close this window."
         done.frame = NSRect(x: winW - pad - btnW, y: bottomMargin, width: btnW, height: btnH)
         v.addSubview(done)
 
-        if helpOpen { addHelpOverlay(height: H, in: v) }
-
         contentView = v
         refreshBanner()
-    }
-
-    // MARK: Help
-
-    @objc private func toggleHelp() {
-        helpOpen.toggle()
-        syncHelpButton()
-        rebuild()
-    }
-
-    /// Everything the twelve tools do, laid over the whole window.
-    ///
-    /// It covers the content view edge to edge, which is also what keeps the
-    /// controls beneath it out of reach: hit-testing stops at the topmost
-    /// sibling, so nothing under here can be clicked while it's up. The window
-    /// title changes with it, so this reads as the same window showing its other
-    /// face rather than something dropped on top.
-    ///
-    /// The body repeats the settings window's own structure — the same three
-    /// titled outline groups, in the same order, with the same four tools each —
-    /// so what you read maps onto what you just saw.
-    private func addHelpOverlay(height H: CGFloat, in v: NSView) {
-        let overlay = NSView(frame: NSRect(x: 0, y: 0, width: winW, height: H))
-        overlay.wantsLayer = true
-        overlay.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        v.addSubview(overlay)
-
-        // Its own heading, in the window title's place and style — the overlay
-        // covers the content view whole, title label included, so it has to
-        // reprint it rather than borrow it.
-        let headingY = H - topMargin - titleTextH
-        let heading = NSTextField(labelWithString: "Liteswitch Help")
-        heading.font = .systemFont(ofSize: 26, weight: .bold)
-        heading.alignment = .center
-        heading.frame = NSRect(x: pad, y: headingY, width: winW - pad * 2, height: titleTextH)
-        overlay.addSubview(heading)
-
-        let scrollTop = headingY - sectionGap
-        let scroll = NSScrollView(frame: NSRect(x: pad, y: bottomMargin,
-                                                width: winW - pad * 2,
-                                                height: scrollTop - bottomMargin))
-        scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = false
-        scroll.drawsBackground = false
-        scroll.autohidesScrollers = false
-        scroll.scrollerStyle = .legacy          // always visible: there is more below
-        overlay.addSubview(scroll)
-
-        // Esc closes it. The toggle itself lives in the titlebar, which is outside
-        // the content view and so out of reach of key-equivalent dispatch — this
-        // is a stand-in that sits in the hierarchy that does get asked.
-        let escape = NSButton(title: "", target: self, action: #selector(toggleHelp))
-        escape.keyEquivalent = "\u{1b}"
-        escape.alphaValue = 0                   // invisible, but not hidden: hidden buttons get no key equivalents
-        escape.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
-        overlay.addSubview(escape)
-
-        // Sized to the clip width minus the always-present scroller, so the text
-        // wraps instead of scrolling sideways.
-        let scrollerW = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
-        let innerW = scroll.frame.width - scrollerW - 6
-        let doc = FlippedView(frame: NSRect(x: 0, y: 0, width: innerW, height: 10))
-
-        func label(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor,
-                   x: CGFloat, y: CGFloat, width: CGFloat, in host: NSView) -> NSTextField {
-            let f = NSTextField(wrappingLabelWithString: text)
-            f.font = .systemFont(ofSize: size, weight: weight)
-            f.textColor = color
-            f.isSelectable = false
-            f.preferredMaxLayoutWidth = width
-            let h = ceil(f.sizeThatFits(NSSize(width: width, height: .greatestFiniteMagnitude)).height)
-            f.frame = NSRect(x: x, y: y, width: width, height: h)
-            host.addSubview(f)
-            return f
-        }
-
-        /// One tool: icon, name, what it does, then the uses. Returns its height.
-        func cell(_ panel: Panel, x: CGFloat, y: CGFloat, width: CGFloat, in host: NSView) -> CGFloat {
-            let icon = NSImageView(frame: NSRect(x: x, y: y, width: 22, height: 22))
-            configureIcon(icon, panel, dimmed: false)
-            host.addSubview(icon)
-
-            let textX = x + 30, textW = width - 30
-            let name = label(panel.name, size: 13, weight: .semibold, color: .labelColor,
-                             x: textX, y: y + 2, width: textW, in: host)
-            var yy = name.frame.maxY + 4
-
-            let info = panelInfo[panel.defaultsKey]
-            let body = label(info?.body ?? panel.detail, size: 12, weight: .regular,
-                             color: .secondaryLabelColor, x: textX, y: yy, width: textW, in: host)
-            yy = body.frame.maxY + 5
-
-            for example in info?.examples ?? [] {
-                let line = label("•  " + example, size: 12, weight: .regular,
-                                 color: .secondaryLabelColor, x: textX + 4, y: yy,
-                                 width: textW - 4, in: host)
-                yy = line.frame.maxY + 2
-            }
-
-            return max(yy - y, 22)
-        }
-
-        var y: CGFloat = 0
-        let groups: [(String, [(index: Int, panel: Panel)])] = [
-            ("Spotlight Panels", spotlightPanels),
-            ("System Utilities", utilityPanels),
-            ("Text Tools", textPanels),
-        ]
-        for (i, group) in groups.enumerated() {
-            if i > 0 { y += sectionGap }
-            let title = label(group.0, size: 14, weight: .semibold, color: .secondaryLabelColor,
-                              x: 6, y: y, width: innerW - 12, in: doc)
-            y = title.frame.maxY + groupTitleGap
-
-            // The same hairline outline the settings window puts around a group.
-            // Flipped like its parent, so laying the tools out top-down and then
-            // growing the box to fit leaves them where they were put.
-            let box = FlippedView(frame: NSRect(x: 0, y: y, width: innerW, height: 10))
-            box.wantsLayer = true
-            box.layer?.cornerRadius = 10
-            box.layer?.borderWidth = 1
-            box.layer?.borderColor = NSColor.separatorColor.cgColor
-            doc.addSubview(box)
-
-            var by = groupPad
-            for (j, entry) in group.1.enumerated() {
-                if j > 0 { by += 14 }
-                by += cell(entry.panel, x: groupPad, y: by,
-                           width: innerW - groupPad * 2, in: box)
-            }
-            box.frame.size.height = by + groupPad
-            y = box.frame.maxY
-        }
-        doc.frame = NSRect(x: 0, y: 0, width: innerW, height: y)
-        doc.autoresizingMask = [.width]
-        scroll.documentView = doc
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: 0))
     }
 
     // MARK: Layout helpers
@@ -2858,6 +2663,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         speakSetupWindow?.close()
         dictationSetupWindow?.close()
         instructionsWindow?.close()
+        moreInfoWindow?.close()
     }
     func windowDidResignKey(_ notification: Notification) {
         RecorderButton.active?.cancelRecording()
@@ -2873,6 +2679,102 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         if CGPreflightScreenCaptureAccess() != builtScreenRec
             || SpokenSelection.current != builtSpoken { rebuild() }
     }
+}
+
+/// The window behind the ⓘ in the titlebar: what this is, where the source and
+/// the help live, and a way to say thanks.
+///
+/// The help document is linked rather than bundled. It is one markdown file in
+/// the repo, so linking it means one copy to keep current instead of a second
+/// one baked into every build — and the app has no business shipping a document
+/// viewer to read its own manual.
+final class MoreInfoWindow: NSWindow {
+    /// blob/HEAD rather than blob/main: HEAD resolves to whatever the default
+    /// branch is called, so the link survives the repo being created with either.
+    private static let repoURL = "https://github.com/grokcodile/liteswitch"
+    private static let helpURL = "https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md"
+    private static let tipURL  = "https://ko-fi.com/grokcodile"
+
+    init() {
+        let w: CGFloat = 380, pad: CGFloat = 24
+        var placed: [(NSView, CGFloat)] = []
+        var y = pad
+
+        let icon = NSImageView(frame: NSRect(x: (w - 64) / 2, y: 0, width: 64, height: 64))
+        icon.image = NSApp.applicationIconImage
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        placed.append((icon, y))
+        y += 64 + 12
+
+        func centered(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) {
+            let f = NSTextField(wrappingLabelWithString: text)
+            f.font = .systemFont(ofSize: size, weight: weight)
+            f.textColor = color
+            f.alignment = .center
+            f.isSelectable = false
+            f.preferredMaxLayoutWidth = w - pad * 2
+            let h = ceil(f.sizeThatFits(NSSize(width: w - pad * 2, height: .greatestFiniteMagnitude)).height)
+            f.frame = NSRect(x: pad, y: 0, width: w - pad * 2, height: h)
+            placed.append((f, y))
+            y += h
+        }
+
+        centered("Liteswitch", size: 20, weight: .bold, color: .labelColor)
+        y += 2
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        centered("Version \(version)", size: 11, weight: .regular, color: .secondaryLabelColor)
+        y += 10
+        centered("A global shortcut for things your Mac already knows how to do.",
+                 size: 12, weight: .regular, color: .secondaryLabelColor)
+        y += 20
+
+        let rows: [(String, String, Selector)] = [
+            ("Help", "What each tool does", #selector(openHelp)),
+            ("Source on GitHub", "Code, releases, and issues", #selector(openRepo)),
+            ("Support Liteswitch", "Tip jar — it's free and stays free", #selector(openTipJar)),
+        ]
+        var links: [NSButton] = []          // targeted after super.init
+        for (title, caption, action) in rows {
+            let btn = NSButton(title: title, target: nil, action: action)
+            links.append(btn)
+            btn.bezelStyle = .rounded
+            btn.frame = NSRect(x: pad, y: 0, width: w - pad * 2, height: 30)
+            placed.append((btn, y))
+            y += 30 + 3
+
+            let sub = NSTextField(labelWithString: caption)
+            sub.font = .systemFont(ofSize: 11)
+            sub.textColor = .secondaryLabelColor
+            sub.alignment = .center
+            sub.frame = NSRect(x: pad, y: 0, width: w - pad * 2, height: 14)
+            placed.append((sub, y))
+            y += 14 + 14
+        }
+        y += 2
+
+        let h = y + pad
+        super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
+                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        title = "About Liteswitch"
+        isReleasedWhenClosed = false
+
+        links.forEach { $0.target = self }
+
+        let v = FlippedView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        for (view, top) in placed {
+            view.frame.origin.y = top
+            v.addSubview(view)
+        }
+        contentView = v
+    }
+
+    private func open(_ url: String) {
+        guard let u = URL(string: url) else { return }
+        NSWorkspace.shared.open(u)
+    }
+    @objc private func openHelp()   { open(Self.helpURL) }
+    @objc private func openRepo()   { open(Self.repoURL) }
+    @objc private func openTipJar() { open(Self.tipURL) }
 }
 
 /// How to switch on macOS's "Speak selection", written out, with the button that
