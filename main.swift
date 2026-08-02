@@ -1013,7 +1013,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Correct Text itself, since they read and replace the selection.
         guard hasAccessibility else { return }
         for (i, set) in UserDefaults.standard.correctSets.enumerated() {
-            guard set.enabled, let sc = set.shortcut else { continue }
+            // Not gated on `enabled`: that only decides whether the action is
+            // offered in the menu. A shortcut you set deliberately should fire.
+            guard let sc = set.shortcut else { continue }
             let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */, id: nextId)
             var ref: EventHotKeyRef?
             if RegisterEventHotKey(sc.keyCode, sc.modifiers, id,
@@ -3113,7 +3115,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
     init(appDelegate: AppDelegate?, onChange: @escaping () -> Void) {
         self.appDelegate = appDelegate
         self.onChange = onChange
-        let h: CGFloat = 430
+        let h: CGFloat = 500
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
         title = "Correct Text Settings"
@@ -3121,15 +3123,25 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         sets = UserDefaults.standard.correctSets
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-        let listTop = h - 56, listBottom: CGFloat = 96
 
-        let intro = NSTextField(labelWithString:
-            "Tick the sets you want. None runs Clean Up, one runs straight through, "
-            + "more than one asks which.")
+        let intro = NSTextField(wrappingLabelWithString:
+            "Create and select the intelligent actions you want to choose from when running "
+            + "the global shortcut. Selecting only one will skip the main shortcut menu. "
+            + "Set a direct shortcut to bypass the menu and immediately run that intelligent action.")
         intro.font = .systemFont(ofSize: 11)
         intro.textColor = .secondaryLabelColor
-        intro.frame = NSRect(x: pad, y: h - 44, width: w - pad * 2, height: 16)
+        intro.preferredMaxLayoutWidth = w - pad * 2
+        let introH = ceil(intro.sizeThatFits(
+            NSSize(width: w - pad * 2, height: .greatestFiniteMagnitude)).height)
+        intro.frame = NSRect(x: pad, y: h - pad - introH, width: w - pad * 2, height: introH)
         v.addSubview(intro)
+
+        let listHead = NSTextField(labelWithString: "Intelligent Actions")
+        listHead.font = .systemFont(ofSize: 12, weight: .semibold)
+        listHead.frame = NSRect(x: pad, y: intro.frame.minY - 28, width: 300, height: 18)
+        v.addSubview(listHead)
+
+        let listTop = listHead.frame.minY - 6, listBottom: CGFloat = 128
 
         // ── the list ───────────────────────────────────────────────────
         let scroll = NSScrollView(frame: NSRect(x: pad, y: listBottom,
@@ -3148,12 +3160,25 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
         let add = NSButton(title: "+", target: self, action: #selector(addSet))
         add.bezelStyle = .rounded
-        add.frame = NSRect(x: pad, y: listBottom - 30, width: 32, height: 26)
+        add.frame = NSRect(x: pad, y: listBottom - 32, width: 32, height: 26)
         v.addSubview(add)
         let remove = NSButton(title: "−", target: self, action: #selector(removeSet))
         remove.bezelStyle = .rounded
-        remove.frame = NSRect(x: pad + 36, y: listBottom - 30, width: 32, height: 26)
+        remove.frame = NSRect(x: pad + 36, y: listBottom - 32, width: 32, height: 26)
         v.addSubview(remove)
+
+        // The checkbox and the shortcut do different jobs, and nothing on screen
+        // said so — this is the sentence that stops them reading as one switch.
+        let legend = NSTextField(wrappingLabelWithString:
+            "Checked actions appear in the shortcut menu. An action with its own shortcut "
+            + "always runs directly, whether it is checked or not.")
+        legend.font = .systemFont(ofSize: 11)
+        legend.textColor = .secondaryLabelColor
+        legend.preferredMaxLayoutWidth = w - pad * 2
+        let legendH = ceil(legend.sizeThatFits(
+            NSSize(width: w - pad * 2, height: .greatestFiniteMagnitude)).height)
+        legend.frame = NSRect(x: pad, y: 58, width: w - pad * 2, height: legendH)
+        v.addSubview(legend)
 
         // ── the editor ─────────────────────────────────────────────────
         let ex = pad + listW + 20, ew = w - ex - pad
