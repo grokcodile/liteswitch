@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Liteswitch — keys for what macOS already does</title>
+<meta name="description" content="The most powerful things macOS can do are often the hardest to reach — Liteswitch puts them at your fingertips. Twelve built-in features, each on a keyboard shortcut. One Swift file, no dependencies, nothing leaves your Mac." />
+<meta property="og:title" content="Liteswitch — keys for what macOS already does" />
+<meta property="og:description" content="The most powerful things macOS can do are often the hardest to reach — Liteswitch puts them at your fingertips." />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" href="icon.png" />
+<style>
+  :root{
+    --gold:#f5b942; --pink:#f2669c; --violet:#8a5cf6; --blue:#3b82f6;
+    --ink:#f2f2f7; --dim:#a0a0ad; --faint:#6f6f7c;
+    --bg:#08080c; --panel:#111117; --edge:#22222c;
+    --keytop:#1a1a22; --keyside:#0d0d13;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  /* the icon's four orbs, bled into the page behind everything */
+  body::before{
+    content:"";position:fixed;inset:-20vh -10vw;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(38vw 38vw at 12% 4%,  rgba(245,185,66,.16), transparent 62%),
+      radial-gradient(40vw 40vw at 88% 10%, rgba(242,102,156,.15), transparent 62%),
+      radial-gradient(44vw 44vw at 78% 76%, rgba(138,92,246,.16), transparent 62%),
+      radial-gradient(40vw 40vw at 16% 88%, rgba(59,130,246,.14), transparent 62%);
+    filter:blur(10px);
+  }
+  .wrap{position:relative;z-index:1;max-width:940px;margin:0 auto;padding:0 22px}
+  a{color:inherit}
+
+  /* ── hero ─────────────────────────────────────────────── */
+  header{padding:96px 0 24px;text-align:center}
+  .mark{width:104px;height:104px;margin:0 auto 26px;display:block;border-radius:24px}
+  h1{
+    /* inline-block so the gradient spans the glyphs, not the full-width block —
+       otherwise both ends of it fall outside the text and the gold never shows */
+    display:inline-block;
+    margin:0;font-size:clamp(44px,8vw,76px);letter-spacing:-.03em;font-weight:700;
+    background:linear-gradient(100deg,var(--gold) 2%,var(--pink) 34%,var(--violet) 66%,var(--blue) 98%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .tagline{
+    margin:20px auto 0;max-width:620px;font-size:clamp(17px,2.4vw,21px);
+    color:var(--dim);line-height:1.5;
+  }
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:36px 0 10px}
+  .btn{
+    display:inline-block;padding:13px 24px;border-radius:12px;text-decoration:none;
+    font-weight:600;font-size:15px;border:1px solid transparent;transition:.18s ease;
+  }
+  .btn-solid{background:var(--ink);color:#0b0b10}
+  .btn-solid:hover{transform:translateY(-2px)}
+  .btn-ghost{border-color:var(--edge);color:var(--ink);background:rgba(255,255,255,.03)}
+  .btn-ghost:hover{border-color:var(--faint);transform:translateY(-2px)}
+  .fineprint{color:var(--faint);font-size:13px;margin-top:6px}
+
+  /* ── the keyboard ─────────────────────────────────────── */
+  section{padding:64px 0}
+  h2{
+    font-size:13px;text-transform:uppercase;letter-spacing:.14em;color:var(--faint);
+    font-weight:600;margin:0 0 8px;
+  }
+  .lede{margin:0 0 30px;color:var(--dim);font-size:16px;max-width:640px}
+  .keys{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px}
+  .key{
+    position:relative;border-radius:14px;padding:16px 14px 14px;
+    background:linear-gradient(180deg,var(--keytop),var(--keyside));
+    border:1px solid var(--edge);
+    box-shadow:0 3px 0 #05050a, 0 8px 18px rgba(0,0,0,.45);
+    transition:transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+  }
+  .key:hover{
+    transform:translateY(2px);
+    box-shadow:0 1px 0 #05050a, 0 4px 12px rgba(0,0,0,.5);
+    border-color:#31313e;
+  }
+  .key .combo{
+    font-family:var(--mono);font-size:15px;letter-spacing:.02em;
+    color:var(--ink);display:block;margin-bottom:9px;
+  }
+  .key .name{display:block;font-size:13px;font-weight:600}
+  .key .what{display:block;font-size:12px;color:var(--faint);margin-top:3px;line-height:1.45}
+  .key[data-hue="gold"]   .combo{color:var(--gold)}
+  .key[data-hue="pink"]   .combo{color:var(--pink)}
+  .key[data-hue="violet"] .combo{color:var(--violet)}
+  .key[data-hue="blue"]   .combo{color:var(--blue)}
+
+  /* ── the argument ─────────────────────────────────────── */
+  .swap{border:1px solid var(--edge);border-radius:16px;overflow:hidden;background:rgba(255,255,255,.02)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--edge)}
+  .row:last-child{border-bottom:0}
+  .row div{padding:13px 18px;font-size:14px}
+  .row .mine{border-right:1px solid var(--edge)}
+  .row .mine b{font-weight:600}
+  .row .theirs{color:var(--faint)}
+  .row.head div{background:rgba(255,255,255,.03);font-size:12px;text-transform:uppercase;
+    letter-spacing:.1em;color:var(--faint);font-weight:600}
+
+  .points{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:8px}
+  .point{border:1px solid var(--edge);border-radius:14px;padding:18px;background:rgba(255,255,255,.02)}
+  .point h3{margin:0 0 6px;font-size:15px}
+  .point p{margin:0;color:var(--dim);font-size:14px}
+
+  pre{
+    background:#0c0c12;border:1px solid var(--edge);border-radius:12px;
+    padding:15px 17px;overflow:auto;font-family:var(--mono);font-size:13.5px;color:#d6d6e0;
+  }
+  code{font-family:var(--mono)}
+  footer{
+    border-top:1px solid var(--edge);margin-top:40px;padding:34px 0 60px;
+    color:var(--faint);font-size:13.5px;display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between;
+  }
+  footer a{text-decoration:none;border-bottom:1px solid #2b2b36}
+  footer a:hover{color:var(--ink)}
+  @media (max-width:560px){ .row{grid-template-columns:1fr} .row .mine{border-right:0} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img class="mark" src="icon.png" alt="Liteswitch" />
+    <h1>Liteswitch</h1>
+    <p class="tagline">The most powerful things macOS can do are often the hardest
+       to reach — Liteswitch puts them at your fingertips.</p>
+    <div class="cta">
+      <a class="btn btn-solid" href="https://github.com/grokcodile/liteswitch/releases/latest">Download</a>
+      <a class="btn btn-ghost" href="https://github.com/grokcodile/liteswitch">Source on GitHub</a>
+    </div>
+    <p class="fineprint">macOS 26 · signed &amp; notarized · free, no account, no subscription</p>
+  </header>
+
+  <section>
+    <h2>Twelve keys</h2>
+    <p class="lede">Every tool here is a shortcut onto something already in macOS.
+       These are the defaults — all of them are yours to change.</p>
+    <div class="keys">
+      <div class="key" data-hue="gold"><span class="combo">⌃⌥⌘ .</span><span class="name">Apps</span><span class="what">Spotlight's app grid</span></div>
+      <div class="key" data-hue="gold"><span class="combo">⌃⌥⌘ /</span><span class="name">Files</span><span class="what">Documents and folders only</span></div>
+      <div class="key" data-hue="gold"><span class="combo">⌃⌥⌘ \</span><span class="name">Actions</span><span class="what">Shortcuts by name</span></div>
+      <div class="key" data-hue="gold"><span class="combo">⌃⌥⌘ V</span><span class="name">Clipboard</span><span class="what">macOS's own history</span></div>
+      <div class="key" data-hue="pink"><span class="combo">⌃⌥⌘ ,</span><span class="name">System Settings</span><span class="what">Toggle back where you were</span></div>
+      <div class="key" data-hue="pink"><span class="combo">⌃⌥⌘ K</span><span class="name">Keep Awake</span><span class="what">A power assertion, not a script</span></div>
+      <div class="key" data-hue="pink"><span class="combo">⌃⌥⌘ L</span><span class="name">Color Picker</span><span class="what">Hex, RGB, HSL, SwiftUI</span></div>
+      <div class="key" data-hue="pink"><span class="combo">⌃⌥⌘ H</span><span class="name">Color History</span><span class="what">Click to copy, drag out a swatch</span></div>
+      <div class="key" data-hue="violet"><span class="combo">⌃⌥⌘ O</span><span class="name">Capture Text</span><span class="what">On-device OCR of any region</span></div>
+      <div class="key" data-hue="violet"><span class="combo">⌃⌥⌘ P</span><span class="name">Rewrite Text</span><span class="what">Clean up, restyle, translate</span></div>
+      <div class="key" data-hue="blue"><span class="combo">hold ⌥</span><span class="name">Dictate Text</span><span class="what">Push-to-talk, on-device</span></div>
+      <div class="key" data-hue="blue"><span class="combo">macOS</span><span class="name">Speak Text</span><span class="what">Read aloud in a Siri voice</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Already paid for</h2>
+    <p class="lede">macOS ships the hard part and leaves out the key. That gap is a
+       whole category of paid utilities — apps that bundle their own engine, or their
+       own subscription, to sell you a keystroke.</p>
+    <div class="swap">
+      <div class="row head"><div class="mine">Liteswitch uses</div><div class="theirs">Instead of</div></div>
+      <div class="row"><div class="mine"><b>IOKit power assertions</b> — the same thing <code>caffeinate</code> uses</div><div class="theirs">Amphetamine, Caffeine, KeepingYouAwake</div></div>
+      <div class="row"><div class="mine"><b>Vision</b> on-device OCR</div><div class="theirs">TextSniper</div></div>
+      <div class="row"><div class="mine"><b>NSColorSampler</b> — the system loupe</div><div class="theirs">Sip, ColorSlurp</div></div>
+      <div class="row"><div class="mine"><b>Apple Intelligence</b> on-device</div><div class="theirs">Grammarly and friends</div></div>
+      <div class="row"><div class="mine"><b>macOS Dictation</b>, on-device</div><div class="theirs">Wispr Flow, superwhisper</div></div>
+      <div class="row"><div class="mine"><b>Spotlight's own panels</b></div><div class="theirs">Alfred, Raycast, LaunchBar, Paste</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it's built</h2>
+    <div class="points">
+      <div class="point"><h3>One file</h3><p>A single <code>main.swift</code>, no dependencies, compiled with <code>swiftc</code>. The whole app is 560&nbsp;KB.</p></div>
+      <div class="point"><h3>Nothing leaves</h3><p>OCR, dictation and rewriting all run on your Mac. No account, no API key, no telemetry.</p></div>
+      <div class="point"><h3>Built to shrink</h3><p>Each tool covers a gap macOS misses by a hair. When a release closes one, the tool comes out.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Install</h2>
+    <p class="lede">Download the notarized build from Releases, or build it yourself:</p>
+<pre>git clone https://github.com/grokcodile/liteswitch
+cd liteswitch
+bash install.sh</pre>
+    <p class="lede" style="margin-top:18px">Needs <b>macOS 26</b>. Accessibility for the
+       tools that synthesize keystrokes, Screen Recording for Capture Text, Apple
+       Intelligence for Rewrite Text — each asked for only when first used.</p>
+  </section>
+
+  <footer>
+    <span>MIT licensed · © 2026 Ethan Darling</span>
+    <span>
+      <a href="https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md">Help</a> ·
+      <a href="https://github.com/grokcodile/liteswitch">GitHub</a> ·
+      <a href="https://ko-fi.com/grokcodile">Tip jar</a>
+    </span>
+  </footer>
+
+</div>
+</body>
+</html>
