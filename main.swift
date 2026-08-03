@@ -3425,7 +3425,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         listHead.frame = NSRect(x: pad, y: h - pad - 18, width: 300, height: 18)
         v.addSubview(listHead)
 
-        let listTop = listHead.frame.minY - 6, listBottom: CGFloat = 58
+        let listTop = listHead.frame.minY - 6, listBottom: CGFloat = 84
 
         // ── the list ───────────────────────────────────────────────────
         let scroll = NSScrollView(frame: NSRect(x: pad, y: listBottom,
@@ -3490,13 +3490,6 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         v.addSubview(insScroll)
 
         // ── footer ─────────────────────────────────────────────────────
-        let note = NSTextField(labelWithString:
-            "Instructions for built-in AI — nothing leaves your computer.")
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
-        note.frame = NSRect(x: pad, y: 30, width: w - 260, height: 16)
-        v.addSubview(note)
-
         let save = NSButton(title: "Save", target: self, action: #selector(saveAll))
         save.bezelStyle = .rounded
         save.keyEquivalent = "\r"
@@ -3736,14 +3729,6 @@ final class DictationSetupWindow: NSWindow {
         save.keyEquivalent = "\r"
         save.frame = NSRect(x: w - 110, y: 22, width: 90, height: 30)
         v.addSubview(save)
-
-        let note = NSTextField(labelWithString:
-            "Instructions for built-in AI — nothing leaves your computer.")
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
-        note.lineBreakMode = .byTruncatingTail
-        note.frame = NSRect(x: 20, y: 30, width: w - 140, height: 16)
-        v.addSubview(note)
 
         contentView = v
     }
