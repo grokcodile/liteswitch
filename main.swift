@@ -3425,7 +3425,6 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         let intro = NSTextField(wrappingLabelWithString:
             "•  Double-tap ⌃ with text selected to rewrite it.\n"
             + "•  Checked actions appear in the picker that runs.\n"
-            + "•  Check just one action and the picker is skipped — it runs directly.\n"
             + "•  An action with its own shortcut runs directly, even when unchecked.")
         intro.font = .systemFont(ofSize: 11)
         intro.textColor = .secondaryLabelColor
