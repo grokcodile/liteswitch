@@ -2642,7 +2642,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 // Triggered by double-tapping ⌃ rather than a recorded shortcut,
                 // so this reads out the tap instead of offering a field. The box
                 // opens the rewrite actions, the one thing to configure.
-                readOnlyShortcut("2× Tap ⌃", opens: #selector(editCorrectInstructions))
+                readOnlyShortcut("Tap ⌃ Twice", opens: #selector(editCorrectInstructions))
             } else {
                 // The single shortcut field, directly under the header. Click to
                 // record — replacing any current binding — or press Delete while
