@@ -3411,7 +3411,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
     init(appDelegate: AppDelegate?, onChange: @escaping () -> Void) {
         self.appDelegate = appDelegate
         self.onChange = onChange
-        let h: CGFloat = 500
+        let h: CGFloat = 430
         super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
         title = "Rewrite Text Settings"
@@ -3425,7 +3425,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         listHead.frame = NSRect(x: pad, y: h - pad - 18, width: 300, height: 18)
         v.addSubview(listHead)
 
-        let listTop = listHead.frame.minY - 6, listBottom: CGFloat = 128
+        let listTop = listHead.frame.minY - 6, listBottom: CGFloat = 58
 
         // ── the list ───────────────────────────────────────────────────
         let scroll = NSScrollView(frame: NSRect(x: pad, y: listBottom,
@@ -3468,7 +3468,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         titleField.delegate = self
         v.addSubview(titleField)
 
-        label("Shortcut", x: ex + ew - 140, listTop - 15, 120)
+        label("Direct Shortcut", x: ex + ew - 140, listTop - 15, 140)
         let box = NSView(frame: NSRect(x: ex + ew - 140, y: listTop - 42, width: 140, height: 22))
         v.addSubview(box)
         recorderBox = box
