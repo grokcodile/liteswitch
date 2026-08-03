@@ -3420,23 +3420,9 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
 
-        // The one list of "how this works", kept to short points — the editor
-        // below is for building the actions, not for re-learning the tool.
-        let intro = NSTextField(wrappingLabelWithString:
-            "•  Double-tap ⌃ with text selected to rewrite it.\n"
-            + "•  Checked actions appear in the picker that runs.\n"
-            + "•  An action with its own shortcut runs directly, even when unchecked.")
-        intro.font = .systemFont(ofSize: 11)
-        intro.textColor = .secondaryLabelColor
-        intro.preferredMaxLayoutWidth = w - pad * 2
-        let introH = ceil(intro.sizeThatFits(
-            NSSize(width: w - pad * 2, height: .greatestFiniteMagnitude)).height)
-        intro.frame = NSRect(x: pad, y: h - pad - introH, width: w - pad * 2, height: introH)
-        v.addSubview(intro)
-
         let listHead = NSTextField(labelWithString: "Rewrite Actions")
         listHead.font = .systemFont(ofSize: 12, weight: .semibold)
-        listHead.frame = NSRect(x: pad, y: intro.frame.minY - 28, width: 300, height: 18)
+        listHead.frame = NSRect(x: pad, y: h - pad - 18, width: 300, height: 18)
         v.addSubview(listHead)
 
         let listTop = listHead.frame.minY - 6, listBottom: CGFloat = 128
