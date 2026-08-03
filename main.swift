@@ -90,6 +90,10 @@ func worksWithoutAX(_ panel: Panel) -> Bool {
 /// selection" hotkey — so it registers nothing and its card shows a read-only
 /// field plus a Configure… button explaining how to switch that feature on.
 func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
+/// Rewrite Text is triggered by double-tapping ⌃ (see `syncRewriteTapMonitor`)
+/// rather than a recorded shortcut, so it registers no hotkey and its card
+/// reads out the tap instead of offering a field.
+func usesTapKey(_ panel: Panel) -> Bool { panel.defaultsKey == "rewrite" }
 
 /// What a fresh install starts with: ⌃⌥⌘ plus a key under your right hand.
 ///
@@ -777,6 +781,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: Self.showSettingsNotification, object: nil)
         migrateRenamedKeys()
         seedDefaultShortcutsIfNeeded()
+        // Rewrite Text is tap-driven now; drop any shortcut saved before that,
+        // so a stale binding can't keep firing or linger in the settings card.
+        if let rewrite = panels.first(where: { usesTapKey($0) }), Shortcut.load(rewrite) != nil {
+            Shortcut.save(nil, rewrite)
+        }
         // The system broadcasts this when Appearance changes (including on the
         // automatic light/dark schedule). A view-level callback isn't dependable
         // here — this app has no Dock presence and its windows are usually not
@@ -1049,6 +1058,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (i, panel) in panels.enumerated() {
             if mirrorsMacOSHotkey(panel) { continue }   // macOS owns Speak Text's hotkey
             if usesHoldKey(panel) { continue }          // watched by a monitor, not a hotkey
+            if usesTapKey(panel) { continue }           // double-tap ⌃, not a hotkey
             guard worksWithoutAX(panel) || hasAccessibility else { continue }
             guard let sc = Shortcut.load(panel) else { continue }
             let id = EventHotKeyID(signature: OSType(0x4B_4C_49_54) /* 'KLIT' */, id: nextId)
@@ -2628,6 +2638,11 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 let spoken = SpokenSelection.current
                 readOnlyShortcut(spoken.enabled ? (spoken.shortcut ?? "On") : "Not Set Up",
                                  opens: #selector(openSpeakSetup))
+            } else if usesTapKey(panel) {
+                // Triggered by double-tapping ⌃ rather than a recorded shortcut,
+                // so this reads out the tap instead of offering a field. The box
+                // opens the rewrite actions, the one thing to configure.
+                readOnlyShortcut("2× Tap ⌃", opens: #selector(editCorrectInstructions))
             } else {
                 // The single shortcut field, directly under the header. Click to
                 // record — replacing any current binding — or press Delete while
