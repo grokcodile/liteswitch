@@ -3420,10 +3420,13 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
 
+        // The one list of "how this works", kept to short points — the editor
+        // below is for building the actions, not for re-learning the tool.
         let intro = NSTextField(wrappingLabelWithString:
-            "Create and select the rewrite actions you want to choose from when running "
-            + "the global shortcut. Selecting only one will skip the main shortcut menu. "
-            + "Set a direct shortcut to bypass the menu and immediately run that action.")
+            "•  Double-tap ⌃ with text selected to rewrite it.\n"
+            + "•  Checked actions appear in the picker that runs.\n"
+            + "•  Check just one action and the picker is skipped — it runs directly.\n"
+            + "•  An action with its own shortcut runs directly, even when unchecked.")
         intro.font = .systemFont(ofSize: 11)
         intro.textColor = .secondaryLabelColor
         intro.preferredMaxLayoutWidth = w - pad * 2
@@ -3462,19 +3465,6 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         remove.bezelStyle = .rounded
         remove.frame = NSRect(x: pad + 36, y: listBottom - 32, width: 32, height: 26)
         v.addSubview(remove)
-
-        // The checkbox and the shortcut do different jobs, and nothing on screen
-        // said so — this is the sentence that stops them reading as one switch.
-        let legend = NSTextField(wrappingLabelWithString:
-            "Checked actions appear in the shortcut menu. An action with its own shortcut "
-            + "always runs directly, whether it is checked or not.")
-        legend.font = .systemFont(ofSize: 11)
-        legend.textColor = .secondaryLabelColor
-        legend.preferredMaxLayoutWidth = w - pad * 2
-        let legendH = ceil(legend.sizeThatFits(
-            NSSize(width: w - pad * 2, height: .greatestFiniteMagnitude)).height)
-        legend.frame = NSRect(x: pad, y: 58, width: w - pad * 2, height: legendH)
-        v.addSubview(legend)
 
         // ── the editor ─────────────────────────────────────────────────
         let ex = pad + listW + 20, ew = w - ex - pad
