@@ -1386,6 +1386,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.tag = i
             menu.addItem(item)
         }
+        // The tail is the way to grow the list without a detour through Settings:
+        // it opens the editor with a new set already dropped in, ready to name.
+        menu.addItem(.separator())
+        let newItem = NSMenuItem(title: "New Action…", action: #selector(pickRewriteAction(_:)),
+                                 keyEquivalent: "")
+        newItem.keyEquivalentModifierMask = []
+        newItem.target = self
+        newItem.tag = newRewriteActionTag
+        menu.addItem(newItem)
         // Highlight the first item, so Return runs it without touching the mouse
         // — and so the highlight itself shows the arrow keys are live. NSMenu
         // exposes no selection API, so this hands its tracking loop a Down arrow
@@ -1402,7 +1411,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return pendingActionChoice.flatMap { sets[safe: $0] }
     }
 
-    @objc private func pickRewriteAction(_ sender: NSMenuItem) { pendingActionChoice = sender.tag }
+    /// Set indices are non-negative, so this is unambiguous.
+    private let newRewriteActionTag = -1
+
+    @objc private func pickRewriteAction(_ sender: NSMenuItem) {
+        guard sender.tag != newRewriteActionTag else {
+            // The popup is still closing; hand the rest to the next runloop pass
+            // so nothing fights its dismissal.
+            DispatchQueue.main.async { [weak self] in self?.newRewriteAction() }
+            return
+        }
+        pendingActionChoice = sender.tag
+    }
+
+    /// The picker's tail: open Settings' Rewrite editor with a fresh set inside,
+    /// named and waiting for instructions. The rewrite that raised the picker is
+    /// abandoned, exactly as if nothing had been chosen.
+    private func newRewriteAction() {
+        showSettings()
+        settings?.addRewriteAction()
+    }
 
     private func runRewrite(_ text: String, instructions: String,
                                dictated: Bool, restoring saved: String?) {
@@ -2964,12 +2992,22 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func editCorrectInstructions() {
+        showInstructionsEditor()
+    }
+
+    /// The rewrite picker's "New Action…" entry: same editor, new set pre-inserted.
+    func addRewriteAction() {
+        showInstructionsEditor(addingSet: true)
+    }
+
+    private func showInstructionsEditor(addingSet: Bool = false) {
         if instructionsWindow == nil {
             instructionsWindow = InstructionsWindow(appDelegate: appDelegate) { [weak self] in
                 self?.appDelegate?.syncHotkeys()      // sets can carry shortcuts now
                 self?.refreshBanner()
             }
         }
+        if addingSet { instructionsWindow?.addSet() }
         instructionsWindow?.center()
         NSApp.activate(ignoringOtherApps: true)
         instructionsWindow?.makeKeyAndOrderFront(nil)
@@ -3586,13 +3624,18 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
                          columnIndexes: IndexSet(integer: 0))
     }
 
-    @objc private func addSet() {
+    /// Internal: SettingsWindow's "New Action…" path calls it from outside the
+    /// table's own plus button.
+    @objc func addSet() {
         commitEditor()
         sets.append(RewriteAction(title: "New Set", instructions: "", shortcut: nil, enabled: true))
         selected = sets.count - 1
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
         loadSelected()
+        // It is real from the moment it is added, even if the window closes
+        // before the title field is touched.
+        saveQuietly()
     }
 
     /// The first set is the built-in Clean Up and stays: it is what runs when
