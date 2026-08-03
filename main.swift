@@ -117,7 +117,9 @@ let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃�
     "colorhistory": 35,   // P        Palette
     "keepawake": 40,      // K        Keep awake
     "textcapture": 31,    // O        OCR
-    "rewrite": 41,        // ;        Proofread
+    // Rewrite Text deliberately has no default: it is triggered by double-tapping
+    // ⌃ (see `syncRewriteTapMonitor`), and every rewrite action can carry a
+    // shortcut of its own.
 ]
 
 /// Dictation is push-to-talk: it needs the key's release as well as its press,
@@ -721,6 +723,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Counts down the dead zone before dictation engages, so holding the key as
     /// an ordinary modifier doesn't start talking.
     private var dictationArmTimer: Timer?
+    /// Rewrite Text's trigger — a double-tap of left ⌃ — and the state the
+    /// detector keeps. A "tap" is a press and release of ⌃ with no other input
+    /// in between; two bare taps within the window fire a rewrite.
+    private var rewriteTapMonitors: [Any] = []
+    private var rewriteTapDown = false       // ⌃ is currently down
+    private var rewriteTapChord = false      // another event interrupted the press
+    private var rewriteTapFirst: Date?       // when the first bare tap landed
 
     /// The field dictation is going into, and what it held before — enough to
     /// work out afterwards exactly what was inserted.
@@ -906,7 +915,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setAppEnabled(_ on: Bool) {
         appEnabled = on
-        defer { syncDictationMonitor() }
+        defer { syncDictationMonitor(); syncRewriteTapMonitor() }
         if on {
             if SMAppService.mainApp.status != .enabled {
                 try? SMAppService.mainApp.register()
@@ -948,6 +957,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pausedForFrontApp = paused
         syncHotkeys()
         syncDictationMonitor()
+        syncRewriteTapMonitor()
     }
 
     // MARK: Accessibility
@@ -960,6 +970,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSNotification.Name("com.apple.accessibility.api"), object: nil)
         axChanged()
         syncDictationMonitor()
+        syncRewriteTapMonitor()
     }
 
     /// Redraw anything holding baked layer colors. The notification can arrive
@@ -1558,6 +1569,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let g = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown], handler: { [weak self] _ in
             self?.disarmDictation()
         }) { holdMonitors.append(g) }
+    }
+
+    // MARK: Rewrite Text — double-tap ⌃
+
+    /// Watch for a double-tap of left ⌃, Rewrite Text's trigger. Tapping a
+    /// modifier is an unusual gesture, so the detector errs on the side of not
+    /// firing: a "tap" is a press and release of ⌃ with no other key, mouse or
+    /// scroll event in between, and two taps must land within 0.4s. Any other
+    /// input anywhere in that window breaks the sequence, so chords (⌃C, and
+    /// ⌃A ⌃C in a row) and ⌃-clicks never fire a rewrite by accident.
+    ///
+    /// Global monitors only: taps while Liteswitch's own windows are in front
+    /// are ignored, since there is no foreign selection to rewrite.
+    func syncRewriteTapMonitor() {
+        for m in rewriteTapMonitors { NSEvent.removeMonitor(m) }
+        rewriteTapMonitors = []
+        rewriteTapDown = false
+        rewriteTapChord = false
+        rewriteTapFirst = nil
+        guard appEnabled, !pausedForFrontApp else { return }
+
+        let handle: (NSEvent) -> Void = { [weak self] event in
+            guard let self, event.keyCode == CGKeyCode(kVK_Control) else { return }
+            let down = event.modifierFlags.contains(.control)
+            if down {
+                self.rewriteTapDown = true
+                self.rewriteTapChord = false
+            } else {
+                guard self.rewriteTapDown else { return }
+                self.rewriteTapDown = false
+                guard !self.rewriteTapChord else { self.rewriteTapChord = false; return }
+                let now = Date()
+                if let first = self.rewriteTapFirst,
+                   now.timeIntervalSince(first) <= 0.4 {
+                    self.rewriteTapFirst = nil
+                    self.triggerRewriteTap()
+                } else {
+                    self.rewriteTapFirst = now
+                }
+            }
+        }
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged], handler: handle) {
+            rewriteTapMonitors.append(g)
+        }
+        // Any other input breaks a tap in progress (a chord key like ⌃C, a
+        // ⌃-click, a ⌃-scroll) — and un-pairs a waiting first tap, so two
+        // chords in quick succession don't read as a double-tap.
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown,
+                                                                .otherMouseDown, .scrollWheel],
+                                                     handler: { [weak self] _ in
+            guard let self else { return }
+            if self.rewriteTapDown { self.rewriteTapChord = true }
+            self.rewriteTapFirst = nil
+        }) { rewriteTapMonitors.append(g) }
+    }
+
+    private func triggerRewriteTap() {
+        // Same gates as the hotkeys the tap replaces: not while recording a
+        // shortcut, not while synthesizing, and not while dictation or another
+        // rewrite owns the field. rewriteSelection itself checks Accessibility.
+        guard !recording, !synthesizing, !rewriting, !dictating else { return }
+        rewriteSelection()
     }
 
     /// Press the frontmost app's Edit ▸ Start/Stop Dictation item over the
