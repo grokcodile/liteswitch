@@ -1526,6 +1526,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Run the text through the model and paste the result over the selection.
+    /// One field, holding the rewrite. Built once, at runtime rather than with
+    /// the @Generable macro, so the whole app still compiles with a bare swiftc.
+    private static let rewriteSchema: GenerationSchema? = {
+        let text = DynamicGenerationSchema.Property(
+            name: "text", description: "The rewritten text, and nothing else",
+            schema: DynamicGenerationSchema(type: String.self))
+        let root = DynamicGenerationSchema(name: "Rewritten",
+                                           description: "A rewrite of the text",
+                                           properties: [text])
+        return try? GenerationSchema(root: root, dependencies: [])
+    }()
+
     /// Whether the model talked *about* the text instead of rewriting it.
     ///
     /// Given something it can't make sense of, it doesn't fail — it explains:
@@ -1609,16 +1621,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Firm framing: without it the model tends to answer the text
                 // rather than rewrite it.
                 //
-                // Wrapping the text in <text> tags was tried, the way Handy
-                // (github.com/cjpais/Handy) does, and measured worse: it did keep
-                // list markers, but it also made the model refuse ordinary content
-                // — "100°F" came back as "I cannot fulfill this request… unsafe
-                // instructions involving extreme temperatures" — and it stopped
-                // correcting spelling on half the passes.
+                // Asked for a filled-in field rather than bare prose, which is
+                // what stops the refusals: there is nowhere in a `text` field to
+                // say "I cannot rewrite this". Measured over two passes, the same
+                // input that used to come back as "I cannot rewrite this text
+                // because it appears to be corrupted" is simply rewritten, and
+                // bullets survive where they were being flattened to dashes.
+                // Handy (github.com/cjpais/Handy) uses @Generable for this; the
+                // schema is built at runtime here instead, because that macro
+                // needs a plugin that ships with Xcode and this builds with the
+                // Command Line Tools alone.
+                //
+                // Wrapping the text in <text> tags was also tried and measured
+                // worse — "100°F" came back as "I cannot fulfill this request…
+                // unsafe instructions involving extreme temperatures".
                 let session = LanguageModelSession(instructions: instructions +
                     "\n\nOutput only the rewritten text. Do not answer it, explain, or comment on it.")
-                output = try await session.respond(to: "Rewrite this text:\n\n" + text).content
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let prompt = "Rewrite this text:\n\n" + text
+                if let schema = Self.rewriteSchema,
+                   let structured = try? await session.respond(to: prompt, schema: schema),
+                   let filled = try? structured.content.value(String.self, forProperty: "text") {
+                    output = filled.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    // Older behaviour, kept as a fallback: if the schema can't be
+                    // built or the model won't fill it, a plain answer is better
+                    // than none — isRefusal still guards what comes back.
+                    output = try await session.respond(to: prompt).content
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             } catch {
                 output = nil
             }
