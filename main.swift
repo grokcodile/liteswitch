@@ -1339,6 +1339,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func runRewrite(_ text: String, instructions: String,
                                dictated: Bool, restoring saved: String?) {
         let pb = NSPasteboard.general
+        // A selection with no letters in it — a lone arrow, a bullet, a number —
+        // has no spelling or grammar to fix, and asking anyway invites the model
+        // to explain itself instead: "I cannot rewrite this text because it only
+        // contains a symbol." That sentence then lands on top of the symbol.
+        guard text.contains(where: { $0.isLetter }) else {
+            endRewriting()
+            hud.showMessage("Nothing to rewrite", symbol: "questionmark.circle.fill",
+                            tint: .systemOrange)
+            Self.restoreClipboard(saved, on: pb)
+            return
+        }
         hud.showWaveform(tint: .systemPurple, mode: .processing)
         rewriteText(text, instructions: instructions) { [weak self] result in
             guard let self else { return }
@@ -1575,7 +1586,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return out
         }
         let before = words(input)
-        guard !before.isEmpty else { return false }   // punctuation only; nothing to compare
+        // No words to compare against — the input was symbols or punctuation. The
+        // old guard called that "not a refusal", which is backwards: prose coming
+        // back from an input with no words in it can only be the model talking
+        // about it, and that sentence was pasted over the symbol.
+        guard !before.isEmpty else { return true }
         let after = words(unquoted(output))
         return Double(before.filter { after.contains($0) }.count) / Double(before.count) < 0.5
     }
