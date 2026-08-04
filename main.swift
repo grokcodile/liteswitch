@@ -1226,7 +1226,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // the shortcut was used without selecting anything first, the
                     // ordinary way to tidy something you just typed.
                     if let viaAX = self.selectedTextViaAX() {
-                        self.resolveThenRun(viaAX, dictated: dictated, restoring: saved, setIndex: setIndex)
+                        self.resolveThenRun(viaAX, dictated: dictated, restoring: saved,
+                                            setIndex: setIndex, wholeField: true)
                         return
                     }
                     self.copySelectionText { all in
@@ -1236,7 +1237,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             Self.restoreClipboard(saved, on: pb)
                             return
                         }
-                        self.resolveThenRun(all, dictated: dictated, restoring: saved, setIndex: setIndex)
+                        self.resolveThenRun(all, dictated: dictated, restoring: saved,
+                                                setIndex: setIndex, wholeField: true)
                     }
                 }
             }
@@ -1349,15 +1351,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// takes key events, and reading the selection afterwards would be reading
     /// it through whatever the menu did to focus.
     private func resolveThenRun(_ text: String, dictated: Bool,
-                                restoring saved: String?, setIndex: Int?) {
+                                restoring saved: String?, setIndex: Int?,
+                                wholeField: Bool = false) {
         if dictated {
-            runRewrite(text, instructions: UserDefaults.standard.dictationInstructions,
+            runRewrite(text, wholeField: wholeField, instructions: UserDefaults.standard.dictationInstructions,
                           dictated: true, restoring: saved)
             return
         }
         let sets = UserDefaults.standard.rewriteActions
         if let i = setIndex, let set = sets[safe: i] {            // a set's own shortcut
-            runRewrite(text, instructions: set.instructions, dictated: false, restoring: saved)
+            runRewrite(text, wholeField: wholeField, instructions: set.instructions, dictated: false, restoring: saved)
             return
         }
         // Nothing enabled falls back to the built-in Clean Up, so the shortcut
@@ -1366,7 +1369,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let active = sets.filter(\.enabled)
         if active.count <= 1 {
             let only = active.first ?? sets.first
-            runRewrite(text, instructions: only?.instructions ?? UserDefaults.defaultRewriteInstructions,
+            runRewrite(text, wholeField: wholeField, instructions: only?.instructions ?? UserDefaults.defaultRewriteInstructions,
                           dictated: false, restoring: saved)
             return
         }
@@ -1376,7 +1379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.restoreClipboard(saved, on: NSPasteboard.general)
             return
         }
-        runRewrite(text, instructions: chosen.instructions, dictated: false, restoring: saved)
+        runRewrite(text, wholeField: wholeField, instructions: chosen.instructions, dictated: false, restoring: saved)
     }
 
     /// The chooser: a plain menu at the pointer, numbered so a set is one
@@ -1440,7 +1443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings?.addRewriteAction()
     }
 
-    private func runRewrite(_ text: String, instructions: String,
+    private func runRewrite(_ text: String, wholeField: Bool = false, instructions: String,
                                dictated: Bool, restoring saved: String?) {
         let pb = NSPasteboard.general
         hud.showWaveform(tint: .systemPurple, mode: .processing)
@@ -1456,8 +1459,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Self.restoreClipboard(saved, on: pb)
                 return
             }
-            Self.setClipboardQuietly(Self.rewrap(result, like: text), on: pb)
-            self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // paste over the selection
+            let outgoing = Self.rewrap(result, like: text)
+            Self.setClipboardQuietly(outgoing, on: pb)
+            // Take the field again right before pasting rather than trusting the
+            // selection to have survived the model call. It often doesn't: apps
+            // that publish no accessibility element drop it while they're not
+            // being typed into, and ⌘V then inserts instead of replacing —
+            // which appended the rewrite to the text it was meant to replace.
+            // This is what the dictation path has always done, and why that one
+            // never had the bug.
+            if wholeField {
+                self.post(CGKeyCode(kVK_ANSI_A), .maskCommand)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
+                }
+            } else if dictated {
+                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // dictation made its own selection
+            } else {
+                self.pasteOverVerifiedSelection(outgoing, matching: text, on: pb, saved: saved)
+            }
             // Auto-Correct names itself; the manual one doesn't need to. You pressed
             // the shortcut for that one, so what just happened isn't in question —
             // but Auto-Correct runs on its own, and if your words come back changed
@@ -1470,6 +1490,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 Self.restoreClipboard(saved, on: pb)
                 self.endRewriting()
+            }
+        }
+    }
+
+    /// Paste only once we know what is actually selected.
+    ///
+    /// A successful ⌘C is not evidence that anything was selected: some apps —
+    /// Zed among them — hand over the field's text either way. Acting on that
+    /// pasted the rewrite into a caret with nothing to replace, appending it to
+    /// the text it was meant to overwrite, and only sometimes, which is the
+    /// worst way for it to be wrong.
+    ///
+    /// So take the field and look. If it holds exactly what was rewritten, the
+    /// "selection" was the whole field and pasting over it is right. If it holds
+    /// more, what was rewritten was a fragment — and there is no way to reselect
+    /// a fragment in an app that publishes no accessibility element, so this
+    /// stops rather than corrupting the text. Nothing is pasted in that case;
+    /// the field is exactly as it was.
+    private func pasteOverVerifiedSelection(_ outgoing: String, matching original: String,
+                                            on pb: NSPasteboard, saved: String?) {
+        let before = pb.changeCount
+        post(CGKeyCode(kVK_ANSI_A), .maskCommand)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            self.post(CGKeyCode(kVK_ANSI_C), .maskCommand)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                let field = pb.changeCount != before ? Self.selectedText(from: pb) : nil
+                let whole = field?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    == original.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard whole else {
+                    self.hud.showMessage("Select the text again", symbol: "questionmark.circle.fill",
+                                         tint: .systemOrange)
+                    Self.restoreClipboard(saved, on: pb)
+                    self.endRewriting()
+                    return
+                }
+                Self.setClipboardQuietly(outgoing, on: pb)
+                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    Self.restoreClipboard(saved, on: pb)
+                    self.endRewriting()
+                }
             }
         }
     }
