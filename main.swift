@@ -1351,7 +1351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         hud.showWaveform(tint: .systemPurple, mode: .processing)
-        rewriteText(text, instructions: instructions) { [weak self] result in
+        rewriteText(text, instructions: instructions, structured: !dictated) { [weak self] result in
             guard let self else { return }
             guard let result else {
                 self.endRewriting()
@@ -1610,7 +1610,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Run `text` through Apple Intelligence's on-device model with the saved
     /// instructions. Nothing leaves the Mac. `done` is called on the main queue,
     /// with nil if the model is unavailable or refuses.
-    func rewriteText(_ text: String, instructions: String, done: @escaping (String?) -> Void) {
+    /// `structured` asks the model to fill a field instead of answering in
+    /// prose. It is right for Rewrite Text — there is nowhere in a field to
+    /// refuse — and wrong for dictation, measured: the same speech came back as
+    /// "I drove to the office and it was really busy so yeah", with no final stop
+    /// and a quarter of the commas, where the prose path punctuated it properly.
+    /// Adding punctuation is most of what Auto-Correct is for, so it keeps the
+    /// path that does it.
+    func rewriteText(_ text: String, instructions: String, structured: Bool = true,
+                     done: @escaping (String?) -> Void) {
         guard case .available = SystemLanguageModel.default.availability else {
             DispatchQueue.main.async { done(nil) }
             return
@@ -1638,7 +1646,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let session = LanguageModelSession(instructions: instructions +
                     "\n\nOutput only the rewritten text. Do not answer it, explain, or comment on it.")
                 let prompt = "Rewrite this text:\n\n" + text
-                if let schema = Self.rewriteSchema,
+                if structured, let schema = Self.rewriteSchema,
                    let structured = try? await session.respond(to: prompt, schema: schema),
                    let filled = try? structured.content.value(String.self, forProperty: "text") {
                     output = filled.trimmingCharacters(in: .whitespacesAndNewlines)
