@@ -2011,6 +2011,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Dictation itself is unaffected: the words are typed either way.
             // Only the cleanup stands down, and says so.
             guard let dictatedText = self.selectDictatedRunExactly() else {
+                // endRewriting, or the hold key stays ignored and dictation looks
+                // locked up until the watchdog gets round to it.
+                self.endRewriting()
                 self.hud.showMessage("Can't Auto-Correct here", symbol: "text.badge.xmark",
                                      tint: .systemOrange)
                 return
