@@ -1000,6 +1000,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if trusted != self.hasAccessibility {
                 self.hasAccessibility = trusted
                 self.syncHotkeys()
+                // Global NSEvent monitors need trust too, and they were being
+                // left behind: granting Accessibility while running brought the
+                // hotkeys back but not the dictation hold key or the ⌃ tap —
+                // which is now Rewrite Text's only trigger.
+                self.syncDictationMonitor()
+                self.syncRewriteTapMonitor()
             }
             self.axPollTimer?.invalidate()
             if !trusted {
@@ -1008,6 +1014,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.axPollTimer?.invalidate()
                     self.hasAccessibility = true
                     self.syncHotkeys()
+                    self.syncDictationMonitor()
+                    self.syncRewriteTapMonitor()
                 }
             }
         }
@@ -2670,7 +2678,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 // Triggered by double-tapping ⌃ rather than a recorded shortcut,
                 // so this reads out the tap instead of offering a field. The box
                 // opens the rewrite actions, the one thing to configure.
-                readOnlyShortcut("Tap ⌃ Twice", opens: #selector(editCorrectInstructions))
+                readOnlyShortcut("Tap ⌃ Twice", opens: #selector(editRewriteActions))
             } else {
                 // The single shortcut field, directly under the header. Click to
                 // record — replacing any current binding — or press Delete while
@@ -2750,7 +2758,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
             if panel.defaultsKey == "rewrite" {
                 let btn = NSButton(title: "Settings", target: self,
-                                   action: #selector(editCorrectInstructions))
+                                   action: #selector(editRewriteActions))
                 btn.toolTip = "Add and edit rewrite actions."
                 btn.bezelStyle = .rounded
                 btn.controlSize = .small
@@ -2991,7 +2999,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         dictationSetupWindow?.makeKeyAndOrderFront(nil)
     }
 
-    @objc private func editCorrectInstructions() {
+    @objc private func editRewriteActions() {
         showInstructionsEditor()
     }
 

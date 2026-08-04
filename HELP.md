@@ -49,14 +49,14 @@ Stops your Mac going to sleep on its own. Turn on Screen Sleep and the display s
 - Keep a long render, download or backup alive.
 - Stop the screen sleeping halfway through a presentation.
 
-### Color Picker
+### Color Loupe
 
-Brings up the system loupe and copies the pixel you click, as Hex, RGB, HSL or SwiftUI. Apple's own process does the sampling, so it needs no Screen Recording. Every pick is saved to Color History.
+Brings up the system loupe and copies the pixel you click, as Hex, RGB, HSL or SwiftUI. Apple's own process does the sampling, so it needs no Screen Recording. Every pick is saved to Color Palette.
 
 - Lift a hex out of a screenshot and straight into CSS.
 - Match a brand color you can only see on screen.
 
-### Color History
+### Color Palette
 
 Every color you've picked, in one window. Click a swatch to copy it again, drag one out as a PNG, or pin the keepers. It holds the last 20.
 
@@ -81,7 +81,7 @@ Your Mac reads the selection aloud in a Siri voice, on a shortcut macOS owns rat
 
 ### Rewrite Text
 
-Rewrites whatever you've selected with Apple Intelligence, running on your Mac. It holds any number of named **rewrite actions** — clean up, restyle, shorten, translate, wrap in HTML — and the shortcut asks which to use when more than one is selected. An action can also take a shortcut of its own, which skips the menu and runs it directly. With nothing selected it takes the whole field.
+Tap ⌃ twice and it rewrites whatever you've selected with Apple Intelligence, running on your Mac. It holds any number of named **rewrite actions** — clean up, restyle, shorten, translate, wrap in HTML — and the shortcut asks which to use when more than one is selected. An action can also take a shortcut of its own, which skips the menu and runs it directly. With nothing selected it takes the whole field.
 
 - Clean up a paragraph you typed in a hurry, without it being reworded.
 - Translate a note into Spanish, or restyle it for a work email.
