@@ -1361,11 +1361,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             guard let result else {
                 self.endRewriting()
-                // Not the red warning triangle the other failures use. Those are
-                // things you have to go and fix; this one is the model shrugging,
-                // and your text is exactly where you left it.
-                self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
-                                     tint: .systemOrange)
+                // Auto-Correct runs on its own after every dictation, so "nothing
+                // needed doing" is not news — it just wants to say it ran. A
+                // manual rewrite is different: you pressed a key and are owed an
+                // answer about why the text didn't move.
+                //
+                // Not the red warning triangle the other failures use either.
+                // Those are things you have to go and fix; this one is the model
+                // shrugging, and your text is exactly where you left it.
+                if dictated {
+                    self.hud.showMessage("Auto-Corrected", symbol: "checkmark.circle.fill",
+                                         tint: .systemGreen)
+                } else {
+                    self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
+                                         tint: .systemOrange)
+                }
                 Self.restoreClipboard(saved, on: pb)
                 return
             }
