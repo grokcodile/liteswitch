@@ -3632,7 +3632,7 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
     /// table's own plus button.
     @objc func addSet() {
         commitEditor()
-        sets.append(RewriteAction(title: "New Set", instructions: "", shortcut: nil, enabled: true))
+        sets.append(RewriteAction(title: "Untitled Action", instructions: "", shortcut: nil, enabled: true))
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: sets.count - 1), byExtendingSelection: false)
         // Nothing to persist yet: the set becomes real once its title is typed
