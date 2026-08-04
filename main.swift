@@ -1949,11 +1949,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The exact diff hands back the text it selected; the estimate can't,
             // so that path still has to read the selection the slow way.
             let dictatedText = self.selectDictatedRunExactly()
-            if dictatedText == nil { self.selectDictatedRun() }
+            if dictatedText == nil {
+                self.selectDictatedRun()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 self.rewriteSelection(dictated: true, known: dictatedText)
             }
         }
+    }
+
+    /// The focused text element — asking the frontmost app directly when the
+    /// system-wide query comes back empty.
+    ///
+    /// Notes is why. It publishes nothing for kAXFocusedUIElement on the
+    /// system-wide element, which is what "Notes exposes no focused element at
+    /// all" meant everywhere in this file — but ask its *application* element the
+    /// same question and it hands back an AXTextArea complete with its value and
+    /// its selection range. Measured, not assumed.
+    ///
+    /// Without this the dictated run could only be guessed at with a word count,
+    /// which over-selected, and a rewrite had to go through the clipboard.
+    private func focusedTextElement() -> AXUIElement? {
+        var focused: CFTypeRef?
+        if AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(),
+                                         kAXFocusedUIElementAttribute as CFString,
+                                         &focused) == .success,
+           let element = focused, CFGetTypeID(element) == AXUIElementGetTypeID() {
+            return (element as! AXUIElement)
+        }
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
+        var appFocused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid),
+                                            kAXFocusedUIElementAttribute as CFString,
+                                            &appFocused) == .success,
+              let element = appFocused, CFGetTypeID(element) == AXUIElementGetTypeID()
+        else { return nil }
+        return (element as! AXUIElement)
     }
 
     /// Note the focused field and its current text, so what dictation adds can be
@@ -1961,13 +1992,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func captureDictationField() {
         dictationElement = nil
         dictationBeforeText = nil
-        var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(),
-                                            kAXFocusedUIElementAttribute as CFString,
-                                            &focused) == .success,
-              let element = focused, CFGetTypeID(element) == AXUIElementGetTypeID()
-        else { return }
-        let field = element as! AXUIElement
+        guard let field = focusedTextElement() else { return }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
               let text = value as? String else { return }
@@ -1987,14 +2012,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// app's own write to the clipboard, which lands in clipboard history where
     /// nothing this tool does belongs.
     private func selectDictatedRunExactly() -> String? {
-        guard let field = dictationElement, let before = dictationBeforeText else { return nil }
+        guard let field = dictationElement, let before = dictationBeforeText else {
+            return nil
+        }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
-              let after = value as? String, after != before else { return nil }
+              let after = value as? String, after != before else {
+            return nil
+        }
 
         // UTF-16 offsets, because that's what an AX range is counted in.
         let b = Array(before.utf16), a = Array(after.utf16)
-        guard a.count > b.count else { return nil }
+        guard a.count > b.count else {
+            return nil
+        }
         var head = 0
         while head < b.count, a[head] == b[head] { head += 1 }
         var tail = 0
@@ -2024,12 +2055,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// turns up in clipboard history. Plenty of apps won't answer — Notes exposes
     /// no focused element at all — hence the fallback rather than a replacement.
     private func selectedTextViaAX() -> String? {
-        var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(),
-                                            kAXFocusedUIElementAttribute as CFString,
-                                            &focused) == .success,
-              let element = focused, CFGetTypeID(element) == AXUIElementGetTypeID()
-        else { return nil }
+        guard let element = focusedTextElement() else { return nil }
         // Believe the range before the text. Some apps report the whole field as
         // kAXSelectedText when nothing is selected at all — Zed's panels among
         // them — and acting on that appends the rewrite instead of replacing it,
@@ -2039,7 +2065,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Only decisive when the app answers: plenty don't publish a range, and
         // those still fall through to the checks below.
         var rangeRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(element as! AXUIElement,
+        if AXUIElementCopyAttributeValue(element,
                                          kAXSelectedTextRangeAttribute as CFString,
                                          &rangeRef) == .success,
            let rangeValue = rangeRef, CFGetTypeID(rangeValue) == AXValueGetTypeID() {
@@ -2049,7 +2075,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element as! AXUIElement,
+        guard AXUIElementCopyAttributeValue(element,
                                             kAXSelectedTextAttribute as CFString,
                                             &value) == .success,
               let text = value as? String,
