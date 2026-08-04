@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Liteswitch — keys for what macOS already does</title>
+<title>Liteswitch — powerful macOS features at your fingertips</title>
 <meta name="description" content="The most powerful things macOS can do are often the hardest to reach — Liteswitch puts them at your fingertips. Twelve built-in features, each on a keyboard shortcut. One Swift file, no dependencies, nothing leaves your Mac." />
-<meta property="og:title" content="Liteswitch — keys for what macOS already does" />
+<meta property="og:title" content="Liteswitch — powerful macOS features at your fingertips" />
 <meta property="og:description" content="The most powerful things macOS can do are often the hardest to reach — Liteswitch puts them at your fingertips." />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
@@ -64,36 +64,36 @@
   .btn-ghost:hover{border-color:var(--faint);transform:translateY(-2px)}
   .fineprint{color:var(--faint);font-size:13px;margin-top:6px}
 
-  /* ── the keyboard ─────────────────────────────────────── */
+  /* ── the tools ────────────────────────────────────────── */
   section{padding:64px 0}
   h2{
     font-size:13px;text-transform:uppercase;letter-spacing:.14em;color:var(--faint);
     font-weight:600;margin:0 0 8px;
   }
   .lede{margin:0 0 30px;color:var(--dim);font-size:16px;max-width:640px}
-  .keys{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px}
-  .key{
-    position:relative;border-radius:14px;padding:16px 14px 14px;
-    background:linear-gradient(180deg,var(--keytop),var(--keyside));
-    border:1px solid var(--edge);
-    box-shadow:0 3px 0 #05050a, 0 8px 18px rgba(0,0,0,.45);
-    transition:transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+  .tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(214px,1fr));gap:14px}
+  .tool{
+    display:flex;flex-direction:column;padding:20px 18px 0;
+    border:1px solid var(--edge);border-radius:16px;background:rgba(255,255,255,.02);
+    transition:transform .15s ease,border-color .15s ease,background .15s ease;
   }
-  .key:hover{
-    transform:translateY(2px);
-    box-shadow:0 1px 0 #05050a, 0 4px 12px rgba(0,0,0,.5);
-    border-color:#31313e;
+  .tool:hover{transform:translateY(-3px);border-color:#31313e;background:rgba(255,255,255,.045)}
+  /* the app's own SF Symbols, used as masks so each group can be tinted here */
+  .tool .glyph{
+    width:32px;height:32px;margin-bottom:14px;
+    -webkit-mask-size:contain;mask-size:contain;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-position:center;mask-position:center;
   }
-  .key .combo{
-    font-family:var(--mono);font-size:15px;letter-spacing:.02em;
-    color:var(--ink);display:block;margin-bottom:9px;
+  .tool h3{margin:0 0 5px;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .tool p{margin:0 0 18px;color:var(--dim);font-size:13.5px;line-height:1.5}
+  .tool .chord{
+    margin-top:auto;border-top:1px solid var(--edge);padding:9px 0 11px;
+    font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.04em;
   }
-  .key .name{display:block;font-size:13px;font-weight:600}
-  .key .what{display:block;font-size:12px;color:var(--faint);margin-top:3px;line-height:1.45}
-  .key[data-hue="gold"]   .combo{color:var(--gold)}
-  .key[data-hue="pink"]   .combo{color:var(--pink)}
-  .key[data-hue="violet"] .combo{color:var(--violet)}
-  .key[data-hue="blue"]   .combo{color:var(--blue)}
+  .tool[data-hue="gold"]   .glyph{background:var(--gold)}
+  .tool[data-hue="pink"]   .glyph{background:var(--pink)}
+  .tool[data-hue="violet"] .glyph{background:var(--violet)}
 
   /* ── the argument ─────────────────────────────────────── */
   .swap{border:1px solid var(--edge);border-radius:16px;overflow:hidden;background:rgba(255,255,255,.02)}
@@ -141,22 +141,59 @@
   </header>
 
   <section>
-    <h2>Twelve keys</h2>
-    <p class="lede">Every tool here is a shortcut onto something already in macOS.
-       These are the defaults — all of them are yours to change.</p>
-    <div class="keys">
-      <div class="key" data-hue="gold"><span class="combo">⌃⌥⌘ .</span><span class="name">Apps</span><span class="what">Spotlight's app grid</span></div>
-      <div class="key" data-hue="gold"><span class="combo">⌃⌥⌘ /</span><span class="name">Files</span><span class="what">Documents and folders only</span></div>
-      <div class="key" data-hue="gold"><span class="combo">⌃⌥⌘ \</span><span class="name">Actions</span><span class="what">Shortcuts by name</span></div>
-      <div class="key" data-hue="gold"><span class="combo">⌃⌥⌘ V</span><span class="name">Clipboard</span><span class="what">macOS's own history</span></div>
-      <div class="key" data-hue="pink"><span class="combo">⌃⌥⌘ ,</span><span class="name">System Settings</span><span class="what">Toggle back where you were</span></div>
-      <div class="key" data-hue="pink"><span class="combo">⌃⌥⌘ K</span><span class="name">Keep Awake</span><span class="what">A power assertion, not a script</span></div>
-      <div class="key" data-hue="pink"><span class="combo">⌃⌥⌘ L</span><span class="name">Color Picker</span><span class="what">Hex, RGB, HSL, SwiftUI</span></div>
-      <div class="key" data-hue="pink"><span class="combo">⌃⌥⌘ H</span><span class="name">Color History</span><span class="what">Click to copy, drag out a swatch</span></div>
-      <div class="key" data-hue="violet"><span class="combo">⌃⌥⌘ O</span><span class="name">Capture Text</span><span class="what">On-device OCR of any region</span></div>
-      <div class="key" data-hue="violet"><span class="combo">⌃⌥⌘ P</span><span class="name">Rewrite Text</span><span class="what">Clean up, restyle, translate</span></div>
-      <div class="key" data-hue="blue"><span class="combo">hold ⌥</span><span class="name">Dictate Text</span><span class="what">Push-to-talk, on-device</span></div>
-      <div class="key" data-hue="blue"><span class="combo">macOS</span><span class="name">Speak Text</span><span class="what">Read aloud in a Siri voice</span></div>
+    <h2>Twelve tools</h2>
+    <p class="lede">Each one is a shortcut onto something macOS already does — the
+       Spotlight panels, then the system utilities, then the text tools. The chord
+       on each card is the default; every one is yours to change.</p>
+    <div class="tools">
+      <div class="tool" data-hue="gold">
+        <span class="glyph" style="-webkit-mask-image:url(icons/apps.png);mask-image:url(icons/apps.png)"></span>
+        <h3>Apps</h3><p>Spotlight's app grid</p><div class="chord">⌃⌥⌘ .</div>
+      </div>
+      <div class="tool" data-hue="gold">
+        <span class="glyph" style="-webkit-mask-image:url(icons/files.png);mask-image:url(icons/files.png)"></span>
+        <h3>Files</h3><p>Search docs and folders only</p><div class="chord">⌃⌥⌘ /</div>
+      </div>
+      <div class="tool" data-hue="gold">
+        <span class="glyph" style="-webkit-mask-image:url(icons/actions.png);mask-image:url(icons/actions.png)"></span>
+        <h3>Actions</h3><p>Search and run any of your Shortcuts</p><div class="chord">⌃⌥⌘ \</div>
+      </div>
+      <div class="tool" data-hue="gold">
+        <span class="glyph" style="-webkit-mask-image:url(icons/clipboard.png);mask-image:url(icons/clipboard.png)"></span>
+        <h3>Clipboard</h3><p>View and search clipboard history</p><div class="chord">⌃⌥⌘ V</div>
+      </div>
+      <div class="tool" data-hue="pink">
+        <span class="glyph" style="-webkit-mask-image:url(icons/settings.png);mask-image:url(icons/settings.png)"></span>
+        <h3>System Settings</h3><p>Open Settings, press again to go back</p><div class="chord">⌃⌥⌘ ,</div>
+      </div>
+      <div class="tool" data-hue="pink">
+        <span class="glyph" style="-webkit-mask-image:url(icons/keepawake.png);mask-image:url(icons/keepawake.png)"></span>
+        <h3>Keep Awake</h3><p>Stop your Mac going to sleep</p><div class="chord">⌃⌥⌘ K</div>
+      </div>
+      <div class="tool" data-hue="pink">
+        <span class="glyph" style="-webkit-mask-image:url(icons/colorpicker.png);mask-image:url(icons/colorpicker.png)"></span>
+        <h3>Color Picker</h3><p>Sample any pixel and copy it as code</p><div class="chord">⌃⌥⌘ L</div>
+      </div>
+      <div class="tool" data-hue="pink">
+        <span class="glyph" style="-webkit-mask-image:url(icons/colorhistory.png);mask-image:url(icons/colorhistory.png)"></span>
+        <h3>Color History</h3><p>Every color you've picked, ready to reuse</p><div class="chord">⌃⌥⌘ H</div>
+      </div>
+      <div class="tool" data-hue="violet">
+        <span class="glyph" style="-webkit-mask-image:url(icons/capture.png);mask-image:url(icons/capture.png)"></span>
+        <h3>Capture Text</h3><p>Copy the text out of anything on screen</p><div class="chord">⌃⌥⌘ O</div>
+      </div>
+      <div class="tool" data-hue="violet">
+        <span class="glyph" style="-webkit-mask-image:url(icons/rewrite.png);mask-image:url(icons/rewrite.png)"></span>
+        <h3>Rewrite Text</h3><p>Clean up, restyle, shorten or translate</p><div class="chord">⌃⌥⌘ P</div>
+      </div>
+      <div class="tool" data-hue="violet">
+        <span class="glyph" style="-webkit-mask-image:url(icons/dictate.png);mask-image:url(icons/dictate.png)"></span>
+        <h3>Dictate Text</h3><p>Hold a key and talk, let go and it stops</p><div class="chord">hold Right ⌥</div>
+      </div>
+      <div class="tool" data-hue="violet">
+        <span class="glyph" style="-webkit-mask-image:url(icons/speak.png);mask-image:url(icons/speak.png)"></span>
+        <h3>Speak Text</h3><p>Have your selection read aloud</p><div class="chord">macOS's own</div>
+      </div>
     </div>
   </section>
 
