@@ -1888,6 +1888,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                             &focused) == .success,
               let element = focused, CFGetTypeID(element) == AXUIElementGetTypeID()
         else { return nil }
+        // Believe the range before the text. Some apps report the whole field as
+        // kAXSelectedText when nothing is selected at all — Zed's panels among
+        // them — and acting on that appends the rewrite instead of replacing it,
+        // because there was never a selection for ⌘V to overwrite. A zero-length
+        // range means no selection, whatever the text attribute claims.
+        //
+        // Only decisive when the app answers: plenty don't publish a range, and
+        // those still fall through to the checks below.
+        var rangeRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element as! AXUIElement,
+                                         kAXSelectedTextRangeAttribute as CFString,
+                                         &rangeRef) == .success,
+           let rangeValue = rangeRef, CFGetTypeID(rangeValue) == AXValueGetTypeID() {
+            var range = CFRange()
+            if AXValueGetValue(rangeValue as! AXValue, .cfRange, &range), range.length == 0 {
+                return nil
+            }
+        }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element as! AXUIElement,
                                             kAXSelectedTextAttribute as CFString,
