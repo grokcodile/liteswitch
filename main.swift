@@ -1730,17 +1730,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Wrapping the text in <text> tags was also tried and measured
                 // worse — "100°F" came back as "I cannot fulfill this request…
                 // unsafe instructions involving extreme temperatures".
-                let session = LanguageModelSession(instructions: instructions +
-                    "\n\nOutput only the rewritten text. Do not answer it, explain, or comment on it.")
+                let framing = instructions +
+                    "\n\nOutput only the rewritten text. Do not answer it, explain, or comment on it."
                 let prompt = "Rewrite this text:\n\n" + text
-                if structured, let schema = Self.rewriteSchema,
-                   let structured = try? await session.respond(to: prompt, schema: schema),
-                   let filled = try? structured.content.value(String.self, forProperty: "text") {
+
+                var filled: String?
+                if structured, let schema = Self.rewriteSchema {
+                    let session = LanguageModelSession(instructions: framing)
+                    if let answer = try? await session.respond(to: prompt, schema: schema) {
+                        filled = try? answer.content.value(String.self, forProperty: "text")
+                    }
+                }
+                if let filled {
                     output = filled.trimmingCharacters(in: .whitespacesAndNewlines)
                 } else {
                     // Older behaviour, kept as a fallback: if the schema can't be
                     // built or the model won't fill it, a plain answer is better
                     // than none — isRefusal still guards what comes back.
+                    //
+                    // On its own session, always. A session keeps a transcript,
+                    // and asking for a schema puts the framework's own scaffolding
+                    // in it — "Response using compact JSON in a single line…
+                    // Adhere to the following format: {…}". Reusing the session
+                    // here let the model answer from that context instead of the
+                    // instructions: measured on the same input, the reused session
+                    // returned {"text": "I believe I can dictate here"} where a
+                    // fresh one returned the sentence. In Zed it pasted the
+                    // scaffolding itself into the document, after the rewrite.
+                    let session = LanguageModelSession(instructions: framing)
                     output = try await session.respond(to: prompt).content
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                 }
