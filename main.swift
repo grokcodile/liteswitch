@@ -3572,8 +3572,12 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         saveQuietly()
     }
     func tableViewSelectionDidChange(_ notification: Notification) {
-        commitEditor()
-        selected = max(0, table.selectedRow)
+        let row = max(0, table.selectedRow)
+        // The editor belongs to the row it was last loaded for. Committing it
+        // into the freshly selected row is how a new set inherited the previous
+        // set's instructions, and how deleting a set blanked the one above.
+        if row != selected { commitEditor() }
+        selected = row
         loadSelected()
     }
 
@@ -3629,13 +3633,10 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
     @objc func addSet() {
         commitEditor()
         sets.append(RewriteAction(title: "New Set", instructions: "", shortcut: nil, enabled: true))
-        selected = sets.count - 1
         table.reloadData()
-        table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
-        loadSelected()
-        // It is real from the moment it is added, even if the window closes
-        // before the title field is touched.
-        saveQuietly()
+        table.selectRowIndexes(IndexSet(integer: sets.count - 1), byExtendingSelection: false)
+        // Nothing to persist yet: the set becomes real once its title is typed
+        // or its instructions change, and both of those save on their own.
     }
 
     /// The first set is the built-in Clean Up and stays: it is what runs when
@@ -3643,12 +3644,13 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
     /// to fall back on.
     @objc private func removeSet() {
         guard selected > 0, sets.indices.contains(selected) else { NSSound.beep(); return }
+        commitEditor()          // nothing typed is lost before the row goes
         sets.remove(at: selected)
-        selected = min(selected, sets.count - 1)
         table.reloadData()
-        table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
-        loadSelected()
-        saveQuietly()
+        table.selectRowIndexes(IndexSet(integer: min(selected, sets.count - 1)),
+                               byExtendingSelection: false)
+        // The selection change reloads the editor for the row that slid into
+        // the deleted one's place; its commit is skipped, the row being gone.
     }
 
     fileprivate func saveQuietly() {
