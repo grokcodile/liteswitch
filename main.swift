@@ -1494,43 +1494,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Paste only once we know what is actually selected.
+    /// Check the selection is still there, without disturbing it.
     ///
-    /// A successful ⌘C is not evidence that anything was selected: some apps —
-    /// Zed among them — hand over the field's text either way. Acting on that
-    /// pasted the rewrite into a caret with nothing to replace, appending it to
-    /// the text it was meant to overwrite, and only sometimes, which is the
-    /// worst way for it to be wrong.
+    /// A selection can vanish while the model is thinking — apps that publish no
+    /// accessibility element drop it when they aren't being typed into — and ⌘V
+    /// then inserts instead of replacing, appending the rewrite to the text it
+    /// was meant to overwrite.
     ///
-    /// So take the field and look. If it holds exactly what was rewritten, the
-    /// "selection" was the whole field and pasting over it is right. If it holds
-    /// more, what was rewritten was a fragment — and there is no way to reselect
-    /// a fragment in an app that publishes no accessibility element, so this
-    /// stops rather than corrupting the text. Nothing is pasted in that case;
-    /// the field is exactly as it was.
+    /// So copy again and see. Same text back means the selection survived, and
+    /// the paste will replace it. Nothing back means it's gone, and this stops
+    /// rather than appending: the field is left exactly as it was and the message
+    /// says to select again.
+    ///
+    /// A bare ⌘C, deliberately — reading the field with ⌘A first would clear the
+    /// very selection being checked, which is what made this refuse every partial
+    /// selection in Notes.
     private func pasteOverVerifiedSelection(_ outgoing: String, matching original: String,
                                             on pb: NSPasteboard, saved: String?) {
         let before = pb.changeCount
-        post(CGKeyCode(kVK_ANSI_A), .maskCommand)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            self.post(CGKeyCode(kVK_ANSI_C), .maskCommand)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                let field = pb.changeCount != before ? Self.selectedText(from: pb) : nil
-                let whole = field?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    == original.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard whole else {
-                    self.hud.showMessage("Select the text again", symbol: "questionmark.circle.fill",
-                                         tint: .systemOrange)
-                    Self.restoreClipboard(saved, on: pb)
-                    self.endRewriting()
-                    return
-                }
-                Self.setClipboardQuietly(outgoing, on: pb)
-                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    Self.restoreClipboard(saved, on: pb)
-                    self.endRewriting()
-                }
+        post(CGKeyCode(kVK_ANSI_C), .maskCommand)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            let live = pb.changeCount != before ? Self.selectedText(from: pb) : nil
+            let intact = live?.trimmingCharacters(in: .whitespacesAndNewlines)
+                == original.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard intact else {
+                self.hud.showMessage("Select the text again", symbol: "questionmark.circle.fill",
+                                     tint: .systemOrange)
+                Self.restoreClipboard(saved, on: pb)
+                self.endRewriting()
+                return
+            }
+            Self.setClipboardQuietly(outgoing, on: pb)
+            self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                Self.restoreClipboard(saved, on: pb)
+                self.endRewriting()
             }
         }
     }
