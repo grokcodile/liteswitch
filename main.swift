@@ -1354,7 +1354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         hud.showWaveform(tint: .systemPurple, mode: .processing)
-        rewriteText(text, instructions: instructions, structured: !dictated) { [weak self] result in
+        rewriteText(text, instructions: instructions, dictated: dictated) { [weak self] result in
             guard let self else { return }
             guard let result else {
                 self.endRewriting()
@@ -1618,13 +1618,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// nothing, and stripping filler out of dictation keeps little. Together they
     /// separate cleanly: over the collected outputs, refusals kept none of the
     /// input's words while rewrites kept nearly all of them.
-    private static func isRefusal(_ output: String, for input: String) -> Bool {
+    private static func isRefusal(_ output: String, for input: String,
+                                  dictated: Bool = false) -> Bool {
+        // A cleanup is about as long as what it cleaned. Prose several times the
+        // length of a short utterance is the model talking about it, whatever
+        // words it picked — which is the only way to catch a refusal phrased in a
+        // way the list below has never seen. Dictation only: a rewrite action is
+        // allowed to expand, since wrapping text in HTML or translating it does.
+        if dictated, input.count <= 60, output.count > max(60, input.count * 3) { return true }
         let markers = ["cannot rewrite", "can't rewrite", "cannot assist", "can't assist",
                        "cannot process", "can't process", "cannot help", "can't help",
                        "unable to rewrite", "unable to process", "cannot determine",
                        "can't determine", "please provide", "different request",
                        "ready to assist", "does not contain", "no meaningful",
-                       "random characters", "random sequence", "corrupted input"]
+                       "random characters", "random sequence", "corrupted input",
+                       "cannot fulfill", "can't fulfill", "does not correspond",
+                       "recognized term", "not a word", "no recognized"]
         let lower = output.lowercased()
         guard markers.contains(where: { lower.contains($0) }) else { return false }
 
@@ -1664,8 +1673,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// and a quarter of the commas, where the prose path punctuated it properly.
     /// Adding punctuation is most of what Auto-Correct is for, so it keeps the
     /// path that does it.
-    func rewriteText(_ text: String, instructions: String, structured: Bool = true,
+    func rewriteText(_ text: String, instructions: String, dictated: Bool = false,
                      done: @escaping (String?) -> Void) {
+        // Dictation takes the prose path; everything else takes the field.
+        let structured = !dictated
         guard case .available = SystemLanguageModel.default.availability else {
             DispatchQueue.main.async { done(nil) }
             return
@@ -1712,7 +1723,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // nil is the existing "couldn't do it" signal: the HUD says so and the
             // text is left alone.
             var result = output
-            if let out = result, Self.isRefusal(out, for: text) { result = nil }
+            if let out = result, Self.isRefusal(out, for: text, dictated: dictated) { result = nil }
             let final = result
             await MainActor.run { done(final?.isEmpty == false ? final : nil) }
         }
@@ -2047,13 +2058,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // UTF-16 offsets, because that's what an AX range is counted in.
         let b = Array(before.utf16), a = Array(after.utf16)
-        guard a.count > b.count else {
-            return nil
-        }
+        guard a != b else { return nil }
+        // Bounded by the shorter side, so this measures a replacement as well as
+        // an insertion. It used to require the text to have grown, which meant
+        // dictating a word over a selected one of the same length looked like
+        // nothing had happened and Auto-Correct declined.
+        let shared = min(a.count, b.count)
         var head = 0
-        while head < b.count, a[head] == b[head] { head += 1 }
+        while head < shared, a[head] == b[head] { head += 1 }
         var tail = 0
-        while tail < b.count - head, a[a.count - 1 - tail] == b[b.count - 1 - tail] { tail += 1 }
+        while tail < shared - head, a[a.count - 1 - tail] == b[b.count - 1 - tail] { tail += 1 }
         let length = a.count - tail - head
         guard length > 0 else { return nil }
 
