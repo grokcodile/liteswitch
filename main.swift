@@ -350,6 +350,14 @@ extension UserDefaults {
 
         Keep the original wording, tone and meaning — do not rephrase, shorten, \
         reorder or add anything.
+
+        Emoji, symbols, bullets, indents and line breaks are part of the text, \
+        not errors in it — keep them all exactly as they appear.
+
+        Never change how a line begins. Whatever a line starts with — a tab, \
+        spaces, a bullet, a dash, a number and a dot — reproduce it character for \
+        character. Do not swap one list marker for another, and do not add or \
+        remove list markers.
         """
     /// The "those removals are the only ones" paragraph is doing specific work.
     /// Without it, three sentences here tell the model to remove things and the
@@ -1216,31 +1224,193 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.hud.hide()          // nothing to work on; leave the text alone
                 Self.restoreClipboard(saved, on: pb)
             } else {
-                // Nothing selected: take the lot.
-                self.post(CGKeyCode(kVK_ANSI_A), .maskCommand)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                    // Ask over AX again first. There was nothing to read a moment
-                    // ago because nothing was selected; now there is. Skipping this
-                    // is what still left a clipboard entry behind in apps that do
-                    // answer — which is most of them, Electron included — whenever
-                    // the shortcut was used without selecting anything first, the
-                    // ordinary way to tidy something you just typed.
-                    if let viaAX = self.selectedTextViaAX() {
-                        self.resolveThenRun(viaAX, dictated: dictated, restoring: saved,
-                                            setIndex: setIndex, wholeField: true)
-                        return
-                    }
-                    self.copySelectionText { all in
-                        guard let all else {
-                            self.endRewriting()
-                            self.hud.showMessage("No text to rewrite", symbol: "text.badge.xmark", tint: .systemRed)
-                            Self.restoreClipboard(saved, on: pb)
-                            return
-                        }
-                        self.resolveThenRun(all, dictated: dictated, restoring: saved,
-                                                setIndex: setIndex, wholeField: true)
-                    }
-                }
+                // No selection, and nothing to fall back on. Taking the whole
+                // field used to happen here, and it is what made this unsafe:
+                // apps that publish no accessibility element hand over the
+                // field's text whether or not anything is selected, so there was
+                // no way to tell a deliberate select-all from an empty caret —
+                // and pasting into the second appends instead of replacing.
+                // Asking is honest, and it can't corrupt anything.
+                self.endRewriting()
+                self.hud.showMessage("Select some text first", symbol: "text.cursor",
+                                     tint: .systemOrange)
+                Self.restoreClipboard(saved, on: pb)
+            }
+        }
+    }
+
+    /// Which instructions to run, decided once the text is in hand.
+    ///
+    /// The text is gathered before the chooser opens, deliberately: the menu
+    /// takes key events, and reading the selection afterwards would be reading
+    /// it through whatever the menu did to focus.
+    private func resolveThenRun(_ text: String, dictated: Bool,
+                                restoring saved: String?, setIndex: Int?) {
+        if dictated {
+            runRewrite(text, instructions: UserDefaults.standard.dictationInstructions,
+                          dictated: true, restoring: saved)
+            return
+        }
+        let sets = UserDefaults.standard.rewriteActions
+        if let i = setIndex, let set = sets[safe: i] {            // a set's own shortcut
+            runRewrite(text, instructions: set.instructions, dictated: false, restoring: saved)
+            return
+        }
+        // Nothing enabled falls back to the built-in Clean Up, so the shortcut
+        // always does something; one enabled runs straight through; more than
+        // one is the only case worth interrupting for.
+        let active = sets.filter(\.enabled)
+        if active.count <= 1 {
+            let only = active.first ?? sets.first
+            runRewrite(text, instructions: only?.instructions ?? UserDefaults.defaultRewriteInstructions,
+                          dictated: false, restoring: saved)
+            return
+        }
+        guard let chosen = chooseRewriteAction(active) else {    // Esc, or clicked away
+            endRewriting()
+            hud.hide()
+            Self.restoreClipboard(saved, on: NSPasteboard.general)
+            return
+        }
+        runRewrite(text, instructions: chosen.instructions, dictated: false, restoring: saved)
+    }
+
+    /// The chooser: a plain menu at the pointer, numbered so a set is one
+    /// keypress away. `popUp` runs its own event loop and returns when the menu
+    /// closes, so the answer is ready on the next line.
+    private func chooseRewriteAction(_ sets: [RewriteAction]) -> RewriteAction? {
+        pendingActionChoice = nil
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for (i, set) in sets.enumerated() {
+            let item = NSMenuItem(title: set.title, action: #selector(pickRewriteAction(_:)),
+                                  keyEquivalent: i < 9 ? String(i + 1) : "")
+            item.keyEquivalentModifierMask = []
+            item.target = self
+            item.tag = i
+            menu.addItem(item)
+        }
+        // The tail is the way to grow the list without a detour through Settings:
+        // it opens the editor with a new set already dropped in, ready to name.
+        menu.addItem(.separator())
+        let newItem = NSMenuItem(title: "New Action…", action: #selector(pickRewriteAction(_:)),
+                                 keyEquivalent: "")
+        newItem.keyEquivalentModifierMask = []
+        newItem.target = self
+        newItem.tag = newRewriteActionTag
+        menu.addItem(newItem)
+        // Highlight the first item, so Return runs it without touching the mouse
+        // — and so the highlight itself shows the arrow keys are live. NSMenu
+        // exposes no selection API, so this hands its tracking loop a Down arrow
+        // to consume as it opens.
+        let down = String(UnicodeScalar(NSDownArrowFunctionKey)!)
+        if let arrow = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                                        timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: 0, context: nil,
+                                        characters: down, charactersIgnoringModifiers: down,
+                                        isARepeat: false, keyCode: UInt16(kVK_DownArrow)) {
+            NSApp.postEvent(arrow, atStart: true)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        return pendingActionChoice.flatMap { sets[safe: $0] }
+    }
+
+    /// Set indices are non-negative, so this is unambiguous.
+    private let newRewriteActionTag = -1
+
+    @objc private func pickRewriteAction(_ sender: NSMenuItem) {
+        guard sender.tag != newRewriteActionTag else {
+            // The popup is still closing; hand the rest to the next runloop pass
+            // so nothing fights its dismissal.
+            DispatchQueue.main.async { [weak self] in self?.newRewriteAction() }
+            return
+        }
+        pendingActionChoice = sender.tag
+    }
+
+    /// The picker's tail: open Settings' Rewrite editor with a fresh set inside,
+    /// named and waiting for instructions. The rewrite that raised the picker is
+    /// abandoned, exactly as if nothing had been chosen.
+    private func newRewriteAction() {
+        showSettings()
+        settings?.addRewriteAction()
+    }
+
+    private func runRewrite(_ text: String, instructions: String,
+                               dictated: Bool, restoring saved: String?) {
+        let pb = NSPasteboard.general
+        hud.showWaveform(tint: .systemPurple, mode: .processing)
+        rewriteText(text, instructions: instructions) { [weak self] result in
+            guard let self else { return }
+            guard let result else {
+                self.endRewriting()
+                // Not the red warning triangle the other failures use. Those are
+                // things you have to go and fix; this one is the model shrugging,
+                // and your text is exactly where you left it.
+                self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
+                                     tint: .systemOrange)
+                Self.restoreClipboard(saved, on: pb)
+                return
+            }
+            let outgoing = Self.rewrap(result, like: text)
+            Self.setClipboardQuietly(outgoing, on: pb)
+            // Take the field again right before pasting rather than trusting the
+            // selection to have survived the model call. It often doesn't: apps
+            // that publish no accessibility element drop it while they're not
+            // being typed into, and ⌘V then inserts instead of replacing —
+            // which appended the rewrite to the text it was meant to replace.
+            // This is what the dictation path has always done, and why that one
+            // never had the bug.
+            if dictated {
+                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // dictation made its own selection
+            } else {
+                self.pasteOverVerifiedSelection(outgoing, matching: text, on: pb, saved: saved)
+            }
+            // Auto-Correct names itself; the manual one doesn't need to. You pressed
+            // the shortcut for that one, so what just happened isn't in question —
+            // but Auto-Correct runs on its own, and if your words come back changed
+            // it should be clear which thing changed them.
+            self.hud.showMessage(dictated ? "Auto-Corrected" : "Rewritten",
+                                 symbol: "checkmark.circle.fill", tint: .systemGreen)
+            // Give the paste a moment to land before handing the clipboard back —
+            // and only release the hold key once it has, since that paste is the
+            // thing a new dictation would otherwise land in the middle of.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                Self.restoreClipboard(saved, on: pb)
+                self.endRewriting()
+            }
+        }
+    }
+
+    /// Confirm the selection is still there, without disturbing it.
+    ///
+    /// A selection can vanish while the model is thinking — apps that publish no
+    /// accessibility element let go whenever the field isn't being typed into —
+    /// and ⌘V then inserts instead of replacing, appending the rewrite to the
+    /// text it was meant to overwrite.
+    ///
+    /// A bare ⌘C answers it and changes nothing: the same text back means the
+    /// selection held. Anything else and this stops, because a rewrite that
+    /// lands in the wrong place is worse than one that doesn't land.
+    private func pasteOverVerifiedSelection(_ outgoing: String, matching original: String,
+                                            on pb: NSPasteboard, saved: String?) {
+        let before = pb.changeCount
+        post(CGKeyCode(kVK_ANSI_C), .maskCommand)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            let live = pb.changeCount != before ? Self.selectedText(from: pb) : nil
+            guard live?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    == original.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                self.hud.showMessage("Select the text again", symbol: "text.cursor",
+                                     tint: .systemOrange)
+                Self.restoreClipboard(saved, on: pb)
+                self.endRewriting()
+                return
+            }
+            Self.setClipboardQuietly(outgoing, on: pb)
+            self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                Self.restoreClipboard(saved, on: pb)
+                self.endRewriting()
             }
         }
     }
@@ -1345,194 +1515,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Run the text through the model and paste the result over the selection.
-    /// Which instructions to run, decided once the text is in hand.
-    ///
-    /// The text is gathered before the chooser opens, deliberately: the menu
-    /// takes key events, and reading the selection afterwards would be reading
-    /// it through whatever the menu did to focus.
-    private func resolveThenRun(_ text: String, dictated: Bool,
-                                restoring saved: String?, setIndex: Int?,
-                                wholeField: Bool = false) {
-        if dictated {
-            runRewrite(text, wholeField: wholeField, instructions: UserDefaults.standard.dictationInstructions,
-                          dictated: true, restoring: saved)
-            return
-        }
-        let sets = UserDefaults.standard.rewriteActions
-        if let i = setIndex, let set = sets[safe: i] {            // a set's own shortcut
-            runRewrite(text, wholeField: wholeField, instructions: set.instructions, dictated: false, restoring: saved)
-            return
-        }
-        // Nothing enabled falls back to the built-in Clean Up, so the shortcut
-        // always does something; one enabled runs straight through; more than
-        // one is the only case worth interrupting for.
-        let active = sets.filter(\.enabled)
-        if active.count <= 1 {
-            let only = active.first ?? sets.first
-            runRewrite(text, wholeField: wholeField, instructions: only?.instructions ?? UserDefaults.defaultRewriteInstructions,
-                          dictated: false, restoring: saved)
-            return
-        }
-        guard let chosen = chooseRewriteAction(active) else {    // Esc, or clicked away
-            endRewriting()
-            hud.hide()
-            Self.restoreClipboard(saved, on: NSPasteboard.general)
-            return
-        }
-        runRewrite(text, wholeField: wholeField, instructions: chosen.instructions, dictated: false, restoring: saved)
-    }
-
-    /// The chooser: a plain menu at the pointer, numbered so a set is one
-    /// keypress away. `popUp` runs its own event loop and returns when the menu
-    /// closes, so the answer is ready on the next line.
-    private func chooseRewriteAction(_ sets: [RewriteAction]) -> RewriteAction? {
-        pendingActionChoice = nil
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        for (i, set) in sets.enumerated() {
-            let item = NSMenuItem(title: set.title, action: #selector(pickRewriteAction(_:)),
-                                  keyEquivalent: i < 9 ? String(i + 1) : "")
-            item.keyEquivalentModifierMask = []
-            item.target = self
-            item.tag = i
-            menu.addItem(item)
-        }
-        // The tail is the way to grow the list without a detour through Settings:
-        // it opens the editor with a new set already dropped in, ready to name.
-        menu.addItem(.separator())
-        let newItem = NSMenuItem(title: "New Action…", action: #selector(pickRewriteAction(_:)),
-                                 keyEquivalent: "")
-        newItem.keyEquivalentModifierMask = []
-        newItem.target = self
-        newItem.tag = newRewriteActionTag
-        menu.addItem(newItem)
-        // Highlight the first item, so Return runs it without touching the mouse
-        // — and so the highlight itself shows the arrow keys are live. NSMenu
-        // exposes no selection API, so this hands its tracking loop a Down arrow
-        // to consume as it opens.
-        let down = String(UnicodeScalar(NSDownArrowFunctionKey)!)
-        if let arrow = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
-                                        timestamp: ProcessInfo.processInfo.systemUptime,
-                                        windowNumber: 0, context: nil,
-                                        characters: down, charactersIgnoringModifiers: down,
-                                        isARepeat: false, keyCode: UInt16(kVK_DownArrow)) {
-            NSApp.postEvent(arrow, atStart: true)
-        }
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-        return pendingActionChoice.flatMap { sets[safe: $0] }
-    }
-
-    /// Set indices are non-negative, so this is unambiguous.
-    private let newRewriteActionTag = -1
-
-    @objc private func pickRewriteAction(_ sender: NSMenuItem) {
-        guard sender.tag != newRewriteActionTag else {
-            // The popup is still closing; hand the rest to the next runloop pass
-            // so nothing fights its dismissal.
-            DispatchQueue.main.async { [weak self] in self?.newRewriteAction() }
-            return
-        }
-        pendingActionChoice = sender.tag
-    }
-
-    /// The picker's tail: open Settings' Rewrite editor with a fresh set inside,
-    /// named and waiting for instructions. The rewrite that raised the picker is
-    /// abandoned, exactly as if nothing had been chosen.
-    private func newRewriteAction() {
-        showSettings()
-        settings?.addRewriteAction()
-    }
-
-    private func runRewrite(_ text: String, wholeField: Bool = false, instructions: String,
-                               dictated: Bool, restoring saved: String?) {
-        let pb = NSPasteboard.general
-        hud.showWaveform(tint: .systemPurple, mode: .processing)
-        rewriteText(text, instructions: instructions) { [weak self] result in
-            guard let self else { return }
-            guard let result else {
-                self.endRewriting()
-                // Not the red warning triangle the other failures use. Those are
-                // things you have to go and fix; this one is the model shrugging,
-                // and your text is exactly where you left it.
-                self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
-                                     tint: .systemOrange)
-                Self.restoreClipboard(saved, on: pb)
-                return
-            }
-            let outgoing = Self.rewrap(result, like: text)
-            Self.setClipboardQuietly(outgoing, on: pb)
-            // Take the field again right before pasting rather than trusting the
-            // selection to have survived the model call. It often doesn't: apps
-            // that publish no accessibility element drop it while they're not
-            // being typed into, and ⌘V then inserts instead of replacing —
-            // which appended the rewrite to the text it was meant to replace.
-            // This is what the dictation path has always done, and why that one
-            // never had the bug.
-            if wholeField {
-                self.post(CGKeyCode(kVK_ANSI_A), .maskCommand)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                    self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
-                }
-            } else if dictated {
-                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // dictation made its own selection
-            } else {
-                self.pasteOverVerifiedSelection(outgoing, matching: text, on: pb, saved: saved)
-            }
-            // Auto-Correct names itself; the manual one doesn't need to. You pressed
-            // the shortcut for that one, so what just happened isn't in question —
-            // but Auto-Correct runs on its own, and if your words come back changed
-            // it should be clear which thing changed them.
-            self.hud.showMessage(dictated ? "Auto-Corrected" : "Rewritten",
-                                 symbol: "checkmark.circle.fill", tint: .systemGreen)
-            // Give the paste a moment to land before handing the clipboard back —
-            // and only release the hold key once it has, since that paste is the
-            // thing a new dictation would otherwise land in the middle of.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                Self.restoreClipboard(saved, on: pb)
-                self.endRewriting()
-            }
-        }
-    }
-
-    /// Check the selection is still there, without disturbing it.
-    ///
-    /// A selection can vanish while the model is thinking — apps that publish no
-    /// accessibility element drop it when they aren't being typed into — and ⌘V
-    /// then inserts instead of replacing, appending the rewrite to the text it
-    /// was meant to overwrite.
-    ///
-    /// So copy again and see. Same text back means the selection survived, and
-    /// the paste will replace it. Nothing back means it's gone, and this stops
-    /// rather than appending: the field is left exactly as it was and the message
-    /// says to select again.
-    ///
-    /// A bare ⌘C, deliberately — reading the field with ⌘A first would clear the
-    /// very selection being checked, which is what made this refuse every partial
-    /// selection in Notes.
-    private func pasteOverVerifiedSelection(_ outgoing: String, matching original: String,
-                                            on pb: NSPasteboard, saved: String?) {
-        let before = pb.changeCount
-        post(CGKeyCode(kVK_ANSI_C), .maskCommand)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            let live = pb.changeCount != before ? Self.selectedText(from: pb) : nil
-            let intact = live?.trimmingCharacters(in: .whitespacesAndNewlines)
-                == original.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard intact else {
-                self.hud.showMessage("Select the text again", symbol: "questionmark.circle.fill",
-                                     tint: .systemOrange)
-                Self.restoreClipboard(saved, on: pb)
-                self.endRewriting()
-                return
-            }
-            Self.setClipboardQuietly(outgoing, on: pb)
-            self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                Self.restoreClipboard(saved, on: pb)
-                self.endRewriting()
-            }
-        }
-    }
-
     /// Whether the model talked *about* the text instead of rewriting it.
     ///
     /// Given something it can't make sense of, it doesn't fail — it explains:
@@ -1611,6 +1593,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 // Firm framing: without it the model tends to answer the text
                 // rather than rewrite it.
+                //
+                // Wrapping the text in <text> tags was tried, the way Handy
+                // (github.com/cjpais/Handy) does, and measured worse: it did keep
+                // list markers, but it also made the model refuse ordinary content
+                // — "100°F" came back as "I cannot fulfill this request… unsafe
+                // instructions involving extreme temperatures" — and it stopped
+                // correcting spelling on half the passes.
                 let session = LanguageModelSession(instructions: instructions +
                     "\n\nOutput only the rewritten text. Do not answer it, explain, or comment on it.")
                 output = try await session.respond(to: "Rewrite this text:\n\n" + text).content
