@@ -756,6 +756,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// then dictate a sentence into an app the diff can't read, and the sentence
     /// lost its full stop because the fragment before it hadn't wanted one.
     private var dictatedMidSentence: Bool?
+    /// Where the dictated run sits, kept so the selection can be put back right
+    /// before the paste rather than trusted to survive the model call.
+    private var dictatedRange: CFRange?
     private var keepAwakeStatusItem: NSStatusItem?
     private var axPollTimer: Timer?
     private(set) var hasAccessibility = AXIsProcessTrusted()
@@ -1381,7 +1384,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // This is what the dictation path has always done, and why that one
             // never had the bug.
             if dictated {
-                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)   // dictation made its own selection
+                // Select the run again first. It was selected when the diff found
+                // it, a second or more ago, and a field that isn't being typed
+                // into can let go of a selection in between — which pasted the
+                // word next to itself instead of over it: "typetype".
+                self.reassertDictatedSelection()
+                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
             } else {
                 self.pasteOverVerifiedSelection(outgoing, matching: text, on: pb, saved: saved)
             }
@@ -1534,6 +1542,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Run the text through the model and paste the result over the selection.
+    /// Put the dictated run back under the selection.
+    ///
+    /// Cheap and exact, because the diff already worked out where it is — no
+    /// guessing, and no clipboard round trip to check it the way the rewrite path
+    /// has to. Nothing has typed into the field since, so the range still holds.
+    private func reassertDictatedSelection() {
+        guard let field = dictationElement, var range = dictatedRange,
+              let axRange = AXValueCreate(.cfRange, &range) else { return }
+        AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString, axRange)
+    }
+
     /// Undo the sentence-shaping the model applies to a fragment.
     ///
     /// Dictating a word or two into the middle of a sentence gave back "It's
@@ -2027,6 +2046,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictationElement = nil
         dictationBeforeText = nil
         dictatedMidSentence = nil        // this run's answer, not the last one's
+        dictatedRange = nil
         guard let field = focusedTextElement() else { return }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
@@ -2079,6 +2099,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .map { !".!?".contains($0) } ?? false
 
         var range = CFRange(location: head, length: length)
+        dictatedRange = range
         guard let axRange = AXValueCreate(.cfRange, &range),
               AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString,
                                            axRange) == .success
