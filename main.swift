@@ -747,6 +747,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// work out afterwards exactly what was inserted.
     private var dictationElement: AXUIElement?
     private var dictationBeforeText: String?
+    /// Whether the dictated run landed inside an existing sentence rather than
+    /// starting one. Known exactly from the diff, so it doesn't have to be
+    /// guessed at from the words themselves.
+    private var dictatedMidSentence = false
     /// When dictation started; only used if the field won't tell us its text.
     private var dictationStartedAt: Date?
     private var dictatedWordEstimate: Int {
@@ -1363,7 +1367,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Self.restoreClipboard(saved, on: pb)
                 return
             }
-            let outgoing = Self.rewrap(result, like: text)
+            var outgoing = Self.rewrap(result, like: text)
+            if dictated && self.dictatedMidSentence {
+                outgoing = Self.keepFragmentShape(outgoing, like: text)
+            }
             Self.setClipboardQuietly(outgoing, on: pb)
             // Take the field again right before pasting rather than trusting the
             // selection to have survived the model call. It often doesn't: apps
@@ -1526,6 +1533,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Run the text through the model and paste the result over the selection.
+    /// Undo the sentence-shaping the model applies to a fragment.
+    ///
+    /// Dictating a word or two into the middle of a sentence gave back "It's
+    /// Funny that…" and "a pop-up last." — a capital and a full stop, because the
+    /// model treats whatever it is handed as a sentence. Telling it not to was
+    /// measured and made things worse: the fragments improved, and full dictated
+    /// sentences lost their capitals, their final stops and their filler removal.
+    ///
+    /// So the model is left alone and the shape is put back afterwards, which is
+    /// possible because the diff already knows this run landed mid-sentence.
+    private static func keepFragmentShape(_ rewritten: String, like original: String) -> String {
+        var out = rewritten
+        // A capital the speaker didn't say, on a word that doesn't need one.
+        if let first = out.first, first.isUppercase,
+           let was = original.trimmingCharacters(in: .whitespaces).first, was.isLowercase,
+           out.split(whereSeparator: { $0.isWhitespace }).first?.lowercased() != "i" {
+            out.replaceSubrange(out.startIndex...out.startIndex, with: String(first).lowercased())
+        }
+        // A full stop closing a sentence that hasn't ended. Only the period —
+        // a question or exclamation mark is something the speaker meant.
+        let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        if out.hasSuffix("."), !(trimmed.last.map { ".!?".contains($0) } ?? false) {
+            out.removeLast()
+        }
+        return out
+    }
+
     /// One field, holding the rewrite. Built once, at runtime rather than with
     /// the @Generable macro, so the whole app still compiles with a bare swiftc.
     private static let rewriteSchema: GenerationSchema? = {
@@ -1967,6 +2001,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         while tail < b.count - head, a[a.count - 1 - tail] == b[b.count - 1 - tail] { tail += 1 }
         let length = a.count - tail - head
         guard length > 0 else { return nil }
+
+        // What precedes the insertion decides whether this is a sentence or a
+        // fragment dropped into the middle of one. Anything other than a
+        // sentence ending before it means the speaker was mid-sentence.
+        let preceding = String(decoding: b[0..<head], as: UTF16.self)
+        dictatedMidSentence = preceding.last(where: { !$0.isWhitespace })
+            .map { !".!?".contains($0) } ?? false
 
         var range = CFRange(location: head, length: length)
         guard let axRange = AXValueCreate(.cfRange, &range),
