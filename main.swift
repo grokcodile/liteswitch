@@ -1551,6 +1551,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// So the model is left alone and the shape is put back afterwards, which is
     /// possible because the diff already knows this run landed mid-sentence.
     private static func keepFragmentShape(_ rewritten: String, like original: String) -> String {
+        // Nothing actually corrected. Dictating one word into a sentence gets it
+        // capitalized, and measurably sometimes shouted — "school" came back as
+        // "SCHOOL" in two passes of three. If the words are the same words, the
+        // model has only restyled them, and what was said is what belongs there.
+        func letters(_ s: String) -> String {
+            String(s.lowercased().filter { $0.isLetter || $0.isNumber || $0.isWhitespace })
+                .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        }
+        if letters(rewritten) == letters(original) { return original }
+
         var out = rewritten
         // A capital the speaker didn't say, on a word that doesn't need one.
         if let first = out.first, first.isUppercase,
