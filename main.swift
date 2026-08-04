@@ -756,12 +756,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// then dictate a sentence into an app the diff can't read, and the sentence
     /// lost its full stop because the fragment before it hadn't wanted one.
     private var dictatedMidSentence: Bool?
-    /// When dictation started; only used if the field won't tell us its text.
-    private var dictationStartedAt: Date?
-    private var dictatedWordEstimate: Int {
-        guard let start = dictationStartedAt else { return 0 }
-        return Int(Date().timeIntervalSince(start) * 2.5)   // ~150 wpm
-    }
     private var keepAwakeStatusItem: NSStatusItem?
     private var axPollTimer: Timer?
     private(set) var hasAccessibility = AXIsProcessTrusted()
@@ -1902,7 +1896,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         dictating = true
-        dictationStartedAt = Date()
         captureDictationField()
         hud.showWaveform(tint: .systemGreen)
     }
@@ -1965,11 +1958,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showWaveform(tint: .systemPurple, mode: .processing)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self else { return }
-            // The exact diff hands back the text it selected; the estimate can't,
-            // so that path still has to read the selection the slow way.
-            let dictatedText = self.selectDictatedRunExactly()
-            if dictatedText == nil {
-                self.selectDictatedRun()
+            // Auto-Correct runs only on a run the diff has identified exactly.
+            //
+            // There used to be a fallback that walked back a guessed number of
+            // words with ⇧⌥←, for apps the diff can't read. A guess is the wrong
+            // shape for this: when it was off, the model was handed the wrong
+            // text and confidently rewrote it, so a word dictated into a sentence
+            // came back having eaten its neighbours. Everything downstream — the
+            // rewrite, the sentence shaping — is only as good as the span, and
+            // there is no way to check a span that was guessed.
+            //
+            // Dictation itself is unaffected: the words are typed either way.
+            // Only the cleanup stands down, and says so.
+            guard let dictatedText = self.selectDictatedRunExactly() else {
+                self.hud.showMessage("Can't Auto-Correct here", symbol: "text.badge.xmark",
+                                     tint: .systemOrange)
+                return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 self.rewriteSelection(dictated: true, known: dictatedText)
@@ -2102,13 +2106,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return nil }
         return text
-    }
-
-    /// Fallback when the field is opaque: walk back over roughly as many words as
-    /// were spoken. An estimate, and it shows — it can take too little or too much.
-    private func selectDictatedRun() {
-        let words = min(max(dictatedWordEstimate, 1), 120)
-        for _ in 0..<words { post(CGKeyCode(kVK_LeftArrow), [.maskShift, .maskAlternate]) }
     }
 
     /// Show the system color loupe (`NSColorSampler`), copy the picked color's
