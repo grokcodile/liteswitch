@@ -3635,6 +3635,10 @@ final class InstructionsWindow: NSWindow, NSTableViewDataSource, NSTableViewDele
         sets.append(RewriteAction(title: "Untitled Action", instructions: "", shortcut: nil, enabled: true))
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: sets.count - 1), byExtendingSelection: false)
+        // Straight into the title field with everything selected: typing a name
+        // replaces "Untitled Action" instead of being inserted before it.
+        makeFirstResponder(titleField)
+        titleField.selectText(nil)
         // Nothing to persist yet: the set becomes real once its title is typed
         // or its instructions change, and both of those save on their own.
     }
