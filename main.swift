@@ -1551,25 +1551,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// So the model is left alone and the shape is put back afterwards, which is
     /// possible because the diff already knows this run landed mid-sentence.
     private static func keepFragmentShape(_ rewritten: String, like original: String) -> String {
-        // Nothing actually corrected. Dictating one word into a sentence gets it
-        // capitalized, and measurably sometimes shouted — "school" came back as
-        // "SCHOOL" in two passes of three. If the words are the same words, the
-        // model has only restyled them, and what was said is what belongs there.
         func letters(_ s: String) -> String {
             String(s.lowercased().filter { $0.isLetter || $0.isNumber || $0.isWhitespace })
                 .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
         }
-        if letters(rewritten) == letters(original) { return original }
+        // Nothing actually corrected — the model has only restyled the words.
+        // Measured: dictating one word gets it capitalized every time and shouted
+        // some of the time ("school" came back as "SCHOOL" twice in three). Take
+        // the words as spoken; the shaping below still applies to them.
+        var out = letters(rewritten) == letters(original) ? original : rewritten
 
-        var out = rewritten
-        // A capital the speaker didn't say, on a word that doesn't need one.
-        if let first = out.first, first.isUppercase,
-           let was = original.trimmingCharacters(in: .whitespaces).first, was.isLowercase,
-           out.split(whereSeparator: { $0.isWhitespace }).first?.lowercased() != "i" {
+        // Dictation capitalizes the word it inserts, so this has to run on
+        // whatever we ended up with rather than only when the model added the
+        // capital — otherwise every word dropped into a sentence arrives looking
+        // like the start of a new one.
+        let firstWord = out.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+        let isAcronym = firstWord.count > 1 && firstWord == firstWord.uppercased()
+        if let first = out.first, first.isUppercase, firstWord.lowercased() != "i", !isAcronym {
             out.replaceSubrange(out.startIndex...out.startIndex, with: String(first).lowercased())
         }
-        // A full stop closing a sentence that hasn't ended. Only the period —
-        // a question or exclamation mark is something the speaker meant.
+        // A full stop closing a sentence that hasn't ended. Only the period — a
+        // question or exclamation mark is something the speaker meant.
         let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
         if out.hasSuffix("."), !(trimmed.last.map { ".!?".contains($0) } ?? false) {
             out.removeLast()
