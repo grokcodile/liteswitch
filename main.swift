@@ -748,9 +748,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dictationElement: AXUIElement?
     private var dictationBeforeText: String?
     /// Whether the dictated run landed inside an existing sentence rather than
-    /// starting one. Known exactly from the diff, so it doesn't have to be
-    /// guessed at from the words themselves.
-    private var dictatedMidSentence = false
+    /// starting one — nil when there is no way to know.
+    ///
+    /// Only the exact diff can answer it, so it stays nil whenever that doesn't
+    /// run. It was a plain Bool at first, which meant a run the diff couldn't
+    /// measure silently inherited the previous run's answer: dictate a fragment,
+    /// then dictate a sentence into an app the diff can't read, and the sentence
+    /// lost its full stop because the fragment before it hadn't wanted one.
+    private var dictatedMidSentence: Bool?
     /// When dictation started; only used if the field won't tell us its text.
     private var dictationStartedAt: Date?
     private var dictatedWordEstimate: Int {
@@ -1368,7 +1373,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             var outgoing = Self.rewrap(result, like: text)
-            if dictated && self.dictatedMidSentence {
+            // Only when the diff actually established it. Unknown means leave
+            // the model's sentence shaping alone.
+            if dictated, self.dictatedMidSentence == true {
                 outgoing = Self.keepFragmentShape(outgoing, like: text)
             }
             Self.setClipboardQuietly(outgoing, on: pb)
@@ -1992,6 +1999,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func captureDictationField() {
         dictationElement = nil
         dictationBeforeText = nil
+        dictatedMidSentence = nil        // this run's answer, not the last one's
         guard let field = focusedTextElement() else { return }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
