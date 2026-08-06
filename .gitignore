@@ -6,3 +6,6 @@ CLAUDE.md
 # Apple signing / notarization keys — never commit
 *.p8
 *.p12
+
+# stray build products from ad-hoc probes
+*.o

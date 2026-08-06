@@ -2926,10 +2926,15 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func openMoreInfo(_ sender: NSButton) {
+        let content = MoreInfo.makeContent(target: self,
+                                           pause:   #selector(openPausedApps),
+                                           guide:   #selector(openHelpDoc),
+                                           website: #selector(openWebsite),
+                                           issues:  #selector(openIssues),
+                                           coffee:  #selector(openTipJar),
+                                           star:    #selector(openRepo))
         let vc = NSViewController()
-        vc.view = MoreInfo.makeContent(target: self, pause: #selector(openPausedApps),
-                                       help: #selector(openHelpDoc),
-                                       repo: #selector(openRepo), tip: #selector(openTipJar))
+        vc.view = content
         let pop = NSPopover()
         pop.contentViewController = vc
         pop.contentSize = vc.view.frame.size
@@ -2960,6 +2965,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     @objc private func openHelpDoc() { openLink(MoreInfo.helpURL) }
+    @objc private func openWebsite() { openLink(MoreInfo.siteURL) }
+    @objc private func openIssues()  { openLink(MoreInfo.issuesURL) }
     @objc private func openRepo()    { openLink(MoreInfo.repoURL) }
     @objc private func openTipJar()  { openLink(MoreInfo.tipURL) }
 
@@ -3018,8 +3025,23 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let showUpdate = (appDelegate?.updateState ?? .upToDate) != .upToDate
         let updH = showUpdate ? Self.updateStripH : 0
         let H = hdrH + groupsH + footerH + updH
+        // Never taller than the screen can show. Twelve cards in three groups
+        // plus the header and the button row want ~700 pt, and the update strip
+        // adds to that — fine on this Mac, not fine on a 720 pt display or a
+        // heavily scaled laptop, where the bottom of the window (Quit, Done, and
+        // the update strip itself) would simply be unreachable. Whatever doesn't
+        // fit scrolls; when it all fits the scroll view never appears and
+        // nothing looks any different.
+        let visibleH = (screen ?? NSScreen.main)?.visibleFrame.height ?? H
+        let needsScroll = H > visibleH
+        let windowH = min(H, visibleH)
+        // A legacy (always-visible) scroller takes real width. Widen the window
+        // by exactly that much rather than letting it eat into the content, so
+        // the card columns stay where they are and nothing reflows.
+        let scrollerW: CGFloat = needsScroll
+            ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) : 0
         let keepTop: CGFloat? = isVisible ? frame.maxY : nil
-        setContentSize(NSSize(width: winW, height: H))
+        setContentSize(NSSize(width: winW + scrollerW, height: windowH))
         if let top = keepTop { setFrameTopLeftPoint(NSPoint(x: frame.minX, y: top)) }
 
         let v = AppearanceAwareView(frame: NSRect(x: 0, y: 0, width: winW, height: H))
@@ -3389,7 +3411,27 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             v.addSubview(strip)
         }
 
-        contentView = v
+        if needsScroll {
+            let scroll = NSScrollView(frame: NSRect(x: 0, y: 0,
+                                                    width: winW + scrollerW, height: windowH))
+            scroll.drawsBackground = false      // the window's own background shows through
+            scroll.hasVerticalScroller = true
+            // Always visible, never fading: an overlay scroller disappears at
+            // rest, which leaves a window silently taller than it looks with no
+            // hint that there is anything below the fold.
+            scroll.autohidesScrollers = false
+            scroll.scrollerStyle = .legacy
+            scroll.documentView = v
+            contentView = scroll
+            // `v` is unflipped, so its origin is the *bottom* — without this the
+            // window opens on the button row with the title scrolled off. Drive
+            // the clip view rather than `v.scroll(_:)`, which is a no-op this
+            // early.
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: H - windowH))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        } else {
+            contentView = v
+        }
         refreshBanner()
         layoutUpdateStrip()
     }
@@ -3827,48 +3869,131 @@ final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelega
 enum MoreInfo {
     /// blob/HEAD rather than blob/main: HEAD resolves to whatever the default
     /// branch is called, so the link survives the repo being made with either.
-    static let repoURL = "https://github.com/grokcodile/liteswitch"
-    static let helpURL = "https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md"
-    static let tipURL  = "https://ko-fi.com/grokcodile"
+    static let repoURL   = "https://github.com/grokcodile/liteswitch"
+    static let helpURL   = "https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md"
+    static let issuesURL = "https://github.com/grokcodile/liteswitch/issues"
+    static let siteURL   = "https://grokcodile.github.io/liteswitch/"
+    static let tipURL    = "https://ko-fi.com/grokcodile"
 
-    /// Built bottom-up, the way AppKit lays out an unflipped view, with the
-    /// wrapped tagline measured first so the popover is exactly as tall as its
-    /// content — a copy change can't clip it.
-    static func makeContent(target: AnyObject, pause: Selector,
-                            help: Selector, repo: Selector, tip: Selector) -> NSView {
+    /// The About popover, hung off the titlebar ⓘ: app icon, name, version, the
+    /// one setting that lives here, the places to go for help, then the "it's
+    /// free…" lead-in and the two ways to support Liteswitch. Every row is one
+    /// symbol-led button; what it does for you is a tooltip, so the stack stays
+    /// a column of actions rather than a wall of copy. (Key54's convention.)
+    ///
+    /// Built bottom-up, the way AppKit lays out an unflipped view, so the
+    /// popover is exactly as tall as its content and a copy change can't clip it.
+    static func makeContent(target: AnyObject, pause: Selector, guide: Selector,
+                            website: Selector, issues: Selector,
+                            coffee: Selector, star: Selector) -> NSView {
+        // Two gaps and nothing else: rowGap inside a group of buttons,
+        // sectionGap between anything and the next thing. Every vertical
+        // measurement below is one of those two, so the stack has a rhythm
+        // rather than a pile of one-off numbers.
         let w: CGFloat = 300, pad: CGFloat = 16
-        let icon: CGFloat = 64, btnH: CGFloat = 30, rowGap: CGFloat = 6, capH: CGFloat = 14
+        let icon: CGFloat = 64, btnH: CGFloat = 30
+        let rowGap: CGFloat = 6, sectionGap: CGFloat = 12
+        // The lead-in belongs to the two buttons under it — its ellipsis hands
+        // straight off into them — so it keeps sectionGap below and takes more
+        // above, to part it from the block it is not attached to.
+        let leadInGap: CGFloat = 20
+        let nameH: CGFloat = 24, versionH: CGFloat = 15
+        let innerW = w - pad * 2
 
+        // (title, SF Symbol, tooltip, destination, action). Every list runs
+        // bottom-up, the way the view is built. The lead-in sits between help
+        // and support so its trailing ellipsis hands off into the support
+        // buttons.
+        //
+        // A row with a destination leaves the app, and says where on a second
+        // tooltip line — so a link is never a mystery before you click it. The
+        // one row with no destination changes a setting instead, and shows a
+        // single line.
+        typealias Row = (String, String, String, String?, Selector)
+        let support: [Row] = [
+            ("Buy me a coffee", "mug",  "Tips keep it going",          tipURL,  coffee),
+            ("Star on GitHub",  "star", "A star helps others find it", repoURL, star),
+        ]
+        let help: [Row] = [
+            ("Bug Report", "ladybug", "Submit a support ticket",         issuesURL, issues),
+            ("User Guide", "book",    "View help and app documentation", helpURL,   guide),
+            // Deliberately doesn't name the address: it's on the line below.
+            ("Website",    "globe",   "Learn more about Liteswitch",     siteURL,   website),
+        ]
+        // Sits between the links and the support section: it changes what the
+        // app does rather than opening something, so it doesn't belong in the
+        // run of destinations above it. The missing ↗ in its tooltip is what
+        // marks it out — it needs no heading to say so.
+        let settings: [Row] = [
+            ("Protected Apps", "hand.raised",
+             "Disable Liteswitch when using these apps", nil, pause),
+        ]
+
+        // The two wrapped blocks are the only content-dependent heights —
+        // measure both first and derive every frame (and the popover height)
+        // from them, so a copy change can't clip the popover.
         let tagline = NSTextField(wrappingLabelWithString:
             "The most powerful things macOS can do are often the hardest to reach "
             + "— Liteswitch puts them at your fingertips.")
         tagline.font = .systemFont(ofSize: 12)
         tagline.textColor = .secondaryLabelColor
         tagline.alignment = .center
-        let taglineW = w - pad * 2
         let taglineH = ceil(tagline.sizeThatFits(
-            NSSize(width: taglineW, height: .greatestFiniteMagnitude)).height)
+            NSSize(width: innerW, height: .greatestFiniteMagnitude)).height)
 
-        // Listed bottom-up, the way the view is built. Protected apps sits last on
-        // screen: it's the one row that changes behaviour rather than opening a link.
-        let rows: [(String, String, Selector)] = [
-            ("Protected apps…",    "Disable Liteswitch when using these apps", pause),
-            ("Support Liteswitch", "Tip jar — it's free and stays free",       tip),
-            ("Source on GitHub",   "Code, releases, and issues",               repo),
-            ("Help",               "What each tool does",                      help),
-        ]
-        // Bottom up: rows, tagline, version, name, icon.
-        var y = pad
-        var rowFrames: [(CGFloat, CGFloat)] = []      // captionY, buttonY
-        for _ in rows {
-            rowFrames.append((y, y + capH + 3))
-            y += capH + 3 + btnH + rowGap * 2
+        let body = NSTextField(wrappingLabelWithString:
+            "Liteswitch is 100% free.\nIf it's earned a spot on your Mac…")
+        body.font = .systemFont(ofSize: NSFont.systemFontSize - 1)
+        body.textColor = .secondaryLabelColor
+        body.alignment = .center
+        let bodyH = ceil(body.sizeThatFits(
+            NSSize(width: innerW, height: .greatestFiniteMagnitude)).height)
+
+        /// The address as you'd say it aloud: no scheme, no trailing slash.
+        func prettyURL(_ url: String) -> String {
+            var out = url
+            for scheme in ["https://", "http://"] where out.hasPrefix(scheme) {
+                out.removeFirst(scheme.count)
+            }
+            while out.hasSuffix("/") { out.removeLast() }
+            return out
         }
-        y += 2
-        let taglineY = y;            y += taglineH + 12
-        let versionY = y;            y += 15 + 2
-        let nameY    = y;            y += 24 + 10
-        let iconY    = y;            y += icon
+
+        /// Reserve one button per row, leaving `y` just past the last of them
+        /// — no trailing gap, so every gap in the stack is stated explicitly
+        /// below rather than half-hidden in here.
+        func reserve(_ rows: [Row], from y: inout CGFloat) -> [CGFloat] {
+            var ys: [CGFloat] = []
+            for i in rows.indices {
+                if i > 0 { y += rowGap }
+                ys.append(y)
+                y += btnH
+            }
+            return ys
+        }
+
+        // The lead-in leans on white space alone to group itself with the two
+        // buttons under it. A tinted panel was tried in Key54 and dropped: any
+        // fill dark enough to read in dark mode lands as a grey slab in light.
+        var y = pad
+        let supportY  = reserve(support, from: &y)
+        y += sectionGap
+        let bodyY     = y;           y += bodyH + leadInGap
+        let settingsY = reserve(settings, from: &y)
+        y += rowGap          // sits with the links: the missing ↗ is what separates it
+        let helpY     = reserve(help, from: &y)
+        y += sectionGap
+        let taglineY  = y;           y += taglineH + sectionGap
+        // The name/version/icon block reads as one unit, so it closes up. The
+        // icon needs more than closing up: AppIcon.icns carries 6pt of
+        // transparent margin at 64pt (measured), and NSTextField leaves a few
+        // more above 20pt caps, so a nominal 8pt gap rendered as nearer 18.
+        // Subtracting the bleed puts the frames slightly through each other and
+        // the artwork where it should have been all along.
+        let iconBleed: CGFloat = 6
+        let versionY  = y;           y += versionH + 2
+        let nameY     = y;           y += nameH + 4 - iconBleed
+        let iconY     = y;           y += icon
         let h = y + pad
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
@@ -3884,30 +4009,46 @@ enum MoreInfo {
             f.font = .systemFont(ofSize: size, weight: weight)
             f.textColor = color
             f.alignment = .center
-            f.frame = NSRect(x: pad, y: y, width: w - pad * 2, height: height)
+            f.frame = NSRect(x: pad, y: y, width: innerW, height: height)
             v.addSubview(f)
         }
-        centered("Liteswitch", nameY, 24, size: 20, weight: .bold, color: .labelColor)
+        centered("Liteswitch", nameY, nameH, size: 20, weight: .bold, color: .labelColor)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
-        centered("Version \(version)", versionY, 15, size: 11, weight: .regular, color: .secondaryLabelColor)
+        centered("Version \(version)", versionY, versionH,
+                 size: 11, weight: .regular, color: .secondaryLabelColor)
 
-        tagline.frame = NSRect(x: pad, y: taglineY, width: taglineW, height: taglineH)
+        tagline.frame = NSRect(x: pad, y: taglineY, width: innerW, height: taglineH)
         v.addSubview(tagline)
 
-        for (i, row) in rows.enumerated() {
-            let (capY, btnY) = rowFrames[i]
-            let btn = NSButton(title: row.0, target: target, action: row.2)
-            btn.bezelStyle = .rounded
-            btn.frame = NSRect(x: pad, y: btnY, width: w - pad * 2, height: btnH)
-            v.addSubview(btn)
+        body.frame = NSRect(x: pad, y: bodyY, width: innerW, height: bodyH)
+        v.addSubview(body)
 
-            let caption = NSTextField(labelWithString: row.1)
-            caption.font = .systemFont(ofSize: 11)
-            caption.textColor = .secondaryLabelColor
-            caption.alignment = .center
-            caption.frame = NSRect(x: pad, y: capY, width: w - pad * 2, height: capH)
-            v.addSubview(caption)
+        func place(_ rows: [Row], _ ys: [CGFloat]) {
+            for (i, row) in rows.enumerated() {
+                // A missing symbol just leaves a title-only button rather than a
+                // blank one, so a rename in some future SF Symbols can't break this.
+                let image = NSImage(systemSymbolName: row.1, accessibilityDescription: nil)?
+                    .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+                // NSButton has no image/title spacing knob, so the gap is a
+                // leading space on the title.
+                let btn = NSButton(title: image == nil ? row.0 : " " + row.0,
+                                   target: target, action: row.4)
+                btn.bezelStyle = .rounded
+                btn.image = image
+                btn.imagePosition = image == nil ? .noImage : .imageLeading
+                // Without this the symbol pins to the button's leading edge and
+                // the title centers on its own, leaving a gap down the column.
+                btn.imageHugsTitle = true
+                // Second line: where this goes. The scheme is dropped because it
+                // is the same on every one of them and only costs width.
+                btn.toolTip = row.3.map { row.2 + "\n↗ " + prettyURL($0) } ?? row.2
+                btn.frame = NSRect(x: pad, y: ys[i], width: innerW, height: btnH)
+                v.addSubview(btn)
+            }
         }
+        place(support, supportY)
+        place(help, helpY)
+        place(settings, settingsY)
         return v
     }
 }
