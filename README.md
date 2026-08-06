@@ -66,8 +66,8 @@ Two more that make the point:
 
 **Throughout**
 
-- Every control has a one-line tooltip, and the **ⓘ** in the titlebar opens a popover — links to [HELP.md](HELP.md), the source, and the tip jar. What each of the twelve tools does, with a couple of uses each, lives in [HELP.md](HELP.md) rather than in the app.
-- **Protected apps…** (in the ⓘ popover) disables Liteswitch while you're using the apps you list — a remote session, a game, anything that owns the same chords. It unregisters its shortcuts while one of them is frontmost and takes them back on the way out, so there is nothing to shadow the app's own bindings.
+- Every control has a one-line tooltip, and the **ⓘ** in the titlebar opens an About popover: the version, then Website, User Guide and Bug Report, then Protected Apps, then the two ways to support it. Every row is one button, with what it does in a tooltip — and rows that leave the app name their destination on a second line, so no link is a mystery before you click it. What each of the twelve tools does, with a couple of uses each, lives in [HELP.md](HELP.md) rather than in the app.
+- **Protected Apps** (in the ⓘ popover) disables Liteswitch while you're using the apps you list — a remote session, a game, anything that owns the same chords. It unregisters its shortcuts while one of them is frontmost and takes them back on the way out, so there is nothing to shadow the app's own bindings.
 - Shortcut conflicts with other apps are surfaced in the settings window rather than failing silently.
 - Runs as a background agent — no Dock icon, no menu bar item — and starts at login. Opening it again brings up settings.
 
@@ -91,6 +91,8 @@ The released build is signed with a Developer ID and notarized by Apple, so it o
 ### Updates
 
 Liteswitch checks GitHub for a newer release when it launches, every six hours while running, and each time you open its settings — so the window always shows current state. When one is available, a blue strip appears across the bottom of the settings window with an **Update** button.
+
+The settings window also sizes itself to your screen: on a display too short to show it all, it scrolls, with the scroll bar always visible rather than fading out — a window that is silently taller than it looks is worse than one that admits it.
 
 What that button does depends on how you installed it. A Homebrew install upgrades through `brew` and reopens itself. A DMG install downloads the new disk image, mounts it, and quits so you can drag the new build over the old one without the "app is in use" block.
 
