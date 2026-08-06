@@ -45,12 +45,36 @@ jobs:
           echo "AC_API_KEY_ID         ${#KEY_ID} bytes"
           echo "AC_API_ISSUER_ID      ${#ISSUER} bytes"
           echo "TAP_PUSH_TOKEN        ${#TAP} bytes"
+          FAIL=0
+
+          # Shape checks. A wrong-but-present value costs a full build before
+          # notarytool rejects it three minutes in; these catch it immediately.
+          # Only the shapes are ever tested, never echoed.
+          if [ "$HAS_NOTARY" = "true" ]; then
+            if ! printf '%s' "$ISSUER" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+              echo "::error::AC_API_ISSUER_ID is not a UUID (${#ISSUER} bytes, expected 36). It is the 'Issuer ID' line above the key table in App Store Connect, not the Key ID or Team ID."
+              FAIL=1
+            fi
+            if [ "${#KEY_ID}" -ne 10 ]; then
+              echo "::error::AC_API_KEY_ID is ${#KEY_ID} bytes, expected 10 — it is the Key ID column, and also the XXXX in AuthKey_XXXX.p8."
+              FAIL=1
+            fi
+          fi
+          if [ "$HAS_TAP" = "true" ]; then
+            case "$TAP" in
+              github_pat_*|ghp_*) ;;
+              *) echo "::error::TAP_PUSH_TOKEN (${#TAP} bytes) does not start with github_pat_ or ghp_ — a fine-grained token is about 93 bytes, a classic one 40."
+                 FAIL=1 ;;
+            esac
+          fi
+
           if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
             if [ "$HAS_SIGNING" != "true" ] || [ "$HAS_NOTARY" != "true" ]; then
               echo "::error::Refusing to publish a tag without signing and notarization secrets — the release would be ad-hoc signed and Gatekeeper would reject it. Check which secret reads 0 bytes above."
-              exit 1
+              FAIL=1
             fi
           fi
+          exit $FAIL
 
       - name: Import Developer ID certificate
         if: env.HAS_SIGNING == 'true'
