@@ -53,15 +53,42 @@
     margin:20px auto 0;max-width:620px;font-size:clamp(17px,2.4vw,21px);
     color:var(--dim);line-height:1.5;
   }
-  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:36px 0 10px}
-  .btn{
-    display:inline-block;padding:13px 24px;border-radius:12px;text-decoration:none;
-    font-weight:600;font-size:15px;border:1px solid transparent;transition:.18s ease;
+  /* Two ways to install, side by side: the download button, and a Homebrew
+     command you can copy. Same shape as key54.app. */
+  .cta{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px;margin:36px 0 10px}
+  .dl{
+    display:inline-flex;align-items:center;gap:9px;
+    background:var(--ink);color:#0b0b10;padding:14px 26px;border-radius:13px;
+    font-size:16px;font-weight:600;text-decoration:none;
+    transition:transform .12s ease,filter .12s ease;
   }
-  .btn-solid{background:var(--ink);color:#0b0b10}
-  .btn-solid:hover{transform:translateY(-2px)}
-  .btn-ghost{border-color:var(--edge);color:var(--ink);background:rgba(255,255,255,.03)}
-  .btn-ghost:hover{border-color:var(--faint);transform:translateY(-2px)}
+  .dl:hover{filter:brightness(1.06);transform:translateY(-2px)}
+  .dl:active{transform:scale(.98)}
+  .dl svg{width:20px;height:20px}
+  .cta-or{color:var(--faint);font-size:14px}
+  .brew{
+    display:inline-flex;align-items:stretch;height:53px;max-width:100%;
+    background:rgba(255,255,255,.03);border:1px solid var(--edge);
+    border-radius:13px;overflow:hidden;
+  }
+  .brew code{
+    display:flex;align-items:center;min-width:0;overflow-x:auto;padding:0 14px;
+    font-family:var(--mono);font-size:14px;color:var(--ink);white-space:nowrap;
+    scrollbar-width:none;
+  }
+  .brew code::-webkit-scrollbar{display:none}
+  .brew-prompt{color:var(--faint);margin-right:8px;user-select:none}
+  .brew-copy{
+    flex:none;display:inline-flex;align-items:center;justify-content:center;
+    width:48px;padding:0;border:none;border-left:1px solid var(--edge);
+    background:rgba(255,255,255,.02);color:var(--dim);cursor:pointer;
+    transition:background .12s ease,color .12s ease;
+  }
+  .brew-copy:hover{background:rgba(255,255,255,.08);color:var(--ink)}
+  .brew-copy svg{width:17px;height:17px}
+  .brew-copy .ic-check{display:none;color:#3ddc84}
+  .brew-copy.copied .ic-copy{display:none}
+  .brew-copy.copied .ic-check{display:block}
   .fineprint{color:var(--faint);font-size:13px;margin-top:6px}
 
   /* ── the window itself ────────────────────────────────── */
@@ -125,13 +152,42 @@
     padding:15px 17px;overflow:auto;font-family:var(--mono);font-size:13.5px;color:#d6d6e0;
   }
   code{font-family:var(--mono)}
-  footer{
-    border-top:1px solid var(--edge);margin-top:40px;padding:34px 0 60px;
-    color:var(--faint);font-size:13.5px;display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between;
+  /* ── footer ───────────────────────────────────────────── */
+  footer{border-top:1px solid var(--edge);margin-top:40px}
+  .foot-inner{
+    display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
+    text-align:center;gap:6px 12px;padding:40px 24px 26px;
   }
-  footer a{text-decoration:none;border-bottom:1px solid #2b2b36}
-  footer a:hover{color:var(--ink)}
-  @media (max-width:560px){ .row{grid-template-columns:1fr} .row .mine{border-right:0} }
+  .foot-brand{display:inline-flex;align-items:center;gap:10px;font-weight:600;font-size:17px;color:var(--ink)}
+  .foot-brand img{width:28px;height:28px;border-radius:8px}
+  .foot-sep{color:var(--edge);font-size:15px}
+  .foot-tag{margin:0;font-size:13px;color:var(--faint)}
+  .foot-links{
+    display:flex;flex-wrap:wrap;justify-content:center;gap:8px 20px;
+    padding:0 24px 26px;font-size:13.5px;color:var(--dim);
+  }
+  .foot-links a{text-decoration:none;color:var(--dim);border-bottom:1px solid #2b2b36}
+  .foot-links a:hover{color:var(--ink);border-bottom-color:var(--faint)}
+  .foot-social{display:flex;justify-content:center;align-items:center;gap:8px;padding:0 24px 30px}
+  .foot-social a{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:38px;height:38px;border-radius:50%;color:var(--dim);
+    background:rgba(255,255,255,.03);border:1px solid var(--edge);
+    transition:color .15s ease,background .15s ease,border-color .15s ease,transform .15s ease;
+  }
+  .foot-social a:hover{color:var(--ink);background:rgba(255,255,255,.09);border-color:var(--faint);transform:translateY(-1px)}
+  .foot-social svg{width:18px;height:18px}
+  .foot-fine{
+    background:rgba(255,255,255,.02);border-top:1px solid var(--edge);
+    color:var(--faint);text-align:center;padding:15px 24px;font-size:13px;
+  }
+  .foot-fine a{color:var(--dim);text-decoration:none}
+  .foot-fine a:hover{color:var(--ink)}
+  @media (max-width:560px){
+    .row{grid-template-columns:1fr} .row .mine{border-right:0}
+    .cta{flex-direction:column} .brew{width:100%}
+    .foot-inner{flex-direction:column;gap:8px} .foot-sep{display:none}
+  }
 </style>
 </head>
 <body>
@@ -143,10 +199,34 @@
     <p class="tagline">The most powerful things macOS can do are often the hardest
        to reach — Liteswitch puts them at your fingertips.</p>
     <div class="cta">
-      <a class="btn btn-solid" href="https://github.com/grokcodile/liteswitch/releases/latest">Download</a>
-      <a class="btn btn-ghost" href="https://github.com/grokcodile/liteswitch">Source on GitHub</a>
+      <a class="dl" href="https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.zip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+          <path d="M7 11l5 5 5-5" />
+          <path d="M12 4v12" />
+        </svg>
+        Download for macOS
+      </a>
+      <span class="cta-or">or</span>
+      <div class="brew">
+        <code><span class="brew-prompt">$</span>brew install --cask grokcodile/tap/liteswitch</code>
+        <button class="brew-copy" type="button"
+                data-copy="brew install --cask grokcodile/tap/liteswitch"
+                aria-label="Copy Homebrew install command">
+          <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="11" height="11" rx="2" />
+            <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+          </svg>
+          <svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 12.5l5 5L20 6.5" />
+          </svg>
+        </button>
+      </div>
     </div>
-    <p class="fineprint">macOS 26 · signed &amp; notarized · free, no account, no subscription</p>
+    <p class="fineprint">macOS 26 · Apple Silicon · 560&nbsp;KB · signed &amp; notarized · free, no account, no subscription</p>
   </header>
 
   <figure class="shot">
@@ -235,33 +315,88 @@
       <div class="point"><h3>One file</h3><p>A single <code>main.swift</code>, no dependencies, compiled with <code>swiftc</code>. The whole app is 560&nbsp;KB.</p></div>
       <div class="point"><h3>Nothing leaves</h3><p>OCR, dictation and rewriting all run on your Mac. No account, no API key, no telemetry.</p></div>
       <div class="point"><h3>Built to shrink</h3><p>Each tool covers a gap macOS misses by a hair. When a release closes one, the tool comes out.</p></div>
+      <div class="point"><h3>Asks only when needed</h3><p>Accessibility for the tools that synthesize keystrokes, Screen Recording for Capture Text, Apple Intelligence for Rewrite Text — each requested the first time you use it, and never before.</p></div>
     </div>
   </section>
 
-  <section>
-    <h2>Install</h2>
-    <p class="lede">Homebrew is the shortest way in, and it keeps the app up to date:</p>
-<pre>brew install --cask grokcodile/tap/liteswitch</pre>
-    <p class="lede" style="margin-top:18px">Or take the notarized
-       <a href="https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.zip">latest
-       release</a> and drag it into Applications. To build it yourself:</p>
-<pre>git clone https://github.com/grokcodile/liteswitch
-cd liteswitch
-bash install.sh</pre>
-    <p class="lede" style="margin-top:18px">Needs <b>macOS 26</b>. Accessibility for the
-       tools that synthesize keystrokes, Screen Recording for Capture Text, Apple
-       Intelligence for Rewrite Text — each asked for only when first used.</p>
-  </section>
-
   <footer>
-    <span>MIT licensed · © 2026 Ethan Darling</span>
-    <span>
-      <a href="https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md">Help</a> ·
-      <a href="https://github.com/grokcodile/liteswitch">GitHub</a> ·
+    <div class="foot-inner">
+      <span class="foot-brand"><img src="icon.png" alt="Liteswitch icon" /> Liteswitch</span>
+      <span class="foot-sep" aria-hidden="true">·</span>
+      <p class="foot-tag">Twelve things your Mac already does, one keystroke away.</p>
+    </div>
+
+    <div class="foot-links">
+      <a href="https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md">Help</a>
+      <a href="https://github.com/grokcodile/liteswitch/blob/HEAD/README.md">Documentation</a>
+      <a href="https://github.com/grokcodile/liteswitch/releases">Releases</a>
+      <a href="https://github.com/grokcodile/homebrew-tap">Homebrew tap</a>
       <a href="https://ko-fi.com/grokcodile">Tip jar</a>
-    </span>
+    </div>
+
+    <div class="foot-social">
+      <a href="https://github.com/grokcodile/liteswitch" target="_blank" rel="noopener me"
+         title="Liteswitch on GitHub" aria-label="Liteswitch on GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 .8 2.7 1.7 4.2.9.1-.7.4-1.2.7-1.5-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2.9-.3 2-.4 3-.4s2.1.1 3 .4c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+      </a>
+      <a href="https://www.reddit.com/user/grokcodile" target="_blank" rel="noopener me"
+         title="Developer on Reddit — u/grokcodile" aria-label="Liteswitch developer on Reddit, u/grokcodile">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-6.994 4.87-3.865 0-6.994-2.176-6.994-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/></svg>
+      </a>
+      <a href="https://www.linkedin.com/in/ethandarling/" target="_blank" rel="noopener me"
+         title="Ethan Darling on LinkedIn" aria-label="Ethan Darling on LinkedIn">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+      </a>
+    </div>
+
+    <div class="foot-fine">
+      © 2026 Ethan Darling (grokcodile) ·
+      <a href="https://github.com/grokcodile/liteswitch/blob/main/PRIVACY.md">Privacy Policy</a> ·
+      <a href="https://github.com/grokcodile/liteswitch/blob/main/TERMS.md">Terms of Service</a> ·
+      <a href="https://github.com/grokcodile/liteswitch/blob/main/LICENSE">MIT License</a> ·
+      <a href="https://github.com/grokcodile/liteswitch/issues">Contact &amp; Support</a>
+    </div>
   </footer>
 
 </div>
+
+<script>
+(function () {
+    function fallbackCopy(text) {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(ta);
+    }
+    document.querySelectorAll(".brew-copy[data-copy]").forEach(function (btn) {
+        var label = btn.getAttribute("aria-label") || "Copy command";
+        var timer;
+        btn.addEventListener("click", function () {
+            var text = btn.getAttribute("data-copy");
+            var flash = function () {
+                btn.classList.add("copied");
+                btn.setAttribute("aria-label", "Copied");
+                clearTimeout(timer);
+                timer = setTimeout(function () {
+                    btn.classList.remove("copied");
+                    btn.setAttribute("aria-label", label);
+                }, 1600);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(flash).catch(function () {
+                    fallbackCopy(text); flash();
+                });
+            } else {
+                fallbackCopy(text); flash();
+            }
+        });
+    });
+})();
+</script>
 </body>
 </html>
