@@ -88,6 +88,14 @@ New versions arrive with `brew upgrade --cask liteswitch`.
 
 The released build is signed with a Developer ID and notarized by Apple, so it opens normally — no "unidentified developer" warning. macOS may show a one-time "downloaded from the Internet" confirmation; just click **Open**.
 
+### Updates
+
+Liteswitch checks GitHub for a newer release when it launches, every six hours while running, and each time you open its settings — so the window always shows current state. When one is available, a blue strip appears across the bottom of the settings window with an **Update** button.
+
+What that button does depends on how you installed it. A Homebrew install upgrades through `brew` and reopens itself. A DMG install downloads the new disk image, mounts it, and quits so you can drag the new build over the old one without the "app is in use" block.
+
+This is the only network request Liteswitch makes. It sends nothing but the GET — see [PRIVACY.md](PRIVACY.md).
+
 ### Build and install
 
 ```sh

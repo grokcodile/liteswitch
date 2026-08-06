@@ -700,6 +700,15 @@ struct SpokenSelection: Equatable {
 
 // MARK: - App delegate
 
+/// Where the settings footer's update indicator is in its lifecycle.
+enum UpdateState {
+    case upToDate      // running the latest release
+    case available     // a newer release exists (DMG install → manual Update button)
+    case downloading   // DMG: fetching the disk image before opening it and quitting
+    case updating      // a Homebrew upgrade is running (helper quits + relaunches us)
+    case failed        // Homebrew upgrade couldn't start — offer the manual download
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyRefs: [EventHotKeyRef] = []
     private var idToPanel: [UInt32: Int] = [:]   // EventHotKeyID.id → panel index
@@ -831,6 +840,175 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !launchedAsLoginItem {
             showSettings()
         }
+
+        // Look for a newer release now, then every 6 h while running.
+        checkForUpdate()
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+            self?.checkForUpdate()
+        }
+    }
+
+    // MARK: - Updates
+
+    /// Marketing version, stamped from the release tag by CI.
+    var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+    }
+    private(set) var updateState: UpdateState = .upToDate
+    /// Newest release (no leading "v") when it's newer than ours, else nil.
+    private(set) var latestVersion: String?
+    private var updateStarting = false             // guards against a double Update click
+    private var updateTimer: Timer?
+    let dmgURL = "https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.dmg"
+    /// Installed via the Homebrew cask? Its metadata lives in the Caskroom.
+    lazy var isHomebrewManaged: Bool = {
+        let fm = FileManager.default
+        return fm.fileExists(atPath: "/opt/homebrew/Caskroom/liteswitch")
+            || fm.fileExists(atPath: "/usr/local/Caskroom/liteswitch")
+    }()
+
+    /// Ask GitHub for the latest release. Deliberately unthrottled — it fires on
+    /// launch, every 6 h, and on every settings open (a handful of requests a
+    /// day), so the footer always reflects fresh state whenever eyes are on it.
+    /// On a newer version the footer surfaces an Update button; it never updates
+    /// itself unasked.
+    ///
+    /// This is the app's only network request. Nothing is sent but the GET.
+    func checkForUpdate() {
+        guard let url = URL(string: "https://api.github.com/repos/grokcodile/liteswitch/releases/latest")
+        else { return }
+        var req = URLRequest(url: url)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 10
+        Task { [weak self] in
+            guard let (data, _) = try? await URLSession.shared.data(for: req),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tag = json["tag_name"] as? String else { return }
+            let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+            guard let self else { return }
+            await MainActor.run { self.handleLatest(latest) }
+        }
+    }
+
+    private func handleLatest(_ latest: String) {
+        // Never interrupt an update already in flight.
+        guard updateState != .updating, updateState != .downloading else { return }
+        let newState: UpdateState =
+            AppDelegate.isVersion(latest, newerThan: appVersion) ? .available : .upToDate
+        let newLatest = newState == .available ? latest : nil
+        // Only touch the window on a real transition — refreshUpdateFooter
+        // rebuilds it, which must not happen on a routine "no news" check.
+        guard newState != updateState || newLatest != latestVersion else { return }
+        latestVersion = newLatest
+        updateState = newState
+        settings?.refreshUpdateFooter()
+    }
+
+    /// The footer's Update button. Runs the right update for how Liteswitch was
+    /// installed: the Homebrew helper, or the DMG download.
+    @objc func performUpdate() {
+        if isHomebrewManaged { startHomebrewUpdate() } else { downloadUpdate() }
+    }
+
+    /// Numeric, component-wise compare so "1.26" > "1.9" > "1.17".
+    static func isVersion(_ a: String, newerThan b: String) -> Bool {
+        let pa = a.split(separator: ".").map { Int($0) ?? 0 }
+        let pb = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(pa.count, pb.count) {
+            let x = i < pa.count ? pa[i] : 0
+            let y = i < pb.count ? pb[i] : 0
+            if x != y { return x > y }
+        }
+        return false
+    }
+
+    // MARK: Homebrew update (user-triggered from the footer button)
+
+    private func startHomebrewUpdate() {
+        guard !updateStarting, let brew = brewPath() else {
+            updateState = .available          // can't run brew — offer the manual path
+            settings?.refreshUpdateFooter()
+            return
+        }
+        updateStarting = true
+        updateState = .updating
+        settings?.refreshUpdateFooter()
+
+        // Run the upgrade from a DETACHED helper, not in-process: brew quits the
+        // app it's replacing — which would be us — killing the upgrade
+        // mid-flight. The helper does the slow work (index refresh + download)
+        // FIRST, while we're still alive showing "Updating…", then quits us,
+        // swaps in the pre-fetched build, and reopens the app. We never
+        // terminate ourselves: quitting early leaves a long "is it done?" gap
+        // that invites reopening the app mid-upgrade, and brew then kills that
+        // instance too. The relaunch is unconditional, so even a failed upgrade
+        // brings the app back (and the footer just offers the update again).
+        let brewBin = (brew as NSString).deletingLastPathComponent
+        let bundle = Bundle.main.bundlePath
+        let script = """
+        #!/bin/sh
+        export PATH="\(brewBin):/usr/bin:/bin:/usr/sbin:/sbin"
+        "\(brew)" update >/dev/null 2>&1
+        "\(brew)" fetch --cask liteswitch >/dev/null 2>&1
+        pkill -x Liteswitch 2>/dev/null
+        for i in $(seq 1 20); do pgrep -x Liteswitch >/dev/null || break; sleep 0.5; done
+        "\(brew)" upgrade --cask liteswitch >/dev/null 2>&1
+        open "\(bundle)"
+        """
+        let path = NSTemporaryDirectory() + "liteswitch-update.sh"
+        do {
+            try script.write(toFile: path, atomically: true, encoding: .utf8)
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/sh")
+            p.arguments = [path]
+            try p.run()
+        } catch {
+            updateStarting = false            // let the user try again
+            updateState = .failed
+            settings?.refreshUpdateFooter()
+        }
+    }
+
+    private func brewPath() -> String? {
+        for p in ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+        where FileManager.default.isExecutableFile(atPath: p) { return p }
+        return nil
+    }
+
+    // MARK: DMG assisted update
+
+    /// Download the latest DMG, open (mount) it, then quit — so the user can drag
+    /// the new build straight over this one without the "app is in use" block.
+    @objc func downloadUpdate() {
+        guard let url = URL(string: dmgURL) else { return }
+        updateState = .downloading
+        settings?.refreshUpdateFooter()
+        let dest = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads/Liteswitch.dmg")
+        Task { [weak self] in
+            do {
+                let (tmp, _) = try await URLSession.shared.download(from: url)
+                // Claim the temp file here, in the same context — it isn't
+                // guaranteed to survive an actor hop.
+                try? FileManager.default.removeItem(at: dest)
+                try FileManager.default.moveItem(at: tmp, to: dest)
+                await MainActor.run {
+                    NSWorkspace.shared.open(dest)   // mount it → Finder shows the drag window
+                    // Quit once the mount request is out, so nothing holds the old app.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        NSApp.terminate(nil)
+                    }
+                }
+            } catch {
+                // Couldn't download — hand the URL to the browser and stay open.
+                guard let self else { return }
+                await MainActor.run {
+                    NSWorkspace.shared.open(url)
+                    self.updateState = .available
+                    self.settings?.refreshUpdateFooter()
+                }
+            }
+        }
     }
 
     /// Sent by a duplicate on its way out, so the copy that's staying brings up
@@ -958,6 +1136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings == nil { settings = SettingsWindow(delegate: self) }
         settings?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        checkForUpdate()   // the strip shows fresh state whenever it's seen
     }
 
     // MARK: App tracking
@@ -2654,6 +2833,11 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var builtScreenRec = CGPreflightScreenCaptureAccess()
     private var builtSpoken = SpokenSelection.current
     private var helpButton: NSButton?
+    /// The blue update strip only exists while an update is pending, so showing
+    /// or hiding it changes the window height — hence a rebuild, not a redraw.
+    private static let updateStripH: CGFloat = 28
+    private var updateStatus: NSTextField?
+    private var updateButton: NSButton?
     private var speakSetupWindow: SpeakSetupWindow?
     private var dictationSetupWindow: DictationSetupWindow?
     private var infoPopover: NSPopover?
@@ -2794,7 +2978,11 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
         let switchBlockH = titleSwitchGap + switchRowH + unitGap + descH
         let hdrH = topMargin + titleTextH + switchBlockH + sectionGap
-        let H = hdrH + groupsH + footerH
+        // The update strip is a band below the button row, present only when
+        // there is something to announce.
+        let showUpdate = (appDelegate?.updateState ?? .upToDate) != .upToDate
+        let updH = showUpdate ? Self.updateStripH : 0
+        let H = hdrH + groupsH + footerH + updH
         let keepTop: CGFloat? = isVisible ? frame.maxY : nil
         setContentSize(NSSize(width: winW, height: H))
         if let top = keepTop { setFrameTopLeftPoint(NSPoint(x: frame.minX, y: top)) }
@@ -3105,7 +3293,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         bannerField.font = .systemFont(ofSize: 11)
         bannerField.textColor = .systemOrange
         bannerField.alignment = .center
-        bannerField.frame = NSRect(x: pad, y: bottomMargin + btnH + 8, width: winW - pad * 2, height: 20)
+        bannerField.frame = NSRect(x: pad, y: updH + bottomMargin + btnH + 8, width: winW - pad * 2, height: 20)
         v.addSubview(bannerField)
         banner = bannerField
 
@@ -3113,19 +3301,103 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         quit.bezelStyle = .rounded
         quit.contentTintColor = .systemRed
         quit.toolTip = "Stop background agent until restart/login."
-        quit.frame = NSRect(x: pad, y: bottomMargin, width: btnW, height: btnH)
+        quit.frame = NSRect(x: pad, y: updH + bottomMargin, width: btnW, height: btnH)
         v.addSubview(quit)
 
         let done = NSButton(title: "Done", target: self, action: #selector(saveAndClose))
         done.bezelStyle = .rounded
         done.keyEquivalent = "\r"
         done.toolTip = "Save settings and close this window."
-        done.frame = NSRect(x: winW - pad - btnW, y: bottomMargin, width: btnW, height: btnH)
+        done.frame = NSRect(x: winW - pad - btnW, y: updH + bottomMargin, width: btnW, height: btnH)
         v.addSubview(done)
+
+        // The update strip: a blue band across the very bottom, present only
+        // while there's an update to announce. The window's rounded bottom
+        // corners clip its ends. Blue is the site's accent — loud enough that
+        // it can't be missed in a window otherwise made of grays.
+        updateStatus = nil
+        updateButton = nil
+        if showUpdate {
+            let accent = NSColor(srgbRed: 59 / 255, green: 130 / 255, blue: 246 / 255, alpha: 1)
+            let strip = NSView(frame: NSRect(x: 0, y: 0, width: winW, height: Self.updateStripH))
+            strip.wantsLayer = true
+            strip.layer?.backgroundColor = accent.cgColor
+
+            let status = NSTextField(labelWithString: "")
+            status.font = .systemFont(ofSize: 11)
+            status.textColor = .white
+            strip.addSubview(status)
+            updateStatus = status
+
+            // White pill, blue label, drawn with our own layer rather than a
+            // native bezel: AppKit washes bezels out whenever the window isn't
+            // key, which made the button nearly vanish against the blue.
+            let btn = NSButton(title: "Update", target: appDelegate,
+                               action: #selector(AppDelegate.performUpdate))
+            btn.isBordered = false
+            btn.wantsLayer = true
+            btn.layer?.backgroundColor = NSColor(white: 1, alpha: 0.92).cgColor
+            btn.layer?.cornerRadius = 9        // full pill at the 18 pt height
+            let para = NSMutableParagraphStyle()
+            para.alignment = .center
+            btn.attributedTitle = NSAttributedString(string: "Update", attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: accent,
+                .paragraphStyle: para,
+            ])
+            btn.toolTip = appDelegate?.isHomebrewManaged == true
+                ? "Upgrade through Homebrew and reopen."
+                : "Download the new version and open it."
+            strip.addSubview(btn)
+            updateButton = btn
+
+            v.addSubview(strip)
+        }
 
         contentView = v
         refreshBanner()
+        layoutUpdateStrip()
     }
+
+    /// Fill in the strip's wording for the current state and centre the
+    /// [status] (+ [Update]) pair as one group.
+    private func layoutUpdateStrip() {
+        guard let status = updateStatus, let btn = updateButton else { return }
+        let state = appDelegate?.updateState ?? .upToDate
+        let latest = appDelegate?.latestVersion
+        var showButton = false
+        switch state {
+        case .upToDate:
+            status.stringValue = ""
+        case .available, .failed:
+            status.stringValue = latest.map { "Update available — v\($0)" } ?? "Update available"
+            showButton = true
+        case .downloading:
+            status.stringValue = "Downloading update…"
+        case .updating:
+            status.stringValue = latest.map { "Updating to v\($0)…" } ?? "Updating…"
+        }
+        btn.isHidden = !showButton
+        status.sizeToFit()
+
+        let gap: CGFloat = 8, btnH: CGFloat = 18
+        var bw: CGFloat = 0
+        if showButton { btn.sizeToFit(); bw = max(btn.frame.width + 20, 62) }
+        let total = status.frame.width + (showButton ? gap + bw : 0)
+        var x = ((winW - total) / 2).rounded()
+        status.frame.origin = NSPoint(x: x,
+                                      y: ((Self.updateStripH - status.frame.height) / 2).rounded())
+        x += status.frame.width
+        if showButton {
+            x += gap
+            btn.frame = NSRect(x: x, y: ((Self.updateStripH - btnH) / 2).rounded(),
+                               width: bw, height: btnH)
+        }
+    }
+
+    /// The strip's presence changes the window height, so a state change is a
+    /// rebuild rather than a redraw.
+    func refreshUpdateFooter() { rebuild() }
 
     // MARK: Layout helpers
 
