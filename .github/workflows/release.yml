@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # macOS 26 is not a preference here, it's a requirement: main.swift links
+    # FoundationModels and targets macos26.0, neither of which exists in an
+    # older SDK.
+    runs-on: macos-26
+    env:
+      # Run JS actions on Node 24 (silences the Node 20 deprecation warning).
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      # These flip on automatically once the corresponding repo secrets exist,
+      # so a run without them still builds — it just doesn't sign or publish.
+      HAS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' }}
+      HAS_NOTARY: ${{ secrets.AC_API_KEY_ID != '' && secrets.AC_API_ISSUER_ID != '' && secrets.AC_API_KEY_BASE64 != '' }}
+      HAS_TAP: ${{ secrets.TAP_PUSH_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import Developer ID certificate
+        if: env.HAS_SIGNING == 'true'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/app.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN" >/dev/null
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+          echo "Using identity: $IDENTITY"
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      # The git tag is the single source of truth for the version: stamp it into
+      # Info.plist before building so the app version can never drift from the
+      # release (v0.3 → 0.3). Skipped on manual runs, which have no tag.
+      - name: Stamp version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Stamping app version: $VERSION"
+          plutil -replace CFBundleShortVersionString -string "$VERSION" Info.plist
+          plutil -replace CFBundleVersion -string "$VERSION" Info.plist
+
+      - name: Build
+        run: bash build.sh
+
+      # build.sh targets "$(uname -m)-apple-macos26.0", so the runner's own
+      # architecture decides the binary's. The cask declares arm64 and Apple
+      # Intelligence is Apple Silicon only, so an x86_64 runner would ship a
+      # build nobody can install. Fail here rather than at someone's `brew
+      # install`.
+      - name: Verify architecture
+        run: |
+          ARCHS=$(lipo -archs build/Liteswitch.app/Contents/MacOS/Liteswitch)
+          echo "Built for: $ARCHS"
+          if [ "$ARCHS" != "arm64" ]; then
+            echo "::error::Expected arm64, got '$ARCHS' — the runner is not Apple Silicon."
+            exit 1
+          fi
+
+      # Notarize the .app and staple the ticket into the bundle, then zip the
+      # stapled app. Order matters: stapling makes it validate offline, and the
+      # archive has to be made *after* stapling to contain the ticket.
+      - name: Notarize & staple
+        if: env.HAS_NOTARY == 'true'
+        env:
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+          AC_API_KEY_BASE64: ${{ secrets.AC_API_KEY_BASE64 }}
+        run: |
+          echo "$AC_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/key.p8"
+          # ditto, not zip: it preserves the bundle's symlinks and metadata.
+          ditto -c -k --keepParent "build/Liteswitch.app" "$RUNNER_TEMP/submit.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/submit.zip" \
+            --key "$RUNNER_TEMP/key.p8" \
+            --key-id "$AC_API_KEY_ID" \
+            --issuer "$AC_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "build/Liteswitch.app"
+          xcrun stapler validate "build/Liteswitch.app"
+          spctl -a -vv "build/Liteswitch.app"
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent "build/Liteswitch.app" "dist/Liteswitch.zip"
+          shasum -a 256 dist/Liteswitch.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Liteswitch.zip
+          path: dist/Liteswitch.zip
+
+      # Only a tag push publishes; a manual run builds and notarizes as a
+      # dry-run, leaving the zip as an artifact to download and check.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Liteswitch.zip
+          generate_release_notes: true
+
+      # Keep the Homebrew tap in sync so `brew upgrade --cask liteswitch` gets
+      # new versions. Needs a TAP_PUSH_TOKEN secret (a token with
+      # contents:write on grokcodile/homebrew-tap); skipped if it isn't set.
+      - name: Update Homebrew tap
+        if: startsWith(github.ref, 'refs/tags/') && env.HAS_TAP == 'true'
+        env:
+          TAP_PUSH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA=$(shasum -a 256 dist/Liteswitch.zip | awk '{print $1}')
+          git clone "https://x-access-token:${TAP_PUSH_TOKEN}@github.com/grokcodile/homebrew-tap.git" tap
+          cd tap
+          sed -i '' -E "s/^  version \".*\"/  version \"${VERSION}\"/" Casks/liteswitch.rb
+          sed -i '' -E "s/^  sha256 \".*\"/  sha256 \"${SHA}\"/" Casks/liteswitch.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -aqm "liteswitch ${VERSION}" && git push

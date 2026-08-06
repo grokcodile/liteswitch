@@ -124,6 +124,36 @@ xcrun notarytool store-credentials liteswitch --apple-id "you@example.com" --tea
 
 Make the app-specific password at [appleid.apple.com](https://appleid.apple.com) under Sign-In and Security — it isn't your Apple ID password. After that, `notarize.sh` builds, submits, waits for Apple, staples the ticket into the bundle, and leaves a distributable zip in `dist/`.
 
+### Cutting a release
+
+Releases are built by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)). Pushing a tag is the whole process:
+
+```sh
+git tag v0.3 && git push origin v0.3
+```
+
+That runs on a `macos-26` runner and, in order: imports the Developer ID certificate, stamps the version from the tag into `Info.plist`, builds, checks the binary really is arm64, notarizes and staples, zips the stapled app, publishes a GitHub Release with generated notes, and bumps `version` and `sha256` in the Homebrew cask so `brew upgrade --cask liteswitch` picks it up.
+
+**The tag is the version.** `Info.plist` is stamped during the build rather than committed, so the tag and the shipped app can never disagree. Running the workflow manually (`workflow_dispatch`) builds and notarizes without publishing, and leaves the zip as an artifact — useful for checking a build before tagging.
+
+It needs six repository secrets. Each step is skipped rather than failed when its secrets are absent, so a partly-configured repo still builds:
+
+| Secret | What it is |
+| --- | --- |
+| `MACOS_CERT_P12_BASE64` | Developer ID Application certificate, exported as `.p12`, base64-encoded |
+| `MACOS_CERT_PASSWORD` | the password set when exporting that `.p12` |
+| `AC_API_KEY_ID` | App Store Connect API key ID |
+| `AC_API_ISSUER_ID` | App Store Connect issuer ID |
+| `AC_API_KEY_BASE64` | the `.p8` API key file, base64-encoded |
+| `TAP_PUSH_TOKEN` | a token with `contents:write` on `grokcodile/homebrew-tap` |
+
+Notarization uses an App Store Connect API key rather than an Apple ID and app-specific password: it's the non-interactive path, and it doesn't put an account password in CI.
+
+```sh
+base64 -i Certificates.p12 | gh secret set MACOS_CERT_P12_BASE64
+base64 -i AuthKey_XXXXXXXX.p8 | gh secret set AC_API_KEY_BASE64
+```
+
 The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the vector source with `icon/make-icns.sh` (needs `brew install librsvg`).
 
 ## Requirements
