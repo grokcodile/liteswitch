@@ -2617,14 +2617,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Press ⌘ as a real key rather than only decorating the keystroke with
+    /// `.maskCommand`. Decoration alone is enough for the keystroke itself, but
+    /// it leaves the system believing ⌘ is still held afterwards — measured:
+    /// after a decorated ⌘Space, `CGEventSource.flagsState` still reported
+    /// `cmd`. The Delete this sequence sends 120 ms later therefore arrived
+    /// inside a ⌘ that never came up, making it ⌘Delete rather than the bare
+    /// Delete the code intends. Pressing and releasing the modifier gives a
+    /// complete chord and leaves the modifier state clean for whatever runs
+    /// next, synthesized or typed.
     private func post(_ key: CGKeyCode, _ flags: CGEventFlags) {
         let source = CGEventSource(stateID: .hidSystemState)
-        for down in [true, false] {
-            guard let e = CGEvent(keyboardEventSource: source, virtualKey: key,
-                                  keyDown: down) else { continue }
-            e.flags = flags
+        let wantsCommand = flags.contains(.maskCommand)
+        let cmd = CGKeyCode(kVK_Command)
+        func send(_ k: CGKeyCode, _ down: Bool, _ f: CGEventFlags) {
+            guard let e = CGEvent(keyboardEventSource: source, virtualKey: k,
+                                  keyDown: down) else { return }
+            e.flags = f
             e.post(tap: .cghidEventTap)
         }
+        if wantsCommand { send(cmd, true, .maskCommand) }
+        send(key, true, flags)
+        send(key, false, flags)
+        if wantsCommand { send(cmd, false, []) }
     }
 }
 
