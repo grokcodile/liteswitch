@@ -25,6 +25,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A secret that exists but is empty silently switches its whole group off,
+      # and the build carries on and produces an ad-hoc-signed app. That is fine
+      # for a manual run and disastrous for a tag, so on a tag it stops here.
+      # Byte counts, never values — enough to see which secret is blank.
+      - name: Preflight
+        env:
+          CERT: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PW: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEY: ${{ secrets.AC_API_KEY_BASE64 }}
+          KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          ISSUER: ${{ secrets.AC_API_ISSUER_ID }}
+          TAP: ${{ secrets.TAP_PUSH_TOKEN }}
+        run: |
+          echo "signing=$HAS_SIGNING  notary=$HAS_NOTARY  tap=$HAS_TAP"
+          echo "MACOS_CERT_P12_BASE64 ${#CERT} bytes"
+          echo "MACOS_CERT_PASSWORD   ${#CERT_PW} bytes"
+          echo "AC_API_KEY_BASE64     ${#KEY} bytes"
+          echo "AC_API_KEY_ID         ${#KEY_ID} bytes"
+          echo "AC_API_ISSUER_ID      ${#ISSUER} bytes"
+          echo "TAP_PUSH_TOKEN        ${#TAP} bytes"
+          if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
+            if [ "$HAS_SIGNING" != "true" ] || [ "$HAS_NOTARY" != "true" ]; then
+              echo "::error::Refusing to publish a tag without signing and notarization secrets — the release would be ad-hoc signed and Gatekeeper would reject it. Check which secret reads 0 bytes above."
+              exit 1
+            fi
+          fi
+
       - name: Import Developer ID certificate
         if: env.HAS_SIGNING == 'true'
         env:
