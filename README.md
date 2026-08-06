@@ -2,10 +2,15 @@
 
 # Liteswitch
 
+[![Latest release](https://img.shields.io/github/v/release/grokcodile/liteswitch?sort=semver&label=release)](https://github.com/grokcodile/liteswitch/releases/latest)
+[![Homebrew](https://img.shields.io/badge/Homebrew-grokcodile%2Ftap-C9782E?logo=homebrew&logoColor=white)](https://github.com/grokcodile/homebrew-tap)
+[![Downloads](https://img.shields.io/github/downloads/grokcodile/liteswitch/total)](https://github.com/grokcodile/liteswitch/releases)
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111111)](#requirements)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 **The most powerful things macOS can do are often the hardest to reach — Liteswitch puts them at your fingertips.**
+
+<img src="docs/Screenshot.png" alt="The Liteswitch settings window: twelve tools grouped into Spotlight Panels, System Utilities and Text Tools, each with its keyboard shortcut" width="608"/>
 
 macOS ships the hard part and leaves out the key. Screen OCR, color sampling, sleep prevention, dictation, on-device text cleanup — the engines are all in the box, on-device, already paid for, and mostly a menu dive or a Settings pane away. That gap is a whole category of paid utilities: apps that bundle their own engine, or their own subscription, to sell you a keystroke. Liteswitch is a dozen of those keystrokes in one background agent — one Swift file, no dependencies, no menu bar item, no account, no subscription, nothing leaving your Mac.
 
@@ -68,13 +73,28 @@ Two more that make the point:
 
 ## Install
 
+### Homebrew (easiest — also handles updates)
+
+```sh
+brew install --cask grokcodile/tap/liteswitch
+```
+
+New versions arrive with `brew upgrade --cask liteswitch`.
+
+### Download the app
+
+1. Download the latest **[Liteswitch.zip](https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.zip)** (or browse [all releases](https://github.com/grokcodile/liteswitch/releases)).
+2. Unzip it and drag **Liteswitch** into your `Applications` folder.
+
+The released build is signed with a Developer ID and notarized by Apple, so it opens normally — no "unidentified developer" warning. macOS may show a one-time "downloaded from the Internet" confirmation; just click **Open**.
+
 ### Build and install
 
 ```sh
 bash install.sh    # → /Applications/Liteswitch.app, running
 ```
 
-This is the one to use. It builds, quits whatever copy is already running, replaces `/Applications/Liteswitch.app`, and relaunches — then tells you how many copies are running, which should always be one.
+This is the one to use if you're working on it. It builds, quits whatever copy is already running, replaces `/Applications/Liteswitch.app`, and relaunches — then tells you how many copies are running, which should always be one.
 
 **Don't run the app out of `./build`.** `build.sh` starts by deleting that directory, so a running instance has its bundle pulled out from under it: the process survives, but macOS now sees the rebuilt bundle as a different app and launching it starts a *second* copy instead of reusing the first. They stack up silently, and they don't coexist peacefully — every instance registers the same global hotkeys and installs its own dictation monitor, so one keypress fires N times and N Auto-Correct passes rewrite the same text while each is pasting into it.
 
@@ -177,6 +197,8 @@ So: expect this to track macOS releases, expect the occasional fix when Apple sh
 1. Open Liteswitch, toggle the switch to **Disabled** (this removes the login item), then click **Quit**. (Or just `killall Liteswitch`.)
 2. Delete **Liteswitch.app** from `Applications`.
 3. Optionally remove its entry under System Settings → Privacy & Security → Accessibility.
+
+Installed with Homebrew, steps 1 and 2 are `brew uninstall --cask liteswitch`; add `--zap` to take the preferences file with it.
 
 ## The name
 

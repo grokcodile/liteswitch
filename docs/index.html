@@ -64,6 +64,15 @@
   .btn-ghost:hover{border-color:var(--faint);transform:translateY(-2px)}
   .fineprint{color:var(--faint);font-size:13px;margin-top:6px}
 
+  /* ── the window itself ────────────────────────────────── */
+  .shot{margin:0;text-align:center}
+  .shot img{
+    width:100%;max-width:608px;height:auto;display:block;margin:0 auto;
+    border-radius:14px;border:1px solid var(--edge);
+    box-shadow:0 26px 70px rgba(0,0,0,.6);
+  }
+  .shot figcaption{margin-top:16px;color:var(--faint);font-size:13px}
+
   /* ── the tools ────────────────────────────────────────── */
   section{padding:64px 0}
   h2{
@@ -139,6 +148,13 @@
     </div>
     <p class="fineprint">macOS 26 · signed &amp; notarized · free, no account, no subscription</p>
   </header>
+
+  <figure class="shot">
+    <img src="Screenshot.png" width="608" height="735" loading="lazy"
+         alt="The Liteswitch settings window: twelve tools grouped into Spotlight Panels,
+              System Utilities and Text Tools, each with its keyboard shortcut" />
+    <figcaption>One window, twelve keys. Every shortcut is yours to change.</figcaption>
+  </figure>
 
   <section>
     <h2>Twelve tools</h2>
@@ -224,7 +240,11 @@
 
   <section>
     <h2>Install</h2>
-    <p class="lede">Download the notarized build from Releases, or build it yourself:</p>
+    <p class="lede">Homebrew is the shortest way in, and it keeps the app up to date:</p>
+<pre>brew install --cask grokcodile/tap/liteswitch</pre>
+    <p class="lede" style="margin-top:18px">Or take the notarized
+       <a href="https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.zip">latest
+       release</a> and drag it into Applications. To build it yourself:</p>
 <pre>git clone https://github.com/grokcodile/liteswitch
 cd liteswitch
 bash install.sh</pre>
