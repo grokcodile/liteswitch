@@ -61,7 +61,7 @@ let panels: [Panel] = [
     Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Run any Shortcut or system action by name — a command palette for your Mac.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
     Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Reach back through what you've copied and paste something from earlier.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
     Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Jump to System Settings and, with Smart Toggle, straight back again.", spotlightKey: 0, defaultsKey: "settings"),
-    Panel(name: "Keep Awake", symbol: "cup.and.saucer.fill", glyphPath: nil, detail: "Hold your Mac awake through a long render, a download, or a presentation.", spotlightKey: 0, defaultsKey: "keepawake"),
+    Panel(name: "Keep Awake", symbol: "mug.fill", glyphPath: nil, detail: "Hold your Mac awake through a long render, a download, or a presentation.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Color Loupe", symbol: "loupe", glyphPath: nil, detail: "Magnify any pixel on screen and copy its exact color as code.", spotlightKey: 0, defaultsKey: "colorpicker"),
     Panel(name: "Color Palette", symbol: "paintpalette", glyphPath: nil, detail: "Your last twenty picks, ready to copy again, drag out as a swatch, or pin.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Pull the text off anything on screen — a screenshot, a PDF, a paused video.", spotlightKey: 0, defaultsKey: "textcapture"),
@@ -2304,7 +2304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let on = keepAwakeAssertion != 0
         updateKeepAwakeIndicator()
-        hud.showMessage(on ? "Keep Awake On" : "Keep Awake Off", symbol: "cup.and.saucer.fill",
+        hud.showMessage(on ? "Keep Awake On" : "Keep Awake Off", symbol: "mug.fill",
                         tint: on ? .systemGreen : .secondaryLabelColor)
     }
 
@@ -2334,7 +2334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if keepAwakeAssertion != 0 {
             guard keepAwakeStatusItem == nil else { return }
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            let img = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Keep Awake")
+            let img = NSImage(systemSymbolName: "mug.fill", accessibilityDescription: "Keep Awake")
             img?.isTemplate = true
             item.button?.image = img
             item.button?.toolTip = "Liteswitch Keep Awake is on — click to turn off"
