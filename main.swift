@@ -859,6 +859,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var latestVersion: String?
     private var updateStarting = false             // guards against a double Update click
     private var updateTimer: Timer?
+    private var updateWatchdog: Timer?
     let dmgURL = "https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.dmg"
     /// Installed via the Homebrew cask? Its metadata lives in the Caskroom.
     lazy var isHomebrewManaged: Bool = {
@@ -962,10 +963,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             p.executableURL = URL(fileURLWithPath: "/bin/sh")
             p.arguments = [path]
             try p.run()
+            armUpdateWatchdog()
         } catch {
             updateStarting = false            // let the user try again
             updateState = .failed
             settings?.refreshUpdateFooter()
+        }
+    }
+
+    /// A successful upgrade ends with this process being killed, so reaching the
+    /// end of this timer means it didn't happen: brew found nothing to do, or
+    /// the helper died. Without it the strip sits on "Updating…" forever with no
+    /// button and no way back — which is what a no-op upgrade looks like from
+    /// the outside. Generous, because `brew update` on a cold index is slow.
+    private func armUpdateWatchdog() {
+        updateWatchdog?.invalidate()
+        updateWatchdog = Timer.scheduledTimer(withTimeInterval: 180, repeats: false) {
+            [weak self] _ in
+            guard let self, self.updateState == .updating else { return }
+            self.updateStarting = false       // let them try again
+            self.updateState = .failed        // shows the button, with the manual path behind it
+            self.settings?.refreshUpdateFooter()
+            // Re-check: if brew quietly did replace us, this corrects to upToDate.
+            self.checkForUpdate()
         }
     }
 
@@ -3369,8 +3389,14 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         switch state {
         case .upToDate:
             status.stringValue = ""
-        case .available, .failed:
+        case .available:
             status.stringValue = latest.map { "Update available — v\($0)" } ?? "Update available"
+            showButton = true
+        case .failed:
+            // The upgrade didn't take. Say so rather than silently re-offering,
+            // so a second press doesn't look like the first one being ignored.
+            status.stringValue = latest.map { "Update to v\($0) didn't finish" }
+                ?? "Update didn't finish"
             showButton = true
         case .downloading:
             status.stringValue = "Downloading update…"
