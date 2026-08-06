@@ -58,4 +58,5 @@ If these terms change, the updated version will be published here with a new
 ## Contact
 
 Questions or problems:
+[liteswitch@ethans.email](mailto:liteswitch@ethans.email) or
 [open an issue](https://github.com/grokcodile/liteswitch/issues).

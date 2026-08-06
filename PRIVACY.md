@@ -73,4 +73,5 @@ does its work on your Mac — don't expect much to change.
 
 ## Contact
 
-Questions? [Open an issue](https://github.com/grokcodile/liteswitch/issues).
+Questions? Email [liteswitch@ethans.email](mailto:liteswitch@ethans.email) or
+[open an issue](https://github.com/grokcodile/liteswitch/issues).
