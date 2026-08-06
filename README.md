@@ -83,8 +83,8 @@ New versions arrive with `brew upgrade --cask liteswitch`.
 
 ### Download the app
 
-1. Download the latest **[Liteswitch.zip](https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.zip)** (or browse [all releases](https://github.com/grokcodile/liteswitch/releases)).
-2. Unzip it and drag **Liteswitch** into your `Applications` folder.
+1. Download the latest **[Liteswitch.dmg](https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.dmg)** (or browse [all releases](https://github.com/grokcodile/liteswitch/releases)).
+2. Open the `.dmg` and drag **Liteswitch** into your `Applications` folder.
 
 The released build is signed with a Developer ID and notarized by Apple, so it opens normally — no "unidentified developer" warning. macOS may show a one-time "downloaded from the Internet" confirmation; just click **Open**.
 
@@ -113,7 +113,7 @@ That distinction matters for more than distribution: **macOS ties Accessibility 
 ### Notarizing a release
 
 ```sh
-bash notarize.sh    # → ./dist/Liteswitch.zip, stapled
+bash notarize.sh    # → ./dist/Liteswitch.dmg, stapled
 ```
 
 Signing alone still leaves Gatekeeper showing the "unidentified developer" warning on someone else's Mac; notarizing is what clears it. One-time setup, which stores an app-specific password in your keychain:
@@ -122,7 +122,7 @@ Signing alone still leaves Gatekeeper showing the "unidentified developer" warni
 xcrun notarytool store-credentials liteswitch --apple-id "you@example.com" --team-id YOURTEAMID
 ```
 
-Make the app-specific password at [appleid.apple.com](https://appleid.apple.com) under Sign-In and Security — it isn't your Apple ID password. After that, `notarize.sh` builds, submits, waits for Apple, staples the ticket into the bundle, and leaves a distributable zip in `dist/`.
+Make the app-specific password at [appleid.apple.com](https://appleid.apple.com) under Sign-In and Security — it isn't your Apple ID password. After that, `notarize.sh` builds, submits, waits for Apple, staples the ticket into the bundle, builds a disk image, notarizes that too, and leaves `dist/Liteswitch.dmg`.
 
 ### Cutting a release
 
@@ -132,9 +132,9 @@ Releases are built by GitHub Actions ([`.github/workflows/release.yml`](.github/
 git tag v0.3 && git push origin v0.3
 ```
 
-That runs on a `macos-26` runner and, in order: imports the Developer ID certificate, stamps the version from the tag into `Info.plist`, builds, checks the binary really is arm64, notarizes and staples, zips the stapled app, publishes a GitHub Release with generated notes, and bumps `version` and `sha256` in the Homebrew cask so `brew upgrade --cask liteswitch` picks it up.
+That runs on a `macos-26` runner and, in order: imports the Developer ID certificate, stamps the version from the tag into `Info.plist`, builds, checks the binary really is arm64, notarizes and staples the app, builds and notarizes a disk image, publishes a GitHub Release with generated notes, and bumps `version` and `sha256` in the Homebrew cask so `brew upgrade --cask liteswitch` picks it up.
 
-**The tag is the version.** `Info.plist` is stamped during the build rather than committed, so the tag and the shipped app can never disagree. Running the workflow manually (`workflow_dispatch`) builds and notarizes without publishing, and leaves the zip as an artifact — useful for checking a build before tagging.
+**The tag is the version.** `Info.plist` is stamped during the build rather than committed, so the tag and the shipped app can never disagree. Running the workflow manually (`workflow_dispatch`) builds and notarizes without publishing, and leaves the disk image as an artifact — useful for checking a build before tagging.
 
 It needs six repository secrets. Each step is skipped rather than failed when its secrets are absent, so a partly-configured repo still builds:
 
