@@ -49,14 +49,14 @@ Stops your Mac going to sleep on its own. Turn on Screen Sleep and the display s
 - Keep a long render, download or backup alive.
 - Stop the screen sleeping halfway through a presentation.
 
-### Color Loupe
+### Color Picker
 
-Brings up the system loupe and copies the pixel you click, as Hex, RGB, HSL or SwiftUI. Apple's own process does the sampling, so it needs no Screen Recording. Every pick is saved to Color Palette.
+Brings up the system loupe and copies the pixel you click, as Hex, RGB, HSL or SwiftUI. Apple's own process does the sampling, so it needs no Screen Recording. Every pick is saved to Color History.
 
 - Lift a hex out of a screenshot and straight into CSS.
 - Match a brand color you can only see on screen.
 
-### Color Palette
+### Color History
 
 Every color you've picked, in one window. Click a swatch to copy it again, drag one out as a PNG, or pin the keepers. It holds the last 20.
 

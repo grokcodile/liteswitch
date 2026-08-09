@@ -28,8 +28,8 @@ Every tool here is a thin shortcut onto an Apple framework or system service. No
 | **Clipboard** | Spotlight's own clipboard history | Paste, Copy'em, Raycast clipboard history |
 | **System Settings** | `NSWorkspace`, with a remembered "toggle back" | — |
 | **Keep Awake** | **IOKit power assertions** — the same mechanism as `caffeinate` | Amphetamine, Caffeine, KeepingYouAwake |
-| **Color Loupe** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
-| **Color Palette** | Liteswitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
+| **Color Picker** | **`NSColorSampler`** — the system's own loupe, sampling out of process | Sip, ColorSlurp (paid tiers) |
+| **Color History** | Liteswitch's own store + `NSFilePromiseProvider` drag-out | the paid tier of most color pickers |
 | **Speak Text** | **Spoken Content** — macOS's own text-to-speech, its Siri voices, its shortcut | text-to-speech utilities |
 | **Capture Text** | **Vision** (`VNRecognizeTextRequest`) on-device OCR + `screencapture -i` | TextSniper (paid) |
 | **Rewrite Text** | **Apple Intelligence** on-device (`FoundationModels`) | Grammarly and friends (subscriptions) |
@@ -54,8 +54,8 @@ Two more that make the point:
 
 - **System Settings** — with **Smart Toggle**, pressing the shortcut again hides it and returns you to the app you came from.
 - **Keep Awake** — stops your Mac sleeping; a cup appears in the menu bar while it's on (click to stop), and **Screen Sleep** lets the display sleep while the system stays up. The assertion releases automatically if Liteswitch quits, so it can't strand your Mac awake.
-- **Color Loupe** — pops the system loupe and copies the pixel under your cursor as **Hex, RGB, HSL, or SwiftUI**, plus the raw color for dropping into a color well. A pill flashes the swatch and code, and every pick is saved to Color Palette.
-- **Color Palette** — a window of everything you've picked. **Click** a swatch to re-copy its code, **drag** it out to save the swatch as a PNG, **pin** the keepers. Labels default to the hex and can be renamed. Keeps the last 20; pins persist at the top.
+- **Color Picker** — pops the system loupe and copies the pixel under your cursor as **Hex, RGB, HSL, or SwiftUI**, plus the raw color for dropping into a color well. A pill flashes the swatch and code, and every pick is saved to Color History.
+- **Color History** — a window of everything you've picked. **Click** a swatch to re-copy its code, **drag** it out to save the swatch as a PNG, **pin** the keepers. Labels default to the hex and can be renamed. Keeps the last 20; pins persist at the top.
 
 **Text Tools**
 
@@ -175,7 +175,7 @@ The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the v
 
 Nothing needs setting up in advance: macOS prompts the first time a shortcut needs a permission. The settings window shows a light for each, and clicking a red one asks for it directly.
 
-**Apps, Color Loupe, Color Palette, Keep Awake and Speak Text need no permissions at all.**
+**Apps, Color Picker, Color History, Keep Awake and Speak Text need no permissions at all.**
 
 ## First run
 
@@ -190,7 +190,7 @@ A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a
 | | | | |
 |---|---|---|---|
 | ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘V Clipboard |
-| ⌃⌥⌘, System Settings | ⌃⌥⌘K Keep Awake | ⌃⌥⌘L Color Loupe | ⌃⌥⌘P Color Palette |
+| ⌃⌥⌘, System Settings | ⌃⌥⌘K Keep Awake | ⌃⌥⌘P Color Picker | ⌃⌥⌘H Color History |
 | Speak Text: macOS's own | ⌃⌥⌘O Capture Text | Rewrite Text: **tap ⌃ twice** | Hold **Right ⌥** to dictate |
 
 Three modifiers look heavy written down, but the left hand takes them as one shape and never moves, so every trigger key sits under the right — no chord crosses the keyboard. It's also the one combination nothing else claims: ⌃ alone hits the text-editing bindings macOS puts in every field (⌃A, ⌃K, ⌃H), ⌥ alone eats the character it would otherwise type, and ⌘ belongs to whatever app is frontmost.
@@ -206,13 +206,13 @@ Two tools work differently, because a recorded chord isn't the right control for
 - **Dictate Text** takes a **held modifier** (Right ⌥ / Right ⌘), not a chord — a Carbon hotkey never reports the key's release, and push-to-talk needs it.
 - **Speak Text** has no Liteswitch shortcut at all. It shows the one **macOS** has assigned to Speak selection, since that feature is macOS's own.
 
-Each card carries one option: **Smart Toggle** for System Settings (on), **Screen Sleep** for Keep Awake (on), the copy **format** for Color Loupe (Hex), **View…** for Color Palette, **Remove Breaks** for Capture Text (on), **Settings** for Rewrite Text, and **Auto-Correct** for Dictate Text (on).
+Each card carries one option: **Smart Toggle** for System Settings (on), **Screen Sleep** for Keep Awake (on), the copy **format** for Color Picker (Hex), **View…** for Color History, **Remove Breaks** for Capture Text (on), **Settings** for Rewrite Text, and **Auto-Correct** for Dictate Text (on).
 
 ## How it works
 
 Shortcuts are registered as **Carbon global hotkeys** (`RegisterEventHotKey`) — no event tap, so Liteswitch never sits in your keyboard's event path. **Apps** launches `/System/Applications/Apps.app` via `NSWorkspace`. The other panels post the documented Spotlight gesture — ⌘Space, a ~30 ms beat, then the panel's ⌘-number — waiting first for you to release any lingering modifiers so the chord lands clean. While that sequence is in flight Liteswitch's own hotkeys are parked, which is what lets ⌘1–⌘4 themselves be the global shortcuts without re-triggering. A Delete follows the panel key to clear Spotlight's leftover query — deliberately a bare Delete rather than ⌘A + Delete, because if the sequence ever misfires into the frontmost app, select-all-and-delete would wipe a document.
 
-**Color Loupe** uses `NSColorSampler`, the system's own loupe. The sampling happens out of process, so Liteswitch never reads your screen and needs no Screen Recording. The pick lands as the **code text** plus the raw **`NSColor`**. It's text-only by design: an experiment to also copy a swatch *image* had to be dropped, because macOS's clipboard history snapshots any copied image and, on recall, re-offers it as that snapshot's file URL — which made recalling a color paste a file *path* instead of the code. **Color Palette** exists to cover what that swatch was for: seeing past colors visually.
+**Color Picker** uses `NSColorSampler`, the system's own loupe. The sampling happens out of process, so Liteswitch never reads your screen and needs no Screen Recording. The pick lands as the **code text** plus the raw **`NSColor`**. It's text-only by design: an experiment to also copy a swatch *image* had to be dropped, because macOS's clipboard history snapshots any copied image and, on recall, re-offers it as that snapshot's file URL — which made recalling a color paste a file *path* instead of the code. **Color History** exists to cover what that swatch was for: seeing past colors visually.
 
 **Capture Text** shells out to `/usr/sbin/screencapture -i` for the region selection, then runs Apple's on-device **Vision** OCR (`VNRecognizeTextRequest`) on the result. Recognition is entirely local.
 

@@ -62,8 +62,8 @@ let panels: [Panel] = [
     Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Reach back through what you've copied and paste something from earlier.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
     Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Jump to System Settings and, with Smart Toggle, straight back again.", spotlightKey: 0, defaultsKey: "settings"),
     Panel(name: "Keep Awake", symbol: "mug.fill", glyphPath: nil, detail: "Hold your Mac awake through a long render, a download, or a presentation.", spotlightKey: 0, defaultsKey: "keepawake"),
-    Panel(name: "Color Loupe", symbol: "loupe", glyphPath: nil, detail: "Magnify any pixel on screen and copy its exact color as code.", spotlightKey: 0, defaultsKey: "colorpicker"),
-    Panel(name: "Color Palette", symbol: "paintpalette", glyphPath: nil, detail: "Your last twenty picks, ready to copy again, drag out as a swatch, or pin.", spotlightKey: 0, defaultsKey: "colorhistory"),
+    Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Magnify any pixel on screen and copy its exact color as code.", spotlightKey: 0, defaultsKey: "colorpicker"),
+    Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your last twenty picks, ready to copy again, drag out as a swatch, or pin.", spotlightKey: 0, defaultsKey: "colorhistory"),
     Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Pull the text off anything on screen — a screenshot, a PDF, a paused video.", spotlightKey: 0, defaultsKey: "textcapture"),
     Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Have your Mac read the text you've selected out loud, in a Siri voice.", spotlightKey: 0, defaultsKey: "speakclipboard"),
     Panel(name: "Rewrite Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Clean up, restyle, shorten or translate what you've selected, on your Mac.", spotlightKey: 0, defaultsKey: "rewrite"),
@@ -117,8 +117,8 @@ let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃�
     "actions": 42,        // \        panel 3 — the escape: doing
     "clipboard": 9,       // V        the paste key, for the paste history
     "settings": 43,       // ,        the preferences key
-    "colorpicker": 37,    // L        Loupe
-    "colorhistory": 35,   // P        Palette
+    "colorpicker": 35,    // P        Picker
+    "colorhistory": 4,    // H        History
     "keepawake": 40,      // K        Keep awake
     "textcapture": 31,    // O        OCR
     // Rewrite Text deliberately has no default: it is triggered by double-tapping
@@ -1555,7 +1555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.restoreClipboard(saved, on: pb)
             return
         }
-        hud.showRewriting()
+        hud.showProcessing()
         rewriteText(text, instructions: instructions, dictated: dictated) { [weak self] result in
             guard let self else { return }
             guard let result else {
@@ -2278,7 +2278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // carries straight on, and this one is the rewrite, where pressing again
         // used to drop the pending paste into the next sentence. Different states
         // that behave differently should not wear the same color.
-        hud.showRewriting()
+        hud.showProcessing()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self else { return }
             // Auto-Correct runs only on a run the diff has identified exactly.
@@ -2529,6 +2529,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func recognizeText(_ cg: CGImage) {
+        // Recognition on a dense screenshot can run for seconds, and until now
+        // nothing was on screen between letting go of the drag and the result —
+        // long enough to look like the shortcut had missed. Sticky, so it holds
+        // until the result morphs it into the count.
+        hud.showProcessing(tint: .systemGreen)
         let request = VNRecognizeTextRequest { [weak self] req, _ in
             let lines = (req.results as? [VNRecognizedTextObservation] ?? [])
                 .compactMap { $0.topCandidates(1).first?.string }
@@ -4824,8 +4829,9 @@ final class HUD {
         meter.start()
     }
 
-    /// A pill that's just the shimmer — shown while the model rewrites.
-    func showRewriting(tint: NSColor = .systemPurple) {
+    /// A pill that's just the shimmer — shown while something is working over
+    /// text: the model rewriting it, or Vision reading it off the screen.
+    func showProcessing(tint: NSColor = .systemPurple) {
         let shimmer = RewriteShimmerView()
         shimmer.tint = tint
         let width = padH + shimmer.frame.width + padH
