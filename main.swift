@@ -2128,9 +2128,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set at dictation start: Auto-Correct is on, but the focused target won't
     /// say what it contains, so there will be nothing to correct against.
     private var autoCorrectUnavailable = false
-    /// Whose window that was, so the HUD can name it instead of saying "here".
-    /// Captured at the start, while the target app is still frontmost.
-    private var dictationAppName: String?
 
     private func armDictation() {
         disarmDictation()
@@ -2145,6 +2142,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictationArmTimer = nil
     }
 
+    /// Whether the focused thing could take dictated characters at all.
+    ///
+    /// Deliberately generous. A missing focused element is NOT a no: Zed
+    /// publishes none and dictates perfectly well, and plenty of web and
+    /// Electron views are the same. Only a control that positively says it is
+    /// something else — the Finder's desktop, a list, a button — counts as a no,
+    /// so the cost of being wrong is a dictation that runs where it needn't
+    /// rather than one refused where it would have worked.
+    private func focusAcceptsText() -> Bool {
+        guard let el = focusedTextElement() else { return true }
+
+        var roleRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &roleRef) == .success,
+           let role = roleRef as? String,
+           [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(role) {
+            return true
+        }
+        // Not a known text role, but anything that reports a selected-text range
+        // is editable text under another name — web areas especially.
+        var names: CFArray?
+        if AXUIElementCopyAttributeNames(el, &names) == .success,
+           let list = names as? [String],
+           list.contains(kAXSelectedTextRangeAttribute as String)
+            || list.contains(kAXSelectedTextAttribute as String) {
+            return true
+        }
+        // Last chance: a string value means there is text in there to add to.
+        var value: CFTypeRef?
+        if AXUIElementCopyAttributeValue(el, kAXValueAttribute as CFString, &value) == .success,
+           value as? String != nil {
+            return true
+        }
+        return false
+    }
+
     private func startDictation() {
         // Distinguish the two failures: without Accessibility we can't read any
         // app's menus at all (a rebuild silently drops that trust), which looks
@@ -2152,6 +2184,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard AXIsProcessTrusted() else {
             promptForAccessibility()   // macOS offers to open the pane
             hud.showMessage("Needs Accessibility", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
+            return
+        }
+        // Refuse before starting, not after. macOS will happily begin dictating
+        // at the Finder's desktop — mic live, nowhere for the words to land —
+        // and the meter made that look like it was working.
+        guard focusAcceptsText() else {
+            hud.showMessage("Dictation requires an active text field", symbol: "text.cursor",
+                            tint: .systemOrange)
             return
         }
         guard pressDictationMenuItem(starting: true) else {
@@ -2166,7 +2206,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // what lets stopDictation skip pretending to work.
         autoCorrectUnavailable = UserDefaults.standard.autoCorrectDictation
             && dictationBeforeText == nil
-        dictationAppName = NSWorkspace.shared.frontmostApplication?.localizedName
         hud.showWaveform(tint: .systemGreen)
     }
 
@@ -2206,17 +2245,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rewriteWatchdog = nil
     }
 
-    /// "Dictated — Auto-Correct unsupported in Zed", or the same sentence ending
-    /// "here" when the app won't give a name. Deliberately one sentence with one
-    /// substitution: naming the app says why far better than "here" ever did,
-    /// and keeping the shape identical means the nameless case reads as the same
-    /// message rather than a different one.
-    private func autoCorrectNote() -> String {
-        guard let app = dictationAppName, !app.isEmpty else {
-            return "Dictated — Auto-Correct unsupported here"
-        }
-        return "Dictated — Auto-Correct unsupported in \(app)"
-    }
+    /// Deliberately just "here". Naming the app was wrong — the same app
+    /// publishes its text in some views and not others — and naming the control
+    /// from its role description was worse, because the case that needs the
+    /// message is exactly the case where the control says least about itself.
 
     private func stopDictation() {
         dictating = false
@@ -2236,8 +2268,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // work that cannot start. Showing a model-at-work pill for a rewrite
         // that is already known to be impossible is theatre.
         if autoCorrectUnavailable {
-            hud.showMessage(autoCorrectNote(), symbol: "checkmark.circle.fill",
-                            tint: .systemGreen)
+            hud.showMessage("Dictation captured — Auto-Correct unsupported here",
+                            symbol: "checkmark.circle.fill", tint: .systemGreen)
             return
         }
         beginRewriting()
@@ -2265,8 +2297,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // endRewriting, or the hold key stays ignored and dictation looks
                 // locked up until the watchdog gets round to it.
                 self.endRewriting()
-                self.hud.showMessage(self.autoCorrectNote(), symbol: "checkmark.circle.fill",
-                                     tint: .systemGreen)
+                self.hud.showMessage("Dictation captured — Auto-Correct unsupported here",
+                                     symbol: "checkmark.circle.fill", tint: .systemGreen)
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
