@@ -1555,7 +1555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.restoreClipboard(saved, on: pb)
             return
         }
-        hud.showWaveform(tint: .systemPurple, mode: .processing)
+        hud.showRewriting()
         rewriteText(text, instructions: instructions, dictated: dictated) { [weak self] result in
             guard let self else { return }
             guard let result else {
@@ -2125,6 +2125,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ⌥-arrow — so dictation must not start the instant it goes down. Holding it
     /// alone past the buffer is unambiguous; any other key joining means it was a
     /// chord after all, and cancels.
+    /// Set at dictation start: Auto-Correct is on, but the focused target won't
+    /// say what it contains, so there will be nothing to correct against.
+    private var autoCorrectUnavailable = false
+    /// Whose window that was, so the HUD can name it instead of saying "here".
+    /// Captured at the start, while the target app is still frontmost.
+    private var dictationAppName: String?
+
     private func armDictation() {
         disarmDictation()
         dictationArmTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
@@ -2153,6 +2160,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         dictating = true
         captureDictationField()
+        // Whether Auto-Correct can run here is settled the moment the field is
+        // read, not when dictation ends: no readable text means there is no way
+        // to know afterwards which characters were inserted. Knowing it now is
+        // what lets stopDictation skip pretending to work.
+        autoCorrectUnavailable = UserDefaults.standard.autoCorrectDictation
+            && dictationBeforeText == nil
+        dictationAppName = NSWorkspace.shared.frontmostApplication?.localizedName
         hud.showWaveform(tint: .systemGreen)
     }
 
@@ -2192,6 +2206,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rewriteWatchdog = nil
     }
 
+    /// "Dictated — Auto-Correct unsupported in Zed", or the same sentence ending
+    /// "here" when the app won't give a name. Deliberately one sentence with one
+    /// substitution: naming the app says why far better than "here" ever did,
+    /// and keeping the shape identical means the nameless case reads as the same
+    /// message rather than a different one.
+    private func autoCorrectNote() -> String {
+        guard let app = dictationAppName, !app.isEmpty else {
+            return "Dictated — Auto-Correct unsupported here"
+        }
+        return "Dictated — Auto-Correct unsupported in \(app)"
+    }
+
     private func stopDictation() {
         dictating = false
         pendingDictationStop?.cancel()
@@ -2205,13 +2231,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Dictation leaves the caret at the end of its insertion, so shift-select
         // back over it — that's the only handle we have on "the dictated text",
         // since it lands in the app, not in us.
+        // Nothing to correct against, and that was settled when the field was
+        // first read — so say so rather than running the rewrite animation over
+        // work that cannot start. Showing a model-at-work pill for a rewrite
+        // that is already known to be impossible is theatre.
+        if autoCorrectUnavailable {
+            hud.showMessage(autoCorrectNote(), symbol: "checkmark.circle.fill",
+                            tint: .systemGreen)
+            return
+        }
         beginRewriting()
         // Purple, not the amber above. The two waits look the same to the user but
         // aren't: amber is the grace period, where pressing again deliberately
         // carries straight on, and this one is the rewrite, where pressing again
         // used to drop the pending paste into the next sentence. Different states
         // that behave differently should not wear the same color.
-        hud.showWaveform(tint: .systemPurple, mode: .processing)
+        hud.showRewriting()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self else { return }
             // Auto-Correct runs only on a run the diff has identified exactly.
@@ -2230,8 +2265,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // endRewriting, or the hold key stays ignored and dictation looks
                 // locked up until the watchdog gets round to it.
                 self.endRewriting()
-                self.hud.showMessage("Can't Auto-Correct here", symbol: "text.badge.xmark",
-                                     tint: .systemOrange)
+                self.hud.showMessage(self.autoCorrectNote(), symbol: "checkmark.circle.fill",
+                                     tint: .systemGreen)
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -4621,6 +4656,83 @@ final class WaveformView: NSView {
     deinit { timer?.invalidate() }
 }
 
+/// Lines of text with a highlight sweeping across them — what the HUD shows
+/// while the on-device model is rewriting.
+///
+/// The bar meter it replaces was built for dictation, and vertical bars of
+/// varying height read as input levels however they are animated: fine while
+/// speech is arriving, a lie while a language model works over text you already
+/// typed. A short stack of unequal horizontal lines is the universal glyph for a
+/// paragraph, and a highlight travelling across it is the same idiom macOS uses
+/// in Writing Tools — which is the very thing running underneath.
+final class RewriteShimmerView: NSView {
+    private var lines: [CALayer] = []
+    /// Fractions of the full width, so it reads as ragged prose rather than a
+    /// chart. Last line short, the way a paragraph ends.
+    private static let widths: [CGFloat] = [1.0, 0.82, 0.55]
+    private let lineH: CGFloat = 3, lineGap: CGFloat = 4
+    private var t: Double = 0
+    private var timer: Timer?
+
+    var tint: NSColor = .systemPurple { didSet { applyTint() } }
+
+    init(width: CGFloat = 30) {
+        let n = Self.widths.count
+        let h = CGFloat(n) * lineH + CGFloat(n - 1) * lineGap
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: h))
+        wantsLayer = true
+        // Top line first: layers are placed from the top down, so the array
+        // order matches what you read.
+        for (i, frac) in Self.widths.enumerated() {
+            let line = CALayer()
+            line.cornerRadius = lineH / 2
+            line.frame = NSRect(x: 0, y: h - CGFloat(i + 1) * lineH - CGFloat(i) * lineGap,
+                                width: width * frac, height: lineH)
+            layer?.addSublayer(line)
+            lines.append(line)
+        }
+        applyTint()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func applyTint() {
+        lines.forEach { $0.backgroundColor = tint.withAlphaComponent(0.35).cgColor }
+    }
+
+    func start() {
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+            self?.step()
+        }
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    /// One highlight travelling down the stack and round again. Each line's
+    /// brightness is its distance from the sweep, so the crest passes through
+    /// them rather than blinking them on and off.
+    private func step() {
+        t += 1.0 / 30
+        let n = Double(lines.count)
+        // The +1.2 is a beat of darkness before it comes round, so the loop
+        // reads as a repeating pass rather than a continuous spin.
+        let pos = (t * 2.6).truncatingRemainder(dividingBy: n + 1.2) - 0.6
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, line) in lines.enumerated() {
+            let d = Double(i) - pos
+            let crest = exp(-d * d / 0.45)                 // 0…1
+            line.backgroundColor = tint.withAlphaComponent(0.3 + 0.7 * crest).cgColor
+        }
+        CATransaction.commit()
+    }
+
+    deinit { timer?.invalidate() }
+}
+
 // MARK: - HUD
 
 /// A brief, non-interactive pill that flashes at the top-center of the active
@@ -4632,6 +4744,8 @@ final class HUD {
     private var panel: NSPanel?
     private var hideTimer: Timer?
     private weak var waveform: WaveformView?
+    private weak var rewriteShimmer: RewriteShimmerView?
+    private var chrome: NSVisualEffectView?
     private let panelH: CGFloat = 42, padH: CGFloat = 18, gap: CGFloat = 10
 
     /// Swatch dot in the sampled color + the copied code (Color Picker).
@@ -4656,6 +4770,8 @@ final class HUD {
         label.textColor = .white
         label.frame = NSRect(x: padH + dotD + gap, y: (panelH - textH) / 2, width: textW, height: textH)
         content.addSubview(label)
+        waveform?.stop()
+        rewriteShimmer?.stop()
         present(content, width: width)
     }
 
@@ -4669,13 +4785,32 @@ final class HUD {
         meter.frame.origin = NSPoint(x: padH, y: (panelH - meter.frame.height) / 2)
         content.addSubview(meter)
         waveform?.stop()
+        rewriteShimmer?.stop()
+        rewriteShimmer = nil
         waveform = meter
         present(content, width: width, sticky: true)
         meter.start()
     }
 
+    /// A pill that's just the shimmer — shown while the model rewrites.
+    func showRewriting(tint: NSColor = .systemPurple) {
+        let shimmer = RewriteShimmerView()
+        shimmer.tint = tint
+        let width = padH + shimmer.frame.width + padH
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
+        shimmer.frame.origin = NSPoint(x: padH, y: (panelH - shimmer.frame.height) / 2)
+        content.addSubview(shimmer)
+        waveform?.stop()
+        waveform = nil
+        rewriteShimmer?.stop()
+        rewriteShimmer = shimmer
+        present(content, width: width, sticky: true)
+        shimmer.start()
+    }
+
     /// Take down a sticky pill.
     func hide() {
+        rewriteShimmer?.stop()
         waveform?.stop()
         hideTimer?.invalidate()
         dismiss()
@@ -4708,33 +4843,93 @@ final class HUD {
     }
 
     /// Shared chrome: frost the pill, center it at the top, fade in, auto-hide.
+    /// Where a pill of this width sits: centred at the top of the active screen.
+    private func pillFrame(width: CGFloat) -> NSRect {
+        guard let vf = NSScreen.main?.visibleFrame else {
+            return NSRect(x: 0, y: 0, width: width, height: panelH)
+        }
+        return NSRect(x: (vf.midX - width / 2).rounded(), y: vf.maxY - panelH - 16,
+                      width: width, height: panelH)
+    }
+
     private func present(_ content: NSView, width: CGFloat, sticky: Bool = false) {
         hideTimer?.invalidate()
         let p = panel ?? makePanel()
+        // A pill already on screen reports its new state in place rather than
+        // being replaced. Rewriting shows a narrow shimmer and finishes with a
+        // wider confirmation; fading one out and another in reads as two HUDs
+        // for one action, when it is one thing changing what it says.
+        let morphing = panel != nil && p.isVisible && p.alphaValue > 0.01
         panel = p
-        p.setContentSize(NSSize(width: width, height: panelH))
 
-        let bg = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
-        bg.material = .hudWindow
-        bg.blendingMode = .behindWindow
-        bg.state = .active
-        bg.wantsLayer = true
-        bg.layer?.cornerRadius = panelH / 2
-        bg.layer?.masksToBounds = true
-        bg.addSubview(content)
-        p.contentView = bg
-
-        if let screen = NSScreen.main {
-            let vf = screen.visibleFrame
-            p.setFrameOrigin(NSPoint(x: vf.midX - width / 2, y: vf.maxY - panelH - 16))
+        // The pill's chrome outlives its contents, so the material and the
+        // rounded mask are never rebuilt mid-flight — only what's inside moves.
+        let shell: NSVisualEffectView
+        if let existing = chrome {
+            shell = existing
+        } else {
+            shell = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
+            shell.material = .hudWindow
+            shell.blendingMode = .behindWindow
+            shell.state = .active
+            shell.wantsLayer = true
+            shell.layer?.cornerRadius = panelH / 2
+            shell.layer?.masksToBounds = true      // what clips the push
+            shell.autoresizingMask = [.width, .height]
+            chrome = shell
         }
+        p.contentView = shell
 
-        p.alphaValue = 0
-        p.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.14
-            p.animator().alphaValue = 1
+        let target = pillFrame(width: width)
+        if morphing {
+            // Sequenced, not simultaneous: the old line fades, THEN the pill
+            // resizes, THEN the new line fades in. Overlapping them meant the
+            // incoming content — built at the final width — arriving while the
+            // pill was still narrow, so it read as text extruded from an edge.
+            // Three short stages cost about a tenth of a second over one long
+            // one and never land clipped.
+            let outgoing = shell.subviews
+            content.alphaValue = 0
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.10
+                outgoing.forEach { $0.animator().alphaValue = 0 }
+            }, completionHandler: { [weak self] in
+                outgoing.forEach { $0.removeFromSuperview() }
+                shell.addSubview(content)
+                NSAnimationContext.runAnimationGroup({ ctx in
+                    ctx.duration = 0.16
+                    ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    p.animator().setFrame(target, display: true)
+                }, completionHandler: { [weak self] in
+                    NSAnimationContext.runAnimationGroup({ ctx in
+                        ctx.duration = 0.14
+                        content.animator().alphaValue = 1
+                    }, completionHandler: {
+                        // Only now start the dwell, so a confirmation gets its
+                        // full read time rather than spending a third of it
+                        // arriving.
+                        self?.scheduleHide(sticky: sticky)
+                    })
+                })
+            })
+            return
+        } else {
+            shell.subviews.forEach { $0.removeFromSuperview() }
+            shell.frame = NSRect(x: 0, y: 0, width: width, height: panelH)
+            shell.addSubview(content)
+            p.setFrame(target, display: false)
+            p.alphaValue = 0
+            p.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.14
+                p.animator().alphaValue = 1
+            }
         }
+        scheduleHide(sticky: sticky)
+    }
+
+    private func scheduleHide(sticky: Bool) {
+        hideTimer?.invalidate()
         guard !sticky else { return }
         hideTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: false) { [weak self] _ in
             self?.dismiss()
@@ -4742,7 +4937,10 @@ final class HUD {
     }
 
     private func dismiss() {
+        // Both meters, always: a timer left running on a dismissed pill is a
+        // retained view redrawing 30 times a second forever.
         waveform?.stop()
+        rewriteShimmer?.stop()
         guard let p = panel else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.35
