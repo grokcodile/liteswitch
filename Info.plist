@@ -2,27 +2,27 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>
-    <string>Liteswitch</string>
-    <key>CFBundleDisplayName</key>
-    <string>Liteswitch</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.ethan.liteswitch</string>
-    <key>CFBundleVersion</key>
-    <string>0.2</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.2</string>
-    <key>CFBundleExecutable</key>
-    <string>Liteswitch</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>26.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSHumanReadableCopyright</key>
-    <string>© 2026 Ethan Darling (grokcodile) — MIT License</string>
+	<key>CFBundleDisplayName</key>
+	<string>Liteswitch</string>
+	<key>CFBundleExecutable</key>
+	<string>Liteswitch</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.ethan.liteswitch</string>
+	<key>CFBundleName</key>
+	<string>Liteswitch</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.2</string>
+	<key>CFBundleVersion</key>
+	<string>1.2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Ethan Darling (grokcodile) — MIT License</string>
 </dict>
 </plist>

@@ -3125,7 +3125,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
         yTop -= titleTextH
         let titleLabel = NSTextField(labelWithString: "Liteswitch")
-        titleLabel.font = .systemFont(ofSize: 26, weight: .bold)
+        titleLabel.font = .systemFont(ofSize: 28, weight: .bold)
         titleLabel.alignment = .center
         titleLabel.frame = NSRect(x: pad, y: yTop, width: winW - pad * 2, height: titleTextH)
         v.addSubview(titleLabel)
