@@ -1438,7 +1438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Asking is honest, and it can't corrupt anything.
                 self.endRewriting()
                 self.hud.showMessage("Select some text first", symbol: "text.cursor",
-                                     tint: .systemOrange)
+                                     tint: nil)
                 Self.restoreClipboard(saved, on: pb)
             }
         }
@@ -1551,7 +1551,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard text.contains(where: { $0.isLetter }) else {
             endRewriting()
             hud.showMessage("Nothing to rewrite", symbol: "questionmark.circle.fill",
-                            tint: .systemOrange)
+                            tint: nil)
             Self.restoreClipboard(saved, on: pb)
             return
         }
@@ -1570,10 +1570,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // shrugging, and your text is exactly where you left it.
                 if dictated {
                     self.hud.showMessage("Auto-Corrected", symbol: "checkmark.circle.fill",
-                                         tint: .systemGreen)
+                                         tint: nil)
                 } else {
                     self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
-                                         tint: .systemOrange)
+                                         tint: nil)
                 }
                 Self.restoreClipboard(saved, on: pb)
                 return
@@ -1607,7 +1607,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // but Auto-Correct runs on its own, and if your words come back changed
             // it should be clear which thing changed them.
             self.hud.showMessage(dictated ? "Auto-Corrected" : "Rewritten",
-                                 symbol: "checkmark.circle.fill", tint: .systemGreen)
+                                 symbol: "checkmark.circle.fill", tint: nil)
             // Give the paste a moment to land before handing the clipboard back —
             // and only release the hold key once it has, since that paste is the
             // thing a new dictation would otherwise land in the middle of.
@@ -1637,7 +1637,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard live?.trimmingCharacters(in: .whitespacesAndNewlines)
                     == original.trimmingCharacters(in: .whitespacesAndNewlines) else {
                 self.hud.showMessage("Select the text again", symbol: "text.cursor",
-                                     tint: .systemOrange)
+                                     tint: nil)
                 Self.restoreClipboard(saved, on: pb)
                 self.endRewriting()
                 return
@@ -1993,11 +1993,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The flag is set while the key is down, clear once it's released.
             let down = event.modifierFlags.contains(flag)
             if down {
-                // Pressing again while we're still finishing just carries on.
+                // Back down inside the buffer: you let go too early, so carry on
+                // as though you hadn't. See `scheduleDictationStop`.
                 if let pending = self.pendingDictationStop {
                     pending.cancel()
                     self.pendingDictationStop = nil
-                    self.hud.showWaveform(tint: .systemGreen)
+                    // No HUD call: the meter never stopped, so there is nothing
+                    // to restore and rebuilding the pill would only make it
+                    // flicker at the moment you are trying to keep talking.
                     return
                 }
                 // Not while Auto-Correct still has the text: starting again here is
@@ -2191,7 +2194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // and the meter made that look like it was working.
         guard focusAcceptsText() else {
             hud.showMessage("Dictation requires an active text field", symbol: "text.cursor",
-                            tint: .systemOrange)
+                            tint: nil)
             return
         }
         guard pressDictationMenuItem(starting: true) else {
@@ -2206,24 +2209,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // what lets stopDictation skip pretending to work.
         autoCorrectUnavailable = UserDefaults.standard.autoCorrectDictation
             && dictationBeforeText == nil
-        hud.showWaveform(tint: .systemGreen)
+        hud.showWaveform()
     }
 
-    /// macOS keeps transcribing for a beat after you stop speaking, so stopping
-    /// the instant the key comes up clips the last few words. Wait out that lag
-    /// first — and if the key goes back down meanwhile, carry on as if it never
-    /// let up. (Whether the trailing punctuation survives is macOS's business: it
-    /// varies by app, and no amount of waiting here changes it.)
+    /// A buffer for fingers moving faster than mouths.
+    ///
+    /// Two things want it. macOS keeps transcribing for a beat after you stop
+    /// speaking, so stopping the instant the key comes up clips the last few
+    /// words. And people let go early — a fraction before the sentence is
+    /// actually finished — which would end dictation mid-thought.
+    ///
+    /// If the key goes back down inside the window, dictation carries on as if
+    /// it never let up. That is the recovery for having released too soon, not a
+    /// feature to reach for: the window is short and gives no sign it is open,
+    /// so nobody can aim at it deliberately, and nothing in the UI suggests they
+    /// should. It used to announce itself — first with an amber tint, then with
+    /// the busy dots — and taught nobody anything either time.
+    ///
+    /// (Whether the trailing punctuation survives is macOS's business: it varies
+    /// by app, and no amount of waiting here changes it.)
+    ///
+    /// Where the field can be read, this waits for the *text* to settle rather
+    /// than for a fixed number of seconds — which is both quicker and safer than
+    /// any constant. A fixed 1.5 s was slow whenever transcription had already
+    /// finished; cutting it to 0.5 s to feel snappy started clipping the ends of
+    /// sentences, because how long macOS needs is a property of what you said,
+    /// not a number to guess. Polling stops as soon as nothing new has arrived
+    /// for `stableFor`, so a short phrase ends almost immediately and a long one
+    /// gets as long as it needs.
+    ///
+    /// It also handles releasing early for free: if you are still talking, text
+    /// keeps arriving, so it keeps waiting.
+    ///
+    /// Fields that won't say what they contain — Zed and most Electron views —
+    /// have nothing to poll, so they keep the fixed wait that was known to work.
     private func scheduleDictationStop(after grace: TimeInterval = 1.5) {
         pendingDictationStop?.cancel()
-        hud.showWaveform(tint: .systemOrange, mode: .processing)
+        // The meter stays up, deliberately. The microphone is still open and
+        // macOS is still transcribing through this window — dictation has not
+        // finished, so showing the busy dots here claimed the system had moved
+        // on to processing when it hadn't. The dots mean the app is working on
+        // something; this is still the app listening.
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.pendingDictationStop = nil
             self.stopDictation()
         }
         pendingDictationStop = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + grace, execute: work)
+
+        guard dictationElement != nil else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + grace, execute: work)
+            return
+        }
+
+        let tick = 0.1                 // how often to look
+        let stableFor = 0.3            // quiet this long means macOS is done
+        let ceiling = grace + 1.5      // never wait forever on a field that churns
+        var lastText = currentDictationText()
+        var quiet = 0.0
+        var waited = 0.0
+
+        func poll() {
+            // Cancelled by a re-press: the user let go too early and carried on.
+            guard let pending = pendingDictationStop, pending === work,
+                  !work.isCancelled else { return }
+            waited += tick
+            let now = currentDictationText()
+            if now == lastText {
+                quiet += tick
+            } else {
+                quiet = 0
+                lastText = now
+            }
+            if quiet >= stableFor || waited >= ceiling {
+                work.perform()
+                pendingDictationStop = nil
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + tick) { poll() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + tick) { poll() }
     }
 
     /// Claim the text for the Auto-Correct round trip. Every path that finishes with
@@ -2269,17 +2334,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // that is already known to be impossible is theatre.
         if autoCorrectUnavailable {
             hud.showMessage("Dictation captured — Auto-Correct unsupported here",
-                            symbol: "checkmark.circle.fill", tint: .systemGreen)
+                            symbol: "checkmark.circle.fill", tint: nil)
             return
         }
         beginRewriting()
-        // Purple, not the amber above. The two waits look the same to the user but
-        // aren't: amber is the grace period, where pressing again deliberately
-        // carries straight on, and this one is the rewrite, where pressing again
-        // used to drop the pending paste into the next sentence. Different states
-        // that behave differently should not wear the same color.
+        // Every wait in the app looks the same: dots in the label's own colour.
+        //
+        // They used to be told apart by tint — amber for the grace period, purple
+        // for the model, green for OCR — on the rule that states behaving
+        // differently should not look alike. In practice that produced a colour
+        // per tool, which told the user which shortcut they had just pressed:
+        // something they already knew. And the one distinction that did encode
+        // behaviour, amber, marked a window too short and too silent for anyone
+        // to notice they were inside it. Colour is worth having when it is
+        // scarce; a palette is decoration.
         hud.showProcessing()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        // No settle before the diff. There used to be 0.4 s here, on the worry
+        // that the field might still be changing — but that was a precaution
+        // against a failure never actually observed, and it is a third of the
+        // wait between letting go and seeing the result. Still a hop to the next
+        // runloop turn, so the stop above has been processed first.
+        //
+        // If it turns out to be needed, the symptom is specific: the diff
+        // reading a half-written field, so Auto-Correct grabs the wrong span or
+        // declines when it should have worked. Put the delay back, don't guess
+        // at a different number.
+        DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             // Auto-Correct runs only on a run the diff has identified exactly.
             //
@@ -2298,13 +2378,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // locked up until the watchdog gets round to it.
                 self.endRewriting()
                 self.hud.showMessage("Dictation captured — Auto-Correct unsupported here",
-                                     symbol: "checkmark.circle.fill", tint: .systemGreen)
+                                     symbol: "checkmark.circle.fill", tint: nil)
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 self.rewriteSelection(dictated: true, known: dictatedText)
             }
         }
+    }
+
+    /// What the dictation target holds right now, for comparing against the
+    /// snapshot taken when dictation started — or against itself a moment ago,
+    /// which is how `scheduleDictationStop` knows transcription has settled.
+    private func currentDictationText() -> String? {
+        guard let el = dictationElement else { return nil }
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXValueAttribute as CFString, &v) == .success
+        else { return nil }
+        return v as? String
     }
 
     /// The focused text element — asking the frontmost app directly when the
@@ -2524,7 +2615,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try task.run()
         } catch {
-            hud.showMessage("Couldn’t start capture", symbol: "exclamationmark.triangle.fill", tint: .systemOrange)
+            hud.showMessage("Couldn’t start capture", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
         }
     }
 
@@ -2533,7 +2624,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // nothing was on screen between letting go of the drag and the result —
         // long enough to look like the shortcut had missed. Sticky, so it holds
         // until the result morphs it into the count.
-        hud.showProcessing(tint: .systemGreen)
+        hud.showProcessing()
         let request = VNRecognizeTextRequest { [weak self] req, _ in
             let lines = (req.results as? [VNRecognizedTextObservation] ?? [])
                 .compactMap { $0.topCandidates(1).first?.string }
@@ -2552,7 +2643,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Count lines when breaks are kept, words when they're removed.
                 let n = keep ? lines.count : text.split { $0.isWhitespace }.count
                 let unit = keep ? (n == 1 ? "line" : "lines") : (n == 1 ? "word" : "words")
-                self.hud.showMessage("\(n) \(unit) copied", symbol: "text.viewfinder", tint: .systemGreen)
+                self.hud.showMessage("\(n) \(unit) copied", symbol: "text.viewfinder", tint: nil)
             }
         }
         request.recognitionLevel = .accurate
@@ -4617,8 +4708,6 @@ final class DictationSetupWindow: NSWindow {
 /// a slow symmetric breathing while it listens, and a pulse travelling along the
 /// row while it catches up, so the two states don't just differ by color.
 final class WaveformView: NSView {
-    enum Mode { case listening, processing }
-
     private var bars: [CALayer] = []
     private var heights: [CGFloat] = []      // eased toward the target each tick
     private var t: Double = 0
@@ -4626,7 +4715,6 @@ final class WaveformView: NSView {
     private let barW: CGFloat = 3, barGap: CGFloat = 3
     private let minH: CGFloat = 3
 
-    var mode: Mode = .listening
     var tint: NSColor = .systemGreen {
         didSet { bars.forEach { $0.backgroundColor = tint.cgColor } }
     }
@@ -4668,21 +4756,11 @@ final class WaveformView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)   // the easing below does the smoothing
         for i in 0..<n {
-            let target: CGFloat
-            switch mode {
-            case .listening:
-                // A wave travelling along the row — each bar lags the one before
-                // it, which is what makes it read as a waveform rather than bars
-                // bouncing independently.
-                let phase = t * 5.2 - Double(i) * 0.85
-                let wave = abs(sin(phase))
-                target = minH + span * CGFloat(0.12 + 0.88 * wave)
-            case .processing:
-                // A single pulse travelling along the row and wrapping round.
-                let pos = (t * 4.2).truncatingRemainder(dividingBy: Double(n) + 1.5) - 0.75
-                let d = Double(i) - pos
-                target = minH + span * CGFloat(0.85 * exp(-d * d / 0.5))
-            }
+            // A wave travelling along the row — each bar lags the one before it,
+            // which is what makes it read as a waveform rather than bars bouncing
+            // independently.
+            let phase = t * 5.2 - Double(i) * 0.85
+            let target = minH + span * CGFloat(0.12 + 0.88 * abs(sin(phase)))
             heights[i] += (target - heights[i]) * 0.30   // ease toward it
             let barH = heights[i]
             bars[i].frame = NSRect(x: bars[i].frame.minX, y: (h - barH) / 2, width: barW, height: barH)
@@ -4693,47 +4771,45 @@ final class WaveformView: NSView {
     deinit { timer?.invalidate() }
 }
 
-/// Lines of text with a highlight sweeping across them — what the HUD shows
-/// while the on-device model is rewriting.
+/// The app's single "working" indicator: a row of dots with a bright crest
+/// travelling along them.
 ///
-/// The bar meter it replaces was built for dictation, and vertical bars of
-/// varying height read as input levels however they are animated: fine while
-/// speech is arriving, a lie while a language model works over text you already
-/// typed. A short stack of unequal horizontal lines is the universal glyph for a
-/// paragraph, and a highlight travelling across it is the same idiom macOS uses
-/// in Writing Tools — which is the very thing running underneath.
-final class RewriteShimmerView: NSView {
-    private var lines: [CALayer] = []
-    /// Fractions of the full width, so it reads as ragged prose rather than a
-    /// chart. Last line short, the way a paragraph ends.
-    private static let widths: [CGFloat] = [1.0, 0.82, 0.55]
-    private let lineH: CGFloat = 3, lineGap: CGFloat = 4
+/// There used to be three. The bar meter did double duty — a wave while
+/// listening, a pulse while waiting — and a separate shimmer of text lines ran
+/// for the model and for OCR. None of the busy ones said anything a user could
+/// decode from the shape, and one actively lied: bars claim sound is arriving,
+/// which is wrong for a grace period that is only waiting. The tint already says
+/// which tool is working, so the shape only has to say "not finished yet".
+///
+/// The waveform survives for listening alone, because that one is not
+/// decoration: it says the microphone is open and you should speak. Two states
+/// that genuinely differ, two shapes.
+final class ProcessingDotsView: NSView {
+    private var dots: [CALayer] = []
+    private let dotD: CGFloat = 6, dotGap: CGFloat = 5
     private var t: Double = 0
     private var timer: Timer?
 
     var tint: NSColor = .systemPurple { didSet { applyTint() } }
 
-    init(width: CGFloat = 30) {
-        let n = Self.widths.count
-        let h = CGFloat(n) * lineH + CGFloat(n - 1) * lineGap
-        super.init(frame: NSRect(x: 0, y: 0, width: width, height: h))
+    init(count: Int = 5) {
+        let w = CGFloat(count) * dotD + CGFloat(count - 1) * dotGap
+        super.init(frame: NSRect(x: 0, y: 0, width: w, height: dotD))
         wantsLayer = true
-        // Top line first: layers are placed from the top down, so the array
-        // order matches what you read.
-        for (i, frac) in Self.widths.enumerated() {
-            let line = CALayer()
-            line.cornerRadius = lineH / 2
-            line.frame = NSRect(x: 0, y: h - CGFloat(i + 1) * lineH - CGFloat(i) * lineGap,
-                                width: width * frac, height: lineH)
-            layer?.addSublayer(line)
-            lines.append(line)
+        for i in 0..<count {
+            let dot = CALayer()
+            dot.frame = NSRect(x: CGFloat(i) * (dotD + dotGap), y: 0,
+                               width: dotD, height: dotD)
+            dot.cornerRadius = dotD / 2
+            layer?.addSublayer(dot)
+            dots.append(dot)
         }
         applyTint()
     }
     required init?(coder: NSCoder) { fatalError() }
 
     private func applyTint() {
-        lines.forEach { $0.backgroundColor = tint.withAlphaComponent(0.35).cgColor }
+        dots.forEach { $0.backgroundColor = tint.withAlphaComponent(0.28).cgColor }
     }
 
     func start() {
@@ -4748,21 +4824,21 @@ final class RewriteShimmerView: NSView {
         timer = nil
     }
 
-    /// One highlight travelling down the stack and round again. Each line's
-    /// brightness is its distance from the sweep, so the crest passes through
-    /// them rather than blinking them on and off.
+    /// Luminance, not size: the dots hold their shape and the crest passes
+    /// through them. Brightness is distance from the crest rather than an on/off
+    /// step, so it reads as one light moving rather than five lights blinking.
     private func step() {
         t += 1.0 / 30
-        let n = Double(lines.count)
-        // The +1.2 is a beat of darkness before it comes round, so the loop
+        let n = Double(dots.count)
+        // The +1.4 is a beat of dark before it comes round again, so the loop
         // reads as a repeating pass rather than a continuous spin.
-        let pos = (t * 2.6).truncatingRemainder(dividingBy: n + 1.2) - 0.6
+        let pos = (t * 3.0).truncatingRemainder(dividingBy: n + 1.4) - 0.7
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for (i, line) in lines.enumerated() {
+        for (i, dot) in dots.enumerated() {
             let d = Double(i) - pos
-            let crest = exp(-d * d / 0.45)                 // 0…1
-            line.backgroundColor = tint.withAlphaComponent(0.3 + 0.7 * crest).cgColor
+            let crest = exp(-d * d / 0.5)
+            dot.backgroundColor = tint.withAlphaComponent(0.28 + 0.72 * crest).cgColor
         }
         CATransaction.commit()
     }
@@ -4781,7 +4857,7 @@ final class HUD {
     private var panel: NSPanel?
     private var hideTimer: Timer?
     private weak var waveform: WaveformView?
-    private weak var rewriteShimmer: RewriteShimmerView?
+    private weak var working: ProcessingDotsView?
     private var chrome: NSVisualEffectView?
     private let panelH: CGFloat = 42, padH: CGFloat = 18, gap: CGFloat = 10
 
@@ -4799,56 +4875,58 @@ final class HUD {
         swatch.layer?.backgroundColor = color.cgColor
         swatch.layer?.cornerRadius = dotD / 2
         swatch.layer?.borderWidth = 1
-        swatch.layer?.borderColor = NSColor.white.withAlphaComponent(0.4).cgColor
+        swatch.layer?.borderColor = ink.withAlphaComponent(0.4).cgColor
         content.addSubview(swatch)
 
         let label = NSTextField(labelWithString: code)
         label.font = font
-        label.textColor = .white
+        label.textColor = ink
         label.frame = NSRect(x: padH + dotD + gap, y: (panelH - textH) / 2, width: textW, height: textH)
         content.addSubview(label)
         waveform?.stop()
-        rewriteShimmer?.stop()
+        working?.stop()
         present(content, width: width)
     }
 
     /// A pill that's just the animated bar meter — the dictation indicator.
-    func showWaveform(tint: NSColor, mode: WaveformView.Mode = .listening) {
+    func showWaveform(tint: NSColor? = nil) {
+        let tint = tint ?? ink
         let meter = WaveformView()
         meter.tint = tint
-        meter.mode = mode
         let width = padH + meter.frame.width + padH
         let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
         meter.frame.origin = NSPoint(x: padH, y: (panelH - meter.frame.height) / 2)
         content.addSubview(meter)
         waveform?.stop()
-        rewriteShimmer?.stop()
-        rewriteShimmer = nil
+        working?.stop()
+        working = nil
         waveform = meter
         present(content, width: width, sticky: true)
         meter.start()
     }
 
-    /// A pill that's just the shimmer — shown while something is working over
-    /// text: the model rewriting it, or Vision reading it off the screen.
-    func showProcessing(tint: NSColor = .systemPurple) {
-        let shimmer = RewriteShimmerView()
-        shimmer.tint = tint
-        let width = padH + shimmer.frame.width + padH
+    /// A pill that's just the dots — shown whenever something is working: the
+    /// model rewriting text, Vision reading it off the screen, or dictation
+    /// waiting out its grace period.
+    func showProcessing(tint: NSColor? = nil) {
+        let tint = tint ?? ink
+        let dots = ProcessingDotsView()
+        dots.tint = tint
+        let width = padH + dots.frame.width + padH
         let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
-        shimmer.frame.origin = NSPoint(x: padH, y: (panelH - shimmer.frame.height) / 2)
-        content.addSubview(shimmer)
+        dots.frame.origin = NSPoint(x: padH, y: (panelH - dots.frame.height) / 2)
+        content.addSubview(dots)
         waveform?.stop()
         waveform = nil
-        rewriteShimmer?.stop()
-        rewriteShimmer = shimmer
+        working?.stop()
+        working = dots
         present(content, width: width, sticky: true)
-        shimmer.start()
+        dots.start()
     }
 
     /// Take down a sticky pill.
     func hide() {
-        rewriteShimmer?.stop()
+        working?.stop()
         waveform?.stop()
         hideTimer?.invalidate()
         dismiss()
@@ -4857,7 +4935,9 @@ final class HUD {
     /// SF Symbol + message (Capture Text confirmations), styled like the color pill.
     /// `sticky` leaves the pill up until `hide()` — for states that last as long
     /// as you hold a key, rather than momentary confirmations.
-    func showMessage(_ message: String, symbol: String, tint: NSColor, sticky: Bool = false) {
+    func showMessage(_ message: String, symbol: String, tint: NSColor? = nil,
+                     sticky: Bool = false) {
+        let tint = tint ?? ink
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
         let measured = ceil((message as NSString).size(withAttributes: [.font: font]).width)
         let textW = measured, textH = ceil(font.ascender - font.descender)
@@ -4874,7 +4954,7 @@ final class HUD {
 
         let label = NSTextField(labelWithString: message)
         label.font = font
-        label.textColor = .white
+        label.textColor = ink
         label.frame = NSRect(x: padH + iconD + gap, y: (panelH - textH) / 2, width: textW, height: textH)
         content.addSubview(label)
         present(content, width: width, sticky: sticky)
@@ -4894,7 +4974,7 @@ final class HUD {
         hideTimer?.invalidate()
         let p = panel ?? makePanel()
         // A pill already on screen reports its new state in place rather than
-        // being replaced. Rewriting shows a narrow shimmer and finishes with a
+        // being replaced. Rewriting shows a narrow dot row and finishes with a
         // wider confirmation; fading one out and another in reads as two HUDs
         // for one action, when it is one thing changing what it says.
         let morphing = panel != nil && p.isVisible && p.alphaValue > 0.01
@@ -4978,12 +5058,29 @@ final class HUD {
         // Both meters, always: a timer left running on a dismissed pill is a
         // retained view redrawing 30 times a second forever.
         waveform?.stop()
-        rewriteShimmer?.stop()
+        working?.stop()
         guard let p = panel else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.35
             p.animator().alphaValue = 0
         }, completionHandler: { [weak p] in p?.orderOut(nil) })
+    }
+
+    /// `labelColor`, resolved against the pill's own appearance and handed back
+    /// as a concrete colour.
+    ///
+    /// The indicators are layer-backed, and a dynamic colour turned into a
+    /// `cgColor` resolves against whatever appearance is current at that
+    /// moment — outside a draw cycle that is the app default, not this panel's.
+    /// So a dot row built in dark mode kept its dark-mode ink after a theme
+    /// flip. Resolving here, once, keeps every part of the pill honest.
+    private var ink: NSColor {
+        let appearance = panel?.effectiveAppearance ?? NSApp.effectiveAppearance
+        var c = NSColor.labelColor
+        appearance.performAsCurrentDrawingAppearance {
+            c = NSColor.labelColor.usingColorSpace(.sRGB) ?? .labelColor
+        }
+        return c
     }
 
     private func makePanel() -> NSPanel {
