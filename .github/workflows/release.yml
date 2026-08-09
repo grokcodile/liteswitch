@@ -203,6 +203,22 @@ jobs:
           cd tap
           sed -i '' -E "s/^  version \".*\"/  version \"${VERSION}\"/" Casks/liteswitch.rb
           sed -i '' -E "s/^  sha256 \".*\"/  sha256 \"${SHA}\"/" Casks/liteswitch.rb
+          # sed is silent when it matches nothing, so a renamed field or file
+          # would leave the cask on the old version and the release would look
+          # like a success. Read it back instead of trusting the substitution.
+          GOT=$(awk -F'"' '/^  version /{print $2}' Casks/liteswitch.rb)
+          if [ "$GOT" != "$VERSION" ]; then
+            echo "::error::Cask version is '${GOT}' after substitution, expected '${VERSION}' — the cask was not updated."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -aqm "liteswitch ${VERSION}" && git push
+          # Already correct (a re-run, or the cask was bumped by hand first) is
+          # success, not failure: `git commit` exits non-zero with nothing
+          # staged, which used to fail the whole release after it had published.
+          if git diff --quiet; then
+            echo "Cask already at ${VERSION}; nothing to push."
+          else
+            git commit -aqm "liteswitch ${VERSION}"
+            git push
+          fi
