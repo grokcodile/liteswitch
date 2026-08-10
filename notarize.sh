@@ -7,32 +7,43 @@
 # This mirrors what .github/workflows/release.yml does on a tag; it exists for
 # building a release by hand when CI isn't an option.
 #
-# One-time setup (this stores an app-specific password in your keychain, so it
-# has to be run by you rather than by a script):
+# One-time setup. Stores a credential in your keychain, so it has to be run by
+# you rather than by a script:
 #
-#   xcrun notarytool store-credentials pullcord \
-#       --apple-id "you@example.com" \
-#       --team-id 8UP5SFXY56
+#   xcrun notarytool store-credentials grokcodile \
+#       --key ~/path/to/AuthKey_XXXXXXXXXX.p8 \
+#       --key-id XXXXXXXXXX \
+#       --issuer XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
 #
-# It asks for an app-specific password — make one at appleid.apple.com under
-# Sign-In and Security. Not your Apple ID password.
+# The profile is named for the team, not the app, because that is what the
+# credential actually is — an App Store Connect key for 8UP5SFXY56. Naming it
+# after an app is how the last one ended up called "liteswitch" and went stale
+# on a rename; every app here shares this one profile instead.
+#
+# It's the same App Store Connect API key CI uses (the AC_API_* secrets), rather
+# than an app-specific password, so local and CI authenticate as one identity
+# and rotate together. Make one at App Store Connect → Users and Access →
+# Integrations → App Store Connect API → *Team* Keys, with the Developer role.
+# Personal keys are not eligible for the Notary API. The .p8 downloads once.
 set -e
 
 cd "$(dirname "$0")"
 
 APP_NAME="Pullcord"
 APP="./build/${APP_NAME}.app"
-PROFILE="${NOTARY_PROFILE:-pullcord}"
+PROFILE="${NOTARY_PROFILE:-grokcodile}"
 DIST="./dist"
 ZIP="${DIST}/${APP_NAME}-submit.zip"
 DMG="${DIST}/${APP_NAME}.dmg"
 
 if ! xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1; then
     echo "No notarytool credentials found for profile '${PROFILE}'."
-    echo "Run this once, then try again:"
+    echo "Run this once with your App Store Connect team key, then try again:"
     echo
     echo "  xcrun notarytool store-credentials ${PROFILE} \\"
-    echo "      --apple-id \"you@example.com\" --team-id 8UP5SFXY56"
+    echo "      --key ~/path/to/AuthKey_XXXXXXXXXX.p8 \\"
+    echo "      --key-id XXXXXXXXXX \\"
+    echo "      --issuer XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
     echo
     exit 1
 fi

@@ -126,13 +126,20 @@ That distinction matters for more than distribution: **macOS ties Accessibility 
 bash notarize.sh    # → ./dist/Pullcord.dmg, stapled
 ```
 
-Signing alone still leaves Gatekeeper showing the "unidentified developer" warning on someone else's Mac; notarizing is what clears it. One-time setup, which stores an app-specific password in your keychain:
+Signing alone still leaves Gatekeeper showing the "unidentified developer" warning on someone else's Mac; notarizing is what clears it. One-time setup, which stores the credential in your keychain:
 
 ```sh
-xcrun notarytool store-credentials pullcord --apple-id "you@example.com" --team-id YOURTEAMID
+xcrun notarytool store-credentials grokcodile \
+    --key ~/path/to/AuthKey_XXXXXXXXXX.p8 \
+    --key-id XXXXXXXXXX \
+    --issuer XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
 ```
 
-Make the app-specific password at [appleid.apple.com](https://appleid.apple.com) under Sign-In and Security — it isn't your Apple ID password. After that, `notarize.sh` builds, submits, waits for Apple, staples the ticket into the bundle, builds a disk image, notarizes that too, and leaves `dist/Pullcord.dmg`.
+That's the same App Store Connect API key CI uses, so local and CI authenticate as one identity and rotate together. Make one under **Users and Access → Integrations → App Store Connect API → Team Keys** with the **Developer** role — personal keys aren't eligible for the Notary API, and the `.p8` downloads only once.
+
+**The profile is named for the team, not the app.** The credential is an App Store Connect key for the whole account, so every app here shares this one profile; naming it after an app is how its predecessor ended up called `liteswitch` and went stale on a rename. `NOTARY_PROFILE` overrides it if you need a different one.
+
+After that, `notarize.sh` builds, submits, waits for Apple, staples the ticket into the bundle, builds a disk image, notarizes that too, and leaves `dist/Pullcord.dmg`.
 
 ### Cutting a release
 
@@ -157,7 +164,7 @@ It needs six repository secrets. Each step is skipped rather than failed when it
 | `AC_API_KEY_BASE64` | the `.p8` API key file, base64-encoded |
 | `TAP_PUSH_TOKEN` | a token with `contents:write` on `grokcodile/homebrew-tap` |
 
-Notarization uses an App Store Connect API key rather than an Apple ID and app-specific password: it's the non-interactive path, and it doesn't put an account password in CI.
+Notarization uses an App Store Connect API key rather than an Apple ID and app-specific password: it's the non-interactive path, it doesn't put an account password in CI, and it's revocable on its own without touching the Apple ID. It's the same key as the local `grokcodile` profile above — one credential to rotate, not two.
 
 ```sh
 base64 -i Certificates.p12 | gh secret set MACOS_CERT_P12_BASE64
