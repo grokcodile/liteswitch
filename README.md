@@ -83,7 +83,7 @@ New versions arrive with `brew upgrade --cask liteswitch`.
 
 ### Download the app
 
-1. Download the latest **[Liteswitch.dmg](https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.dmg)** (or browse [all releases](https://github.com/grokcodile/liteswitch/releases)).
+1. Download the latest **[Liteswitch.dmg](https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.dmg)** — 415 KB — (or browse [all releases](https://github.com/grokcodile/liteswitch/releases)).
 2. Open the `.dmg` and drag **Liteswitch** into your `Applications` folder.
 
 The released build is signed with a Developer ID and notarized by Apple, so it opens normally — no "unidentified developer" warning. macOS may show a one-time "downloaded from the Internet" confirmation; just click **Open**.
