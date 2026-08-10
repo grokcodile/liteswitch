@@ -10,7 +10,7 @@
 
 **The most powerful things macOS can do are often the hardest to reach — Liteswitch puts them at your fingertips.**
 
-<img src="docs/Screenshot.png" alt="The Liteswitch settings window: twelve tools grouped into Spotlight Panels, System Utilities and Text Tools, each with its keyboard shortcut" width="608"/>
+<img src="docs/Screenshot-dark.png" alt="The Liteswitch settings window: twelve tools grouped into Spotlight Panels, System Utilities and Text Tools, each with its keyboard shortcut" width="608"/>
 
 macOS ships the hard part and leaves out the key. Screen OCR, color sampling, sleep prevention, dictation, on-device text cleanup — the engines are all in the box, on-device, already paid for, and mostly a menu dive or a Settings pane away. That gap is a whole category of paid utilities: apps that bundle their own engine, or their own subscription, to sell you a keystroke. Liteswitch is a dozen of those keystrokes in one background agent — one Swift file, no dependencies, no menu bar item, no account, no subscription, nothing leaving your Mac.
 
