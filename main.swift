@@ -701,6 +701,12 @@ struct SpokenSelection: Equatable {
 // MARK: - App delegate
 
 /// Where the settings footer's update indicator is in its lifecycle.
+/// An NSButton that shows the pointing-hand cursor, so a bare label that happens
+/// to be clickable reads as clickable.
+final class LinkButton: NSButton {
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+}
+
 enum UpdateState {
     case upToDate      // running the latest release
     case available     // a newer release exists (DMG install → manual Update button)
@@ -838,13 +844,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // in the background; `applicationShouldHandleReopen` shows the window when
         // the user opens the already-running app again. (Key54 pattern.)
         if !launchedAsLoginItem {
-            showSettings()
-        }
-
-        // Look for a newer release now, then every 6 h while running.
-        checkForUpdate()
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
-            self?.checkForUpdate()
+            showSettings()   // checks for an update on its way in
+        } else {
+            // Starting silently at login is the one time nothing will ever bring
+            // the answer to you: no window now, and possibly not for weeks. So
+            // check once here, and raise the window only if something is actually
+            // pending — the update strip is the whole reason for showing it.
+            //
+            // Delayed so it lands *after* the login rush. Showing a window while
+            // other login items are still starting means whichever one activates
+            // next buries it, and the point is that this one is seen.
+            //
+            // This is the only place Liteswitch opens a window you didn't ask for,
+            // and it's confined to login on purpose: the same behaviour on a timer
+            // would interrupt work mid-session, which is why there's no polling.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+                self?.checkForUpdate { [weak self] _ in
+                    guard let self, self.updateState != .upToDate else { return }
+                    self.showSettings(checkingForUpdate: false)   // just checked
+                }
+            }
         }
     }
 
@@ -858,14 +877,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Newest release (no leading "v") when it's newer than ours, else nil.
     private(set) var latestVersion: String?
     private var updateStarting = false             // guards against a double Update click
-    private var updateTimer: Timer?
     private var updateWatchdog: Timer?
     let dmgURL = "https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.dmg"
-    /// Installed via the Homebrew cask? Its metadata lives in the Caskroom.
+    /// Installed via the Homebrew cask? Its metadata lives in the Caskroom — but
+    /// the Caskroom existing only says *a* Homebrew copy is around, not that it's
+    /// the one running. A build launched from anywhere but /Applications is a dev
+    /// build, and handing it to `brew upgrade` would overwrite the /Applications
+    /// copy (a different app) and then reopen this one — clobbering an install for
+    /// nothing.
     lazy var isHomebrewManaged: Bool = {
         let fm = FileManager.default
-        return fm.fileExists(atPath: "/opt/homebrew/Caskroom/liteswitch")
-            || fm.fileExists(atPath: "/usr/local/Caskroom/liteswitch")
+        let caskroom = fm.fileExists(atPath: "/opt/homebrew/Caskroom/liteswitch")
+                    || fm.fileExists(atPath: "/usr/local/Caskroom/liteswitch")
+        return caskroom && Bundle.main.bundlePath == "/Applications/Liteswitch.app"
     }()
 
     /// Ask GitHub for the latest release. Deliberately unthrottled — it fires on
@@ -875,19 +899,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// itself unasked.
     ///
     /// This is the app's only network request. Nothing is sent but the GET.
-    func checkForUpdate() {
+    /// `completion` reports whether GitHub actually answered, and always runs on
+    /// the main queue — the on-demand check needs to say "couldn't check" rather
+    /// than sit on "Checking…" forever, and `handleLatest` deliberately stays
+    /// silent when nothing changed, so it can't be used as the signal.
+    func checkForUpdate(completion: ((Bool) -> Void)? = nil) {
         guard let url = URL(string: "https://api.github.com/repos/grokcodile/liteswitch/releases/latest")
-        else { return }
+        else { completion?(false); return }
         var req = URLRequest(url: url)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 10
         Task { [weak self] in
             guard let (data, _) = try? await URLSession.shared.data(for: req),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tag = json["tag_name"] as? String else { return }
+                  let tag = json["tag_name"] as? String, let self else {
+                await MainActor.run { completion?(false) }
+                return
+            }
             let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-            guard let self else { return }
-            await MainActor.run { self.handleLatest(latest) }
+            await MainActor.run {
+                self.handleLatest(latest)
+                completion?(true)
+            }
         }
     }
 
@@ -954,6 +987,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pkill -x Liteswitch 2>/dev/null
         for i in $(seq 1 20); do pgrep -x Liteswitch >/dev/null || break; sleep 0.5; done
         "\(brew)" upgrade --cask liteswitch >/dev/null 2>&1
+        # Homebrew tags cask installs with com.apple.quarantine, and a quarantined
+        # app needs an interactive first launch to be approved. Liteswitch's first
+        # launch after a restart is launchd starting the login item — no user, no
+        # approval — so Gatekeeper refuses it with "Apple could not verify
+        # Liteswitch is free of malware" and the agent never comes back. Clearing
+        # the tag is what `brew install --cask --no-quarantine` does; the bundle is
+        # still signed, notarized and stapled. Must happen here rather than inside
+        # the app: macOS refuses the write for a bundle that's running.
+        xattr -dr com.apple.quarantine "\(bundle)" 2>/dev/null
         open "\(bundle)"
         """
         let path = NSTemporaryDirectory() + "liteswitch-update.sh"
@@ -1152,11 +1194,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    func showSettings() {
+    /// `checkingForUpdate` is only false when the caller has just checked — the
+    /// login-launch path, which opens this window precisely *because* it found
+    /// something. Re-asking there would be a second request for an answer already
+    /// in hand.
+    func showSettings(checkingForUpdate: Bool = true) {
         if settings == nil { settings = SettingsWindow(delegate: self) }
         settings?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        checkForUpdate()   // the strip shows fresh state whenever it's seen
+        if checkingForUpdate {
+            checkForUpdate()   // the strip shows fresh state whenever it's seen
+        }
     }
 
     // MARK: App tracking
@@ -3039,6 +3087,10 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var speakSetupWindow: SpeakSetupWindow?
     private var dictationSetupWindow: DictationSetupWindow?
     private var infoPopover: NSPopover?
+    /// The About popover's version line, which doubles as the update check. Weak
+    /// and re-set on every open — the popover is rebuilt from scratch each time, so
+    /// a check still running when it closes must not write to a dead view.
+    private weak var versionLabel: NSButton?
     private var pausedAppsWindow: PausedAppsWindow?
     private var instructionsWindow: InstructionsWindow?
 
@@ -3088,6 +3140,35 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         helpButton?.toolTip = "About Liteswitch"
     }
 
+    /// Render the version line, optionally with a trailing status. Same 11 pt
+    /// secondary style the plain label used, so the line doesn't shout — the
+    /// pointing-hand cursor and the tooltip are what say it's clickable.
+    private func setVersionLine(_ status: String?) {
+        guard let btn = versionLabel else { return }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let para = NSMutableParagraphStyle(); para.alignment = .center
+        btn.attributedTitle = NSAttributedString(
+            string: status.map { "Version \(version) · \($0)" } ?? "Version \(version)",
+            attributes: [.font: NSFont.systemFont(ofSize: 11),
+                         .foregroundColor: NSColor.secondaryLabelColor,
+                         .paragraphStyle: para])
+    }
+
+    /// Ask GitHub now, and report the answer on the line itself. When there *is* an
+    /// update, the settings window's strip owns the actual Update button — saying
+    /// so here rather than offering a second way to trigger it keeps one path.
+    @objc private func checkForUpdatesNow(_ sender: NSButton) {
+        setVersionLine("Checking…")
+        appDelegate?.checkForUpdate { [weak self] reachable in
+            guard let self else { return }
+            guard reachable else { setVersionLine("Couldn't check"); return }
+            switch appDelegate?.updateState ?? .upToDate {
+            case .upToDate: setVersionLine("Up to date")
+            default:        setVersionLine("Update available")
+            }
+        }
+    }
+
     @objc private func openMoreInfo(_ sender: NSButton) {
         let content = MoreInfo.makeContent(target: self,
                                            pause:   #selector(openPausedApps),
@@ -3095,7 +3176,10 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                                            website: #selector(openWebsite),
                                            issues:  #selector(openIssues),
                                            coffee:  #selector(openTipJar),
-                                           star:    #selector(openRepo))
+                                           star:    #selector(openRepo),
+                                           check:   #selector(checkForUpdatesNow(_:)))
+        versionLabel = content.viewWithTag(MoreInfo.versionTag) as? NSButton
+        setVersionLine(nil)
         let vc = NSViewController()
         vc.view = content
         let pop = NSPopover()
@@ -4046,9 +4130,15 @@ enum MoreInfo {
     ///
     /// Built bottom-up, the way AppKit lays out an unflipped view, so the
     /// popover is exactly as tall as its content and a copy change can't clip it.
+    /// Tag on the version line, so the caller can find it again to report a
+    /// check's progress. The popover is rebuilt on every open, so a stored
+    /// reference has to be re-fetched rather than kept.
+    static let versionTag = 9101
+
     static func makeContent(target: AnyObject, pause: Selector, guide: Selector,
                             website: Selector, issues: Selector,
-                            coffee: Selector, star: Selector) -> NSView {
+                            coffee: Selector, star: Selector,
+                            check: Selector) -> NSView {
         // Two gaps and nothing else: rowGap inside a group of buttons,
         // sectionGap between anything and the next thing. Every vertical
         // measurement below is one of those two, so the stack has a rhythm
@@ -4177,8 +4267,22 @@ enum MoreInfo {
         }
         centered("Liteswitch", nameY, nameH, size: 20, weight: .bold, color: .labelColor)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
-        centered("Version \(version)", versionY, versionH,
-                 size: 11, weight: .regular, color: .secondaryLabelColor)
+        // The version line doubles as the update check — it answers the question
+        // the version number raises. An action, not a preference: there's no
+        // setting for this and no background polling, so this and opening settings
+        // are the only two moments Liteswitch asks GitHub anything.
+        let versionBtn = LinkButton(title: "", target: target, action: check)
+        versionBtn.isBordered = false
+        versionBtn.toolTip = "Check for updates"
+        versionBtn.tag = versionTag
+        versionBtn.frame = NSRect(x: pad, y: versionY, width: innerW, height: versionH)
+        let vPara = NSMutableParagraphStyle(); vPara.alignment = .center
+        versionBtn.attributedTitle = NSAttributedString(
+            string: "Version \(version)",
+            attributes: [.font: NSFont.systemFont(ofSize: 11),
+                         .foregroundColor: NSColor.secondaryLabelColor,
+                         .paragraphStyle: vPara])
+        v.addSubview(versionBtn)
 
         tagline.frame = NSRect(x: pad, y: taglineY, width: innerW, height: taglineH)
         v.addSubview(tagline)
