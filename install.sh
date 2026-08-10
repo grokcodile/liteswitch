@@ -28,27 +28,6 @@ DEST="/Applications/${APP_NAME}.app"
 
 ./build.sh
 
-# The rename leaves a second app behind, and nothing below would touch it:
-# /Applications/Liteswitch.app is a different path with a different bundle id, so
-# the replace logic never sees it. It is still registered as a login item and still
-# installs the same global hotkeys, so leaving it there means two agents racing for
-# every shortcut — one keypress, two dictations. Retire it here.
-OLD_APP="/Applications/Liteswitch.app"
-OLD_BUNDLE_ID="com.ethan.liteswitch"
-if [ -e "$OLD_APP" ]; then
-    old_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \
-        "${OLD_APP}/Contents/Info.plist" 2>/dev/null || true)
-    if [ "$old_id" = "$OLD_BUNDLE_ID" ]; then
-        echo "Retiring the old Liteswitch install..."
-        pkill -ix "Liteswitch" 2>/dev/null || true
-        sleep 0.3
-        rm -rf "$OLD_APP"
-    else
-        # Same "never delete something that isn't ours" rule as below.
-        echo "Leaving ${OLD_APP} alone — bundle id '${old_id:-unreadable}'." >&2
-    fi
-fi
-
 # -i because the executable's case has varied across builds: same bundle as far as
 # this case-insensitive filesystem is concerned, different string as far as pkill is.
 if pgrep -ix "$APP_NAME" >/dev/null; then
