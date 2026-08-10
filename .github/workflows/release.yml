@@ -151,8 +151,12 @@ jobs:
           mkdir -p dist/dmgroot
           cp -R "build/Liteswitch.app" dist/dmgroot/
           ln -s /Applications dist/dmgroot/Applications
+          # -fs HFS+ is not cosmetic. Without it hdiutil now defaults to APFS,
+          # which lays an 11MB volume under 700KB of content and leaves its slack
+          # full of data that zlib then faithfully compresses — 47% of the
+          # published DMG was that. Same content on HFS+: 793KB → 420KB.
           hdiutil create -volname "Liteswitch" -srcfolder dist/dmgroot \
-            -ov -format UDZO "dist/Liteswitch.dmg"
+            -ov -fs "HFS+" -format UDZO "dist/Liteswitch.dmg"
 
       # The DMG needs notarizing too. Stapling the app (above) is what lets a
       # copy dragged out of the image launch offline; stapling the image is what
