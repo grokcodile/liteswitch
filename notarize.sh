@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds, notarizes and staples Liteswitch, then leaves a distributable disk
+# Builds, notarizes and staples Pullcord, then leaves a distributable disk
 # image in ./dist. Notarization is what stops Gatekeeper showing the
 # "unidentified developer" warning on someone else's Mac — the Developer ID
 # signature alone isn't enough.
@@ -10,7 +10,7 @@
 # One-time setup (this stores an app-specific password in your keychain, so it
 # has to be run by you rather than by a script):
 #
-#   xcrun notarytool store-credentials liteswitch \
+#   xcrun notarytool store-credentials pullcord \
 #       --apple-id "you@example.com" \
 #       --team-id 8UP5SFXY56
 #
@@ -20,9 +20,9 @@ set -e
 
 cd "$(dirname "$0")"
 
-APP_NAME="Liteswitch"
+APP_NAME="Pullcord"
 APP="./build/${APP_NAME}.app"
-PROFILE="${NOTARY_PROFILE:-liteswitch}"
+PROFILE="${NOTARY_PROFILE:-pullcord}"
 DIST="./dist"
 ZIP="${DIST}/${APP_NAME}-submit.zip"
 DMG="${DIST}/${APP_NAME}.dmg"

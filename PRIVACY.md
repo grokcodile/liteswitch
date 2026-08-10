@@ -2,13 +2,13 @@
 
 **Effective August 5, 2026**
 
-> **The short version:** Liteswitch collects no data. There are no accounts, no
+> **The short version:** Pullcord collects no data. There are no accounts, no
 > analytics, and no tracking — in the app or on the website. Everything you
 > configure, and everything it processes, stays on your Mac.
 
 ## The app
 
-- Liteswitch has no account system and no telemetry. It never collects, stores,
+- Pullcord has no account system and no telemetry. It never collects, stores,
   or transmits personal information.
 - There is no license check, no crash reporting, and no "anonymous usage
   statistics".
@@ -18,7 +18,7 @@
   applies. Opening Help, the source repository or the tip jar from the About
   popover hands the link to your browser.
 - Your settings — shortcuts, rewrite actions, color history, the list of apps
-  that pause Liteswitch — are stored locally in macOS's own preferences and
+  that pause Pullcord — are stored locally in macOS's own preferences and
   never leave your Mac.
 
 ### What the permissions are for
@@ -41,7 +41,7 @@ All three run on-device, and none of them send anything anywhere:
   server, no per-token cost — because nothing is sent.
 - **Capture Text** uses Apple's Vision framework for OCR, on your Mac.
 - **Dictate Text** adds a push-to-talk key on top of **macOS's own dictation**.
-  The transcription is performed by macOS, not by Liteswitch, and is governed by
+  The transcription is performed by macOS, not by Pullcord, and is governed by
   [Apple's privacy policy](https://www.apple.com/legal/privacy/) and your own
   dictation settings in System Settings.
 
@@ -63,15 +63,15 @@ If you choose to use them, these services have their own privacy policies:
 
 - **GitHub** — hosts the code, the releases, and the site.
 - **Homebrew** — if you install or update via `brew`.
-- **Ko-fi** — if you leave a tip. Liteswitch never sees any payment details.
+- **Ko-fi** — if you leave a tip. Pullcord never sees any payment details.
 
 ## Changes
 
 If this policy ever changes, the update will be posted here with a new
-effective date. Given what Liteswitch is — a small, open-source utility that
+effective date. Given what Pullcord is — a small, open-source utility that
 does its work on your Mac — don't expect much to change.
 
 ## Contact
 
-Questions? Email [liteswitch@ethans.email](mailto:liteswitch@ethans.email) or
-[open an issue](https://github.com/grokcodile/liteswitch/issues).
+Questions? Email [pullcord@ethans.email](mailto:pullcord@ethans.email) or
+[open an issue](https://github.com/grokcodile/pullcord/issues).

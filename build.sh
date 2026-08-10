@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds Liteswitch.app into ./build, signed with your Developer ID when there is
+# Builds Pullcord.app into ./build, signed with your Developer ID when there is
 # one. That matters for more than distribution: macOS ties Accessibility and
 # Screen Recording to the signing identity, so an ad-hoc build — which gets a new
 # identity every time — has to be re-granted after every rebuild. A stable
@@ -8,7 +8,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-APP_NAME="Liteswitch"
+APP_NAME="Pullcord"
 BUILD_DIR="./build/${APP_NAME}.app"
 
 # Use SIGN_IDENTITY if set, otherwise pick up a Developer ID from the keychain.

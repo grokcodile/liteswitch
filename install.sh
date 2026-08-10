@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds Liteswitch and installs it to /Applications, quitting and replacing whatever
+# Builds Pullcord and installs it to /Applications, quitting and replacing whatever
 # copy is already there. This is the one to run day to day.
 #
 # Running the app straight out of ./build seems fine and isn't: build.sh starts by
@@ -21,15 +21,36 @@ set -e
 
 cd "$(dirname "$0")"
 
-APP_NAME="Liteswitch"
-BUNDLE_ID="com.ethan.liteswitch"
+APP_NAME="Pullcord"
+BUNDLE_ID="com.ethan.pullcord"
 BUILT="./build/${APP_NAME}.app"
 DEST="/Applications/${APP_NAME}.app"
 
 ./build.sh
 
-# -i because an earlier build's executable was "LiteSwitch": same bundle as far as this
-# case-insensitive filesystem is concerned, different string as far as pkill is.
+# The rename leaves a second app behind, and nothing below would touch it:
+# /Applications/Liteswitch.app is a different path with a different bundle id, so
+# the replace logic never sees it. It is still registered as a login item and still
+# installs the same global hotkeys, so leaving it there means two agents racing for
+# every shortcut — one keypress, two dictations. Retire it here.
+OLD_APP="/Applications/Liteswitch.app"
+OLD_BUNDLE_ID="com.ethan.liteswitch"
+if [ -e "$OLD_APP" ]; then
+    old_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \
+        "${OLD_APP}/Contents/Info.plist" 2>/dev/null || true)
+    if [ "$old_id" = "$OLD_BUNDLE_ID" ]; then
+        echo "Retiring the old Liteswitch install..."
+        pkill -ix "Liteswitch" 2>/dev/null || true
+        sleep 0.3
+        rm -rf "$OLD_APP"
+    else
+        # Same "never delete something that isn't ours" rule as below.
+        echo "Leaving ${OLD_APP} alone — bundle id '${old_id:-unreadable}'." >&2
+    fi
+fi
+
+# -i because the executable's case has varied across builds: same bundle as far as
+# this case-insensitive filesystem is concerned, different string as far as pkill is.
 if pgrep -ix "$APP_NAME" >/dev/null; then
     echo "Quitting the running copy..."
     pkill -ix "$APP_NAME" || true
@@ -48,7 +69,7 @@ if pgrep -ix "$APP_NAME" >/dev/null; then
 fi
 
 # Replace rather than move onto: this filesystem is case-insensitive, so an older
-# /Applications/LiteSwitch.app IS this path, and `mv` onto an existing directory would
+# /Applications/Pullcord.app IS this path, and `mv` onto an existing directory would
 # nest the new bundle inside the old one instead of replacing it.
 if [ -e "$DEST" ]; then
     installed_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \

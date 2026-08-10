@@ -1,4 +1,4 @@
-# Liteswitch Help
+# Pullcord Help
 
 What each of the twelve tools does, and a couple of things to use it for.
 Grouped the way they appear in the settings window.

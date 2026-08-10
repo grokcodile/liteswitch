@@ -1,9 +1,9 @@
-// Liteswitch — flip any Spotlight panel on from anywhere.
+// Pullcord — flip any Spotlight panel on from anywhere.
 //
-// Liteswitch gives every Spotlight panel its own keyboard shortcut.
+// Pullcord gives every Spotlight panel its own keyboard shortcut.
 //
 // macOS 26 gave Spotlight four panels — Apps ⌘1, Files ⌘2, Actions ⌘3,
-// Clipboard ⌘4 — reachable only after opening Spotlight itself. Liteswitch lets
+// Clipboard ⌘4 — reachable only after opening Spotlight itself. Pullcord lets
 // you assign a global shortcut to each panel directly.
 //
 // How panels open:
@@ -86,7 +86,7 @@ func optionRows(_ panel: Panel) -> Int { isUtility(panel) ? 1 : 0 }
 func worksWithoutAX(_ panel: Panel) -> Bool {
     ["apps", "colorpicker", "colorhistory", "textcapture", "keepawake"].contains(panel.defaultsKey)
 }
-/// Speak Text owns no Liteswitch shortcut — it mirrors macOS's built-in "Speak
+/// Speak Text owns no Pullcord shortcut — it mirrors macOS's built-in "Speak
 /// selection" hotkey — so it registers nothing and its card shows a read-only
 /// field plus a Configure… button explaining how to switch that feature on.
 func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakclipboard" }
@@ -279,7 +279,7 @@ extension UserDefaults {
         set { set(newValue, forKey: "settingsToggle") }
     }
     /// Bundle ids of apps that should have the keyboard to themselves. While one
-    /// of them is in front, Liteswitch's shortcuts and its dictation hold key
+    /// of them is in front, Pullcord's shortcuts and its dictation hold key
     /// stand down — a safety net for apps that own the same chords, and for
     /// anything that takes the whole keyboard like a remote session or a game.
     var pausedApps: [String] {
@@ -675,7 +675,7 @@ struct Shortcut: Equatable {
 }
 
 /// A read-only view of macOS's built-in "Speak selection" hotkey (System
-/// Settings → Accessibility → Read & Speak). Liteswitch doesn't own this
+/// Settings → Accessibility → Read & Speak). Pullcord doesn't own this
 /// shortcut; the Speak Text card only reflects whatever macOS has assigned.
 struct SpokenSelection: Equatable {
     let enabled: Bool
@@ -688,7 +688,7 @@ struct SpokenSelection: Equatable {
         return SpokenSelection(enabled: enabled, shortcut: combo.map(describe))
     }
 
-    /// The combo integer is exactly Liteswitch's own Shortcut layout — Carbon
+    /// The combo integer is exactly Pullcord's own Shortcut layout — Carbon
     /// modifier masks OR'd onto the virtual key code (cmdKey 0x100, shiftKey
     /// 0x200, optionKey 0x800, controlKey 0x1000) — so build a Shortcut and reuse
     /// its label, keeping one formatter. e.g. 4149 = 0x1035 → ⌃ esc.
@@ -855,7 +855,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // other login items are still starting means whichever one activates
             // next buries it, and the point is that this one is seen.
             //
-            // This is the only place Liteswitch opens a window you didn't ask for,
+            // This is the only place Pullcord opens a window you didn't ask for,
             // and it's confined to login on purpose: the same behaviour on a timer
             // would interrupt work mid-session, which is why there's no polling.
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
@@ -878,7 +878,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var latestVersion: String?
     private var updateStarting = false             // guards against a double Update click
     private var updateWatchdog: Timer?
-    let dmgURL = "https://github.com/grokcodile/liteswitch/releases/latest/download/Liteswitch.dmg"
+    let dmgURL = "https://github.com/grokcodile/pullcord/releases/latest/download/Pullcord.dmg"
     /// Installed via the Homebrew cask? Its metadata lives in the Caskroom — but
     /// the Caskroom existing only says *a* Homebrew copy is around, not that it's
     /// the one running. A build launched from anywhere but /Applications is a dev
@@ -887,9 +887,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// nothing.
     lazy var isHomebrewManaged: Bool = {
         let fm = FileManager.default
-        let caskroom = fm.fileExists(atPath: "/opt/homebrew/Caskroom/liteswitch")
-                    || fm.fileExists(atPath: "/usr/local/Caskroom/liteswitch")
-        return caskroom && Bundle.main.bundlePath == "/Applications/Liteswitch.app"
+        let caskroom = fm.fileExists(atPath: "/opt/homebrew/Caskroom/pullcord")
+                    || fm.fileExists(atPath: "/usr/local/Caskroom/pullcord")
+        return caskroom && Bundle.main.bundlePath == "/Applications/Pullcord.app"
     }()
 
     /// Ask GitHub for the latest release. Deliberately unthrottled — it fires on
@@ -904,7 +904,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// than sit on "Checking…" forever, and `handleLatest` deliberately stays
     /// silent when nothing changed, so it can't be used as the signal.
     func checkForUpdate(completion: ((Bool) -> Void)? = nil) {
-        guard let url = URL(string: "https://api.github.com/repos/grokcodile/liteswitch/releases/latest")
+        guard let url = URL(string: "https://api.github.com/repos/grokcodile/pullcord/releases/latest")
         else { completion?(false); return }
         var req = URLRequest(url: url)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -938,7 +938,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings?.refreshUpdateFooter()
     }
 
-    /// The footer's Update button. Runs the right update for how Liteswitch was
+    /// The footer's Update button. Runs the right update for how Pullcord was
     /// installed: the Homebrew helper, or the DMG download.
     @objc func performUpdate() {
         if isHomebrewManaged { startHomebrewUpdate() } else { downloadUpdate() }
@@ -983,22 +983,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #!/bin/sh
         export PATH="\(brewBin):/usr/bin:/bin:/usr/sbin:/sbin"
         "\(brew)" update >/dev/null 2>&1
-        "\(brew)" fetch --cask liteswitch >/dev/null 2>&1
-        pkill -x Liteswitch 2>/dev/null
-        for i in $(seq 1 20); do pgrep -x Liteswitch >/dev/null || break; sleep 0.5; done
-        "\(brew)" upgrade --cask liteswitch >/dev/null 2>&1
+        "\(brew)" fetch --cask pullcord >/dev/null 2>&1
+        pkill -x Pullcord 2>/dev/null
+        for i in $(seq 1 20); do pgrep -x Pullcord >/dev/null || break; sleep 0.5; done
+        "\(brew)" upgrade --cask pullcord >/dev/null 2>&1
         # Homebrew tags cask installs with com.apple.quarantine, and a quarantined
-        # app needs an interactive first launch to be approved. Liteswitch's first
+        # app needs an interactive first launch to be approved. Pullcord's first
         # launch after a restart is launchd starting the login item — no user, no
         # approval — so Gatekeeper refuses it with "Apple could not verify
-        # Liteswitch is free of malware" and the agent never comes back. Clearing
+        # Pullcord is free of malware" and the agent never comes back. Clearing
         # the tag is what `brew install --cask --no-quarantine` does; the bundle is
         # still signed, notarized and stapled. Must happen here rather than inside
         # the app: macOS refuses the write for a bundle that's running.
         xattr -dr com.apple.quarantine "\(bundle)" 2>/dev/null
         open "\(bundle)"
         """
-        let path = NSTemporaryDirectory() + "liteswitch-update.sh"
+        let path = NSTemporaryDirectory() + "pullcord-update.sh"
         do {
             try script.write(toFile: path, atomically: true, encoding: .utf8)
             let p = Process()
@@ -1046,7 +1046,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateState = .downloading
         settings?.refreshUpdateFooter()
         let dest = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Downloads/Liteswitch.dmg")
+            .appendingPathComponent("Downloads/Pullcord.dmg")
         Task { [weak self] in
             do {
                 let (tmp, _) = try await URLSession.shared.download(from: url)
@@ -1076,7 +1076,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Sent by a duplicate on its way out, so the copy that's staying brings up
     /// settings — otherwise opening the app would look like nothing happened.
     private static let showSettingsNotification =
-        NSNotification.Name("com.ethan.liteswitch.showSettings")
+        NSNotification.Name("com.ethan.pullcord.showSettings")
 
     @objc private func showSettingsForDuplicateLaunch() { showSettings() }
 
@@ -2081,7 +2081,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// input anywhere in that window breaks the sequence, so chords (⌃C, and
     /// ⌃A ⌃C in a row) and ⌃-clicks never fire a rewrite by accident.
     ///
-    /// Global monitors only: taps while Liteswitch's own windows are in front
+    /// Global monitors only: taps while Pullcord's own windows are in front
     /// are ignored, since there is no foreign selection to rewrite.
     func syncRewriteTapMonitor() {
         for m in rewriteTapMonitors { NSEvent.removeMonitor(m) }
@@ -2641,11 +2641,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Capture Text: the system's own crosshair region selector
     /// (`/usr/sbin/screencapture -i`) writes a PNG, which Vision OCRs; the text
     /// lands on the clipboard with a confirmation pill. screencapture reads the
-    /// screen in its own process, so Liteswitch needs no Screen Recording grant.
+    /// screen in its own process, so Pullcord needs no Screen Recording grant.
     /// A canceled selection (Esc) writes no file and is a silent no-op.
     func captureText() {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("liteswitch-ocr-\(UUID().uuidString).png")
+            .appendingPathComponent("pullcord-ocr-\(UUID().uuidString).png")
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         task.arguments = ["-i", "-x", url.path]   // interactive region, silent
@@ -2704,7 +2704,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Toggle a power assertion that blocks sleep (what `caffeinate` does). Its
     /// type depends on the "Screen Sleep" option: keep the whole system awake,
     /// or keep it awake but still let the display sleep. Released automatically
-    /// if Liteswitch quits, so it can never orphan. No permission needed.
+    /// if Pullcord quits, so it can never orphan. No permission needed.
     @objc func toggleKeepAwake() {
         if keepAwakeAssertion != 0 {
             IOPMAssertionRelease(keepAwakeAssertion)
@@ -2733,12 +2733,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             : kIOPMAssertionTypePreventUserIdleDisplaySleep   // display stays awake too
         var id: IOPMAssertionID = 0
         if IOPMAssertionCreateWithName(type as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                       "Liteswitch Keep Awake" as CFString, &id) == kIOReturnSuccess {
+                                       "Pullcord Keep Awake" as CFString, &id) == kIOReturnSuccess {
             keepAwakeAssertion = id
         }
     }
 
-    /// A menu-bar cup that appears only while sleep is blocked (Liteswitch is
+    /// A menu-bar cup that appears only while sleep is blocked (Pullcord is
     /// otherwise menu-bar-less) — a persistent indicator, click it to turn off.
     private func updateKeepAwakeIndicator() {
         if keepAwakeAssertion != 0 {
@@ -2747,7 +2747,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let img = NSImage(systemSymbolName: "mug.fill", accessibilityDescription: "Keep Awake")
             img?.isTemplate = true
             item.button?.image = img
-            item.button?.toolTip = "Liteswitch Keep Awake is on — click to turn off"
+            item.button?.toolTip = "Pullcord Keep Awake is on — click to turn off"
             item.button?.target = self
             item.button?.action = #selector(toggleKeepAwake)
             keepAwakeStatusItem = item
@@ -2806,7 +2806,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         synthesizing = true
         syncHotkeys()
         post(CGKeyCode(kVK_Space), .maskCommand)
-        // Undocumented escape hatch: `defaults write com.ethan.liteswitch
+        // Undocumented escape hatch: `defaults write com.ethan.pullcord
         // panelDelay 0.08` if a machine needs longer between ⌘Space and ⌘N.
         // Clamped, because a stray value here would park the panel keys.
         let gap = (UserDefaults.standard.object(forKey: "panelDelay")
@@ -3135,9 +3135,9 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
     private func syncHelpButton() {
         helpButton?.image = NSImage(systemSymbolName: "info.circle",
-                                    accessibilityDescription: "About Liteswitch")?
+                                    accessibilityDescription: "About Pullcord")?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
-        helpButton?.toolTip = "About Liteswitch"
+        helpButton?.toolTip = "About Pullcord"
     }
 
     /// Render the version line, optionally with a trailing status. Same 11 pt
@@ -3304,7 +3304,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         var yTop = H - topMargin
 
         yTop -= titleTextH
-        let titleLabel = NSTextField(labelWithString: "Liteswitch")
+        let titleLabel = NSTextField(labelWithString: "Pullcord")
         titleLabel.font = .systemFont(ofSize: 28, weight: .bold)
         titleLabel.alignment = .center
         titleLabel.frame = NSRect(x: pad, y: yTop, width: winW - pad * 2, height: titleTextH)
@@ -3325,8 +3325,8 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let swGap: CGFloat = 8
         let groupX = (winW - (capW + swGap + swW)) / 2
         let switchTip = enabled
-            ? "Shortcuts are live and Liteswitch starts at login. Off releases both."
-            : "No shortcuts fire and Liteswitch won't start at login. On restores both."
+            ? "Shortcuts are live and Pullcord starts at login. Off releases both."
+            : "No shortcuts fire and Pullcord won't start at login. On restores both."
         capLabel.toolTip = switchTip
         sw.toolTip = switchTip
         capLabel.frame = NSRect(x: groupX, y: yTop + (switchRowH - capH) / 2, width: capW, height: capH)
@@ -3771,7 +3771,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     /// "System Permissions:" label on one gray, the permission lights on a
     /// second gray. Each light is a green dot when granted, or a red, underlined
     /// link when not — clicking fires the real macOS request (prompting the user
-    /// and adding Liteswitch to that permission's list). Nothing here blocks the
+    /// and adding Pullcord to that permission's list). Nothing here blocks the
     /// app. Sits vertically centered in the [rowY, rowY+rowH] slot.
     private func addPermissionPill(hasAX: Bool, hasScreenRec: Bool, rowY: CGFloat, rowH: CGFloat, in v: NSView) {
         let pillH: CGFloat = 22, segPad: CGFloat = 11, itemGap: CGFloat = 16
@@ -3848,7 +3848,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     /// Fire the real macOS permission requests — each prompts the user and adds
-    /// Liteswitch to that permission's list in System Settings.
+    /// Pullcord to that permission's list in System Settings.
     @objc private func grantAccessibility() { appDelegate?.promptForAccessibility() }
     @objc private func grantScreenRecording() { _ = CGRequestScreenCaptureAccess() }
 
@@ -3978,7 +3978,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 ///
 /// A safety net rather than a setting most people will touch: some apps own the
 /// same chords, and some — a remote session, a game, a virtual machine — want
-/// every key. Liteswitch unregisters while one of them is frontmost, so there is
+/// every key. Pullcord unregisters while one of them is frontmost, so there is
 /// nothing to shadow the app's own bindings, and takes the keys back on the way
 /// out.
 final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelegate {
@@ -3998,7 +3998,7 @@ final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelega
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
         let intro = NSTextField(wrappingLabelWithString:
-            "Liteswitch shortcuts will be disabled when using these apps.")
+            "Pullcord shortcuts will be disabled when using these apps.")
         intro.font = .systemFont(ofSize: 11)
         intro.textColor = .secondaryLabelColor
         intro.preferredMaxLayoutWidth = w - pad * 2
@@ -4076,7 +4076,7 @@ final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelega
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.prompt = "Add"
-        panel.message = "Choose apps to disable Liteswitch in."
+        panel.message = "Choose apps to disable Pullcord in."
         panel.beginSheetModal(for: self) { [weak self] response in
             guard let self, response == .OK else { return }
             for url in panel.urls {
@@ -4116,15 +4116,15 @@ final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelega
 enum MoreInfo {
     /// blob/HEAD rather than blob/main: HEAD resolves to whatever the default
     /// branch is called, so the link survives the repo being made with either.
-    static let repoURL   = "https://github.com/grokcodile/liteswitch"
-    static let helpURL   = "https://github.com/grokcodile/liteswitch/blob/HEAD/HELP.md"
-    static let issuesURL = "https://github.com/grokcodile/liteswitch/issues"
-    static let siteURL   = "https://grokcodile.github.io/liteswitch/"
+    static let repoURL   = "https://github.com/grokcodile/pullcord"
+    static let helpURL   = "https://github.com/grokcodile/pullcord/blob/HEAD/HELP.md"
+    static let issuesURL = "https://github.com/grokcodile/pullcord/issues"
+    static let siteURL   = "https://pullcord.app"
     static let tipURL    = "https://ko-fi.com/grokcodile"
 
     /// The About popover, hung off the titlebar ⓘ: app icon, name, version, the
     /// one setting that lives here, the places to go for help, then the "it's
-    /// free…" lead-in and the two ways to support Liteswitch. Every row is one
+    /// free…" lead-in and the two ways to support Pullcord. Every row is one
     /// symbol-led button; what it does for you is a tooltip, so the stack stays
     /// a column of actions rather than a wall of copy. (Key54's convention.)
     ///
@@ -4171,7 +4171,7 @@ enum MoreInfo {
             ("Bug Report", "ladybug", "Submit a support ticket",         issuesURL, issues),
             ("User Guide", "book",    "View help and app documentation", helpURL,   guide),
             // Deliberately doesn't name the address: it's on the line below.
-            ("Website",    "globe",   "Learn more about Liteswitch",     siteURL,   website),
+            ("Website",    "globe",   "Learn more about Pullcord",     siteURL,   website),
         ]
         // Sits between the links and the support section: it changes what the
         // app does rather than opening something, so it doesn't belong in the
@@ -4179,7 +4179,7 @@ enum MoreInfo {
         // marks it out — it needs no heading to say so.
         let settings: [Row] = [
             ("Protected Apps", "hand.raised",
-             "Disable Liteswitch when using these apps", nil, pause),
+             "Disable Pullcord when using these apps", nil, pause),
         ]
 
         // The two wrapped blocks are the only content-dependent heights —
@@ -4187,7 +4187,7 @@ enum MoreInfo {
         // from them, so a copy change can't clip the popover.
         let tagline = NSTextField(wrappingLabelWithString:
             "The most powerful things macOS can do are often the hardest to reach "
-            + "— Liteswitch puts them at your fingertips.")
+            + "— Pullcord puts them at your fingertips.")
         tagline.font = .systemFont(ofSize: 12)
         tagline.textColor = .secondaryLabelColor
         tagline.alignment = .center
@@ -4195,7 +4195,7 @@ enum MoreInfo {
             NSSize(width: innerW, height: .greatestFiniteMagnitude)).height)
 
         let body = NSTextField(wrappingLabelWithString:
-            "Liteswitch is 100% free.\nIf it's earned a spot on your Mac…")
+            "Pullcord is 100% free.\nIf it's earned a spot on your Mac…")
         body.font = .systemFont(ofSize: NSFont.systemFontSize - 1)
         body.textColor = .secondaryLabelColor
         body.alignment = .center
@@ -4265,12 +4265,12 @@ enum MoreInfo {
             f.frame = NSRect(x: pad, y: y, width: innerW, height: height)
             v.addSubview(f)
         }
-        centered("Liteswitch", nameY, nameH, size: 20, weight: .bold, color: .labelColor)
+        centered("Pullcord", nameY, nameH, size: 20, weight: .bold, color: .labelColor)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
         // The version line doubles as the update check — it answers the question
         // the version number raises. An action, not a preference: there's no
         // setting for this and no background polling, so this and opening settings
-        // are the only two moments Liteswitch asks GitHub anything.
+        // are the only two moments Pullcord asks GitHub anything.
         let versionBtn = LinkButton(title: "", target: target, action: check)
         versionBtn.isBordered = false
         versionBtn.toolTip = "Check for updates"
@@ -5244,7 +5244,7 @@ final class ColorHistoryPanel: NSPanel, NSTextFieldDelegate {
     /// only close via its close button (Esc still just ends a rename edit).
     override func cancelOperation(_ sender: Any?) {}
 
-    /// Liteswitch is a menu-bar-less agent, so there's no File menu to supply
+    /// Pullcord is a menu-bar-less agent, so there's no File menu to supply
     /// ⌘W — wire it up here.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
