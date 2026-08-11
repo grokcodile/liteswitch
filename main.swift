@@ -1451,8 +1451,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Rewrite Text
 
     /// Rewrite the selection in place: copy it, run it through the on-device
-    /// model with the user's instructions, and paste the result back. The
-    /// clipboard is borrowed for the round trip and put back afterwards.
+    /// model with the user's instructions, and paste the result back.
+    ///
+    /// The clipboard is borrowed for the round trip, and put back only on the
+    /// paths that give up. When the rewrite lands, the rewritten text stays on
+    /// the clipboard: it is the thing the user just asked to be made, the paste
+    /// has collapsed the selection so ⌘C cannot reach it, and the edit itself is
+    /// undoable either way. Restoring the old text there was tidy and useless.
     ///
     /// With nothing selected, it takes the whole field — ⌘A then copy — so the
     /// shortcut does something useful when you just want the thing you're looking
@@ -1707,11 +1712,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.endRewriting()
                 return
             }
+            // The rewritten text stays. Putting the old clipboard back was the
+            // tidy thing to do while the paste was only a means to an end, but it
+            // threw away the one piece of text the user just asked to be made —
+            // and left ⌘C, which needs a selection the paste has just collapsed,
+            // as the only way to get it. The text change is undoable; the
+            // clipboard write is what makes the result reachable at all.
+            //
+            // Still written through setClipboardQuietly, so it carries the
+            // transient markers and clipboard managers leave it out of their
+            // history: on the clipboard to paste, not filed as something copied.
             Self.setClipboardQuietly(outgoing, on: pb)
-            let ours = pb.changeCount
             self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                Self.restoreClipboard(saved, on: pb, onlyIfUnchangedFrom: ours)
                 self.endRewriting()
             }
         }
@@ -1813,15 +1826,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// already in the history from when it was really copied.
     /// Put back the clipboard the rewrite borrowed.
     ///
-    /// `onlyIfUnchangedFrom` is the changeCount this app last wrote. If it has
-    /// moved, something else has written since — almost always the user pressing
-    /// ⌘C while the model was thinking — and putting the old text back would
-    /// silently throw their copy away. Borrowing the clipboard is only polite if
-    /// you give it back to the same owner you took it from.
-    private static func restoreClipboard(_ saved: String?, on pb: NSPasteboard,
-                                         onlyIfUnchangedFrom ours: Int? = nil) {
+    /// Only for the paths that give up. A rewrite that lands leaves its own text
+    /// on the clipboard instead — see `rewriteSelection`.
+    private static func restoreClipboard(_ saved: String?, on pb: NSPasteboard) {
         guard let saved else { return }
-        if let ours, pb.changeCount != ours { return }
         setClipboardQuietly(saved, on: pb)
     }
 
