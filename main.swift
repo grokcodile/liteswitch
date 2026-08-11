@@ -4969,10 +4969,22 @@ final class ProcessingDotsView: NSView {
 final class HUD {
     private var panel: NSPanel?
     private var hideTimer: Timer?
+    private var stickyWatchdog: Timer?
     private weak var waveform: WaveformView?
     private weak var working: ProcessingDotsView?
     private var chrome: NSVisualEffectView?
     private let panelH: CGFloat = 42, padH: CGFloat = 18, gap: CGFloat = 10
+    /// Bumped by every present, hide and dismiss. The morph runs as three
+    /// chained animations across about 0.4s, which is long enough for the next
+    /// pill to arrive mid-flight — `stopDictation` does exactly that, showing
+    /// the working dots and then a result one runloop turn later. Each stage
+    /// checks it is still the current generation and gives up if it is not.
+    /// Without this, two chains both add their content to the shell and both
+    /// animate the panel frame, so the pill ends up showing two states at once,
+    /// clipped to the wrong width — and, because only the last stage schedules
+    /// the auto-hide, a superseded chain can leave the pill up with no timer
+    /// at all until the app restarts.
+    private var generation = 0
 
     /// Swatch dot in the sampled color + the copied code (Color Picker).
     func showColor(code: String, color: NSColor) {
@@ -5085,6 +5097,8 @@ final class HUD {
 
     private func present(_ content: NSView, width: CGFloat, sticky: Bool = false) {
         hideTimer?.invalidate()
+        generation &+= 1
+        let gen = generation
         let p = panel ?? makePanel()
         // A pill already on screen reports its new state in place rather than
         // being replaced. Rewriting shows a narrow dot row and finishes with a
@@ -5125,21 +5139,28 @@ final class HUD {
                 ctx.duration = 0.10
                 outgoing.forEach { $0.animator().alphaValue = 0 }
             }, completionHandler: { [weak self] in
-                outgoing.forEach { $0.removeFromSuperview() }
+                guard let self, gen == self.generation else { return }
+                // Every subview, not just the set captured when this chain
+                // started: a chain we superseded may have added content after
+                // that snapshot was taken, and leaving it here is what put two
+                // pills' worth of state on screen at once.
+                shell.subviews.forEach { $0.removeFromSuperview() }
                 shell.addSubview(content)
                 NSAnimationContext.runAnimationGroup({ ctx in
                     ctx.duration = 0.16
                     ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                     p.animator().setFrame(target, display: true)
                 }, completionHandler: { [weak self] in
+                    guard let self, gen == self.generation else { return }
                     NSAnimationContext.runAnimationGroup({ ctx in
                         ctx.duration = 0.14
                         content.animator().alphaValue = 1
-                    }, completionHandler: {
+                    }, completionHandler: { [weak self] in
+                        guard let self, gen == self.generation else { return }
                         // Only now start the dwell, so a confirmation gets its
                         // full read time rather than spending a third of it
                         // arriving.
-                        self?.scheduleHide(sticky: sticky)
+                        self.scheduleHide(sticky: sticky)
                     })
                 })
             })
@@ -5159,9 +5180,29 @@ final class HUD {
         scheduleHide(sticky: sticky)
     }
 
+    /// A sticky pill has no dwell: it waits to be replaced or hidden by whatever
+    /// started it. That is right — dictation and the model both run for an
+    /// unknown length of time — but it means a stop path that never runs leaves
+    /// the pill on screen with nothing scheduled to take it down, and the only
+    /// cure is relaunching the app.
+    ///
+    /// So sticky gets a watchdog instead of a dwell. Two minutes is deliberately
+    /// far past any real case: dictation is hold-to-talk, and rewriting or OCR
+    /// is seconds. If it ever fires, something upstream failed to clean up, and
+    /// losing the indicator is the better failure — the work itself carries on,
+    /// and the text still lands.
+    private static let stickyMaxLifetime: TimeInterval = 120
+
     private func scheduleHide(sticky: Bool) {
         hideTimer?.invalidate()
-        guard !sticky else { return }
+        stickyWatchdog?.invalidate()
+        guard !sticky else {
+            stickyWatchdog = Timer.scheduledTimer(
+                withTimeInterval: Self.stickyMaxLifetime, repeats: false) { [weak self] _ in
+                self?.dismiss()
+            }
+            return
+        }
         hideTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: false) { [weak self] _ in
             self?.dismiss()
         }
@@ -5172,6 +5213,11 @@ final class HUD {
         // retained view redrawing 30 times a second forever.
         waveform?.stop()
         working?.stop()
+        stickyWatchdog?.invalidate()
+        stickyWatchdog = nil
+        // Retire any morph still in flight, so a stage landing during the
+        // fade-out cannot set the frame or fade content back in behind it.
+        generation &+= 1
         guard let p = panel else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.35
