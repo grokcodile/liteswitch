@@ -192,15 +192,17 @@ Nothing needs setting up in advance: macOS prompts the first time a shortcut nee
 
 ## Shortcuts
 
-A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a key under your right hand**:
+A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a key under your right hand**, with Clipboard as the one exception:
 
 | | | | |
 |---|---|---|---|
-| ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘V Clipboard |
+| ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | **⇧⌘V Clipboard** |
 | ⌃⌥⌘, System Settings | ⌃⌥⌘K Keep Awake | ⌃⌥⌘P Color Picker | ⌃⌥⌘H Color History |
 | Speak Text: macOS's own | ⌃⌥⌘O Capture Text | Rewrite Text: **tap ⌃ twice** | Hold **Right ⌥** to dictate |
 
 Three modifiers look heavy written down, but the left hand takes them as one shape and never moves, so every trigger key sits under the right — no chord crosses the keyboard. It's also the one combination nothing else claims: ⌃ alone hits the text-editing bindings macOS puts in every field (⌃A, ⌃K, ⌃H), ⌥ alone eats the character it would otherwise type, and ⌘ belongs to whatever app is frontmost.
+
+Clipboard history breaks that rule on purpose. It's the one tool you reach for without thinking, and **⇧⌘V** is where thinking-free already points — one modifier away from the paste key it extends. The trade is that ⇧⌘V, unlike ⌃⌥⌘, *is* claimed by some apps; where it is, the frontmost app wins and the panel won't open. Record a different combo for it there.
 
 Every key earns its place. **`/` finds and `\` does** — mirrored symbols, one for paths, one for escapes. **`,`** is the preferences key every Mac app already uses, **`V`** the paste key for the paste history. The rest are initials: **L**oupe, **H**istory, **K**eep awake, **O**CR, **P**roofread.
 

@@ -95,7 +95,8 @@ func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakcli
 /// reads out the tap instead of offering a field.
 func usesTapKey(_ panel: Panel) -> Bool { panel.defaultsKey == "rewrite" }
 
-/// What a fresh install starts with: ⌃⌥⌘ plus a key under your right hand.
+/// What a fresh install starts with: ⌃⌥⌘ plus a key under your right hand,
+/// with one deliberate exception noted below.
 ///
 /// Three modifiers look heavy written down, but the left hand takes them as one
 /// shape and never moves, which leaves every trigger key on the right — no chord
@@ -109,18 +110,26 @@ func usesTapKey(_ panel: Panel) -> Bool { panel.defaultsKey == "rewrite" }
 /// for escapes. `,` is the preferences key every Mac app already uses. `'` is
 /// quoted text. The rest are initials: Loupe, History, Keep awake, OCR.
 ///
+/// Clipboard is the one exception, on ⇧⌘V. It is the tool people reach for by
+/// muscle memory rather than by looking it up, and ⇧⌘V is where that muscle
+/// memory already points — it is close enough to ⌘V to be guessed. The cost is
+/// real and accepted: unlike ⌃⌥⌘, ⇧⌘V is claimed by some apps, and where it is,
+/// the frontmost app wins and this shortcut will not fire. Rerecord it there.
+///
 /// Only ever applied to a tool with no shortcut of its own — see
 /// `seedDefaultShortcutsIfNeeded`.
-let defaultShortcuts: [String: UInt32] = [   // virtual key codes; all take ⌃⌥⌘
-    "apps": 47,           // .        panel 1
-    "files": 44,          // /        panel 2 — the path separator: finding
-    "actions": 42,        // \        panel 3 — the escape: doing
-    "clipboard": 9,       // V        the paste key, for the paste history
-    "settings": 43,       // ,        the preferences key
-    "colorpicker": 35,    // P        Picker
-    "colorhistory": 4,    // H        History
-    "keepawake": 40,      // K        Keep awake
-    "textcapture": 31,    // O        OCR
+let rightHandChord = UInt32(controlKey | optionKey | cmdKey)
+
+let defaultShortcuts: [String: (code: UInt32, modifiers: UInt32)] = [   // virtual key codes
+    "apps": (47, rightHandChord),           // .        panel 1
+    "files": (44, rightHandChord),          // /        panel 2 — the path separator: finding
+    "actions": (42, rightHandChord),        // \        panel 3 — the escape: doing
+    "clipboard": (9, UInt32(shiftKey | cmdKey)),   // ⇧⌘V   the paste key, for the paste history
+    "settings": (43, rightHandChord),       // ,        the preferences key
+    "colorpicker": (35, rightHandChord),    // P        Picker
+    "colorhistory": (4, rightHandChord),    // H        History
+    "keepawake": (40, rightHandChord),      // K        Keep awake
+    "textcapture": (31, rightHandChord),    // O        OCR
     // Rewrite Text deliberately has no default: it is triggered by double-tapping
     // ⌃ (see `syncRewriteTapMonitor`), and every rewrite action can carry a
     // shortcut of its own.
@@ -1171,8 +1180,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !d.bool(forKey: "didSeedShortcuts") else { return }
         d.set(true, forKey: "didSeedShortcuts")
         for panel in panels where Shortcut.load(panel) == nil {
-            guard let code = defaultShortcuts[panel.defaultsKey] else { continue }
-            Shortcut.save(Shortcut(keyCode: code, modifiers: UInt32(controlKey | optionKey | cmdKey)), panel)
+            guard let def = defaultShortcuts[panel.defaultsKey] else { continue }
+            Shortcut.save(Shortcut(keyCode: def.code, modifiers: def.modifiers), panel)
         }
     }
 
