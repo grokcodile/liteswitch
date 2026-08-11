@@ -1711,7 +1711,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ours = pb.changeCount
             self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                self.reselectPastedText(length: outgoing.utf16.count)
                 Self.restoreClipboard(saved, on: pb, onlyIfUnchangedFrom: ours)
                 self.endRewriting()
             }
@@ -2651,35 +2650,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the frontmost app's write, so it can't be marked transient from here and
     /// turns up in clipboard history. Plenty of apps won't answer — Notes exposes
     /// no focused element at all — hence the fallback rather than a replacement.
-    /// Leave the replacement selected, the way the original was.
-    ///
-    /// The rewrite ends on ⌘V, and a paste parks the caret at the end of what it
-    /// inserted with nothing selected — a change of state nobody asked for, since
-    /// the text *was* selected when the rewrite was triggered. It also breaks the
-    /// one shortcut that needs a selection: ⌘C answers with the system beep and
-    /// copies nothing, while ⌘V, ⌘Z and ⌘A carry on working. That asymmetry is
-    /// what makes it look like copy specifically has broken.
-    ///
-    /// Only acts on a collapsed caret. If the app left a selection of its own,
-    /// that is a better guess than ours and it stands. Apps with no settable
-    /// range keep today's behaviour rather than getting something worse.
-    private func reselectPastedText(length: Int) {
-        guard length > 0, let element = focusedTextElement() else { return }
-        var rangeRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element,
-                                            kAXSelectedTextRangeAttribute as CFString,
-                                            &rangeRef) == .success,
-              let rangeValue = rangeRef, CFGetTypeID(rangeValue) == AXValueGetTypeID()
-        else { return }
-        var caret = CFRange()
-        guard AXValueGetValue(rangeValue as! AXValue, .cfRange, &caret),
-              caret.length == 0, caret.location >= length
-        else { return }
-        var selection = CFRange(location: caret.location - length, length: length)
-        guard let value = AXValueCreate(.cfRange, &selection) else { return }
-        AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
-    }
-
     private func selectedTextViaAX() -> String? {
         guard let element = focusedTextElement() else { return nil }
         // Believe the range before the text. Some apps report the whole field as
