@@ -2203,6 +2203,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Best effort throughout. No Accessibility, a renamed attribute, a future
     /// System Settings that drops the item — all of them just mean the window
     /// opens the way it always did.
+    /// Focusing the search field also drops a suggestions overlay under it. One
+    /// Escape closes the overlay and leaves the caret where it is, which is the
+    /// state you actually want on arrival: an empty field, nothing covering the
+    /// pane behind it, ready to type.
+    ///
+    /// The delay is for the overlay, not the focus — it appears a beat after the
+    /// menu item is pressed, and an Escape that arrives first would have nothing
+    /// to close. Landing early is harmless either way: Escape in the search field
+    /// with no overlay leaves focus exactly where it was, which is why this is a
+    /// fixed short delay rather than a poll for something the overlay does not
+    /// expose to Accessibility.
+    ///
+    /// Guarded on System Settings still being frontmost, because unlike the
+    /// menu-item press this *is* a synthetic keystroke and goes wherever the
+    /// user is. If they have already switched away, they get no stray Escape.
+    private func dismissSettingsSearchSuggestions(in app: NSRunningApplication) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier
+                    == app.processIdentifier else { return }
+            self?.post(CGKeyCode(kVK_Escape), [])
+        }
+    }
+
     private func focusSettingsSearch(in app: NSRunningApplication,
                                      deadline: Date = Date().addingTimeInterval(3)) {
         guard AXIsProcessTrusted() else { return }
@@ -2228,6 +2251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let menuBar = menuBarRef, CFGetTypeID(menuBar) == AXUIElementGetTypeID(),
            let item = commandF(menuBar as! AXUIElement, depth: 0) {
             AXUIElementPerformAction(item, kAXPressAction as CFString)
+            dismissSettingsSearchSuggestions(in: app)
             return
         }
         // A cold launch has no menu bar to walk yet. Poll rather than guess at a
