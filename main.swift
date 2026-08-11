@@ -1695,38 +1695,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// and ⌘V then inserts instead of replacing, appending the rewrite to the
     /// text it was meant to overwrite.
     ///
-    /// A bare ⌘C answers it and changes nothing: the same text back means the
-    /// selection held. Anything else and this stops, because a rewrite that
-    /// lands in the wrong place is worse than one that doesn't land.
+    /// Accessibility answers it for free where it can. Otherwise a bare ⌘C
+    /// answers it too: the same text back means the selection held. Anything
+    /// else and this stops, because a rewrite that lands in the wrong place is
+    /// worse than one that doesn't land.
+    ///
+    /// Asking Accessibility first is not just cheaper. A synthesised ⌘C here is
+    /// a real copy in the frontmost app — indistinguishable from the user
+    /// pressing it — so macOS files the *old* text in the system clipboard
+    /// history, and no transient marker can prevent that, because this app is
+    /// not the one doing the writing. It happened even when the text had already
+    /// been read over Accessibility and no copy was needed at all.
     private func pasteOverVerifiedSelection(_ outgoing: String, matching original: String,
                                             on pb: NSPasteboard, saved: String?) {
+        func held(_ live: String?) -> Bool {
+            live?.trimmingCharacters(in: .whitespacesAndNewlines)
+                == original.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        if let live = selectedTextViaAX() {
+            if held(live) { pasteRewrite(outgoing, on: pb) }
+            else { abandonRewrite(restoring: saved, on: pb) }
+            return
+        }
+
         let before = pb.changeCount
         post(CGKeyCode(kVK_ANSI_C), .maskCommand)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self else { return }
             let live = pb.changeCount != before ? Self.selectedText(from: pb) : nil
-            guard live?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    == original.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                self.hud.showMessage("Select the text again", symbol: "text.cursor",
-                                     tint: nil)
-                Self.restoreClipboard(saved, on: pb)
-                self.endRewriting()
-                return
-            }
-            // The rewritten text stays. Putting the old clipboard back was the
-            // tidy thing to do while the paste was only a means to an end, but it
-            // threw away the one piece of text the user just asked to be made —
-            // and left ⌘C, which needs a selection the paste has just collapsed,
-            // as the only way to get it. The text change is undoable; the
-            // clipboard write is what makes the result reachable at all.
-            //
-            // Still written through setClipboardQuietly, so it carries the
-            // transient markers and clipboard managers leave it out of their
-            // history: on the clipboard to paste, not filed as something copied.
-            Self.setClipboardQuietly(outgoing, on: pb)
-            self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                self.endRewriting()
-            }
+            guard held(live) else { self.abandonRewrite(restoring: saved, on: pb); return }
+            self.pasteRewrite(outgoing, on: pb)
+        }
+    }
+
+    /// The selection moved or vanished while the model was thinking. Say so and
+    /// change nothing — the app's own verification copy is all that touched the
+    /// clipboard, so that goes back.
+    private func abandonRewrite(restoring saved: String?, on pb: NSPasteboard) {
+        hud.showMessage("Select the text again", symbol: "text.cursor", tint: nil)
+        Self.restoreClipboard(saved, on: pb)
+        endRewriting()
+    }
+
+    /// The rewritten text stays on the clipboard. Putting the old text back was
+    /// tidy while the paste was only a means to an end, but it threw away the one
+    /// piece of text the user had just asked to be made — and the paste collapses
+    /// the selection, so ⌘C cannot reach it. The edit is undoable either way.
+    ///
+    /// Written through setClipboardQuietly, so it carries the transient markers
+    /// clipboard managers watch for: there to paste, not filed as a copy.
+    private func pasteRewrite(_ outgoing: String, on pb: NSPasteboard) {
+        Self.setClipboardQuietly(outgoing, on: pb)
+        post(CGKeyCode(kVK_ANSI_V), .maskCommand)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.endRewriting()
         }
     }
 
