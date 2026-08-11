@@ -1919,6 +1919,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return try? GenerationSchema(root: root, dependencies: [])
     }()
 
+    /// Whether the model handed back its own output format instead of a rewrite.
+    ///
+    /// Guided generation puts the schema in the prompt as text, so an instruction
+    /// broad enough to cover everything in view covers that too. Reported against
+    /// "Translate to Spanish": one selected word came back as the translated word
+    /// followed by a Spanish rendering of this app's own schema — "Una reescritura
+    /// del texto" is the root description at `rewriteSchema`, "El texto reescrito,
+    /// y nada más" is the property's.
+    ///
+    /// Matched on the JSON keys rather than the descriptions, because the keys are
+    /// the part that survives: the model translated every value it saw and left
+    /// `properties`, `required` and `additionalProperties` in English. Matching
+    /// this app's own description strings would work in English and nowhere else.
+    ///
+    /// `isRefusal` does not catch it. Its length test is deliberately limited to
+    /// dictation, since a rewrite action is allowed to expand — translating and
+    /// wrapping in HTML both do — which is exactly the licence this abuses.
+    private static func leakedScaffolding(_ output: String) -> Bool {
+        let keys = ["additionalProperties", "\"properties\"", "\"$schema\""]
+        return keys.contains { output.contains($0) }
+    }
+
     /// Whether the model talked *about* the text instead of rewriting it.
     ///
     /// Given something it can't make sense of, it doesn't fail — it explains:
@@ -2046,6 +2068,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         filled = try? answer.content.value(String.self, forProperty: "text")
                     }
                 }
+                // A filled field is not necessarily a clean one. The framework
+                // renders the schema into the prompt as text, and an instruction
+                // that applies to everything in view — "translate to Spanish" is
+                // the one that found this — applies to that text too. The model
+                // then translates its own output format and puts the result in
+                // the field, which is structurally valid and useless. Fall
+                // through to the prose path, which has no schema to leak.
+                if let leak = filled, Self.leakedScaffolding(leak) { filled = nil }
                 if let filled {
                     output = filled.trimmingCharacters(in: .whitespacesAndNewlines)
                 } else {
