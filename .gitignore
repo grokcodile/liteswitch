@@ -3,6 +3,10 @@ build/
 dist/
 CLAUDE.md
 
+# Junk drawer: anything kept next to the project but not part of it. Ignored
+# wholesale, so nothing dropped in here needs a rule of its own.
+junk/
+
 # Apple signing / notarization keys — never commit
 *.p8
 *.p12
