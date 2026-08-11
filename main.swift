@@ -60,7 +60,7 @@ let panels: [Panel] = [
     Panel(name: "Files", symbol: "folder", glyphPath: nil, detail: "Find a document or folder by its name, or by a phrase somewhere inside it.", spotlightKey: CGKeyCode(kVK_ANSI_2), defaultsKey: "files"),
     Panel(name: "Actions", symbol: "square.2.layers.3d", glyphPath: nil, detail: "Run any Shortcut or system action by name — a command palette for your Mac.", spotlightKey: CGKeyCode(kVK_ANSI_3), defaultsKey: "actions"),
     Panel(name: "Clipboard", symbol: "doc.on.doc", glyphPath: nil, detail: "Reach back through what you've copied and paste something from earlier.", spotlightKey: CGKeyCode(kVK_ANSI_4), defaultsKey: "clipboard"),
-    Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Jump to System Settings and, with Smart Toggle, straight back again.", spotlightKey: 0, defaultsKey: "settings"),
+    Panel(name: "System Settings", symbol: "gear", glyphPath: nil, detail: "Jump to System Settings and, with Smart Toggle, land in its search field — then straight back again.", spotlightKey: 0, defaultsKey: "settings"),
     Panel(name: "Keep Awake", symbol: "mug.fill", glyphPath: nil, detail: "Hold your Mac awake through a long render, a download, or a presentation.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Magnify any pixel on screen and copy its exact color as code.", spotlightKey: 0, defaultsKey: "colorpicker"),
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your last twenty picks, ready to copy again, drag out as a swatch, or pin.", spotlightKey: 0, defaultsKey: "colorhistory"),
@@ -1416,7 +1416,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             let config = NSWorkspace.OpenConfiguration()
-            NSWorkspace.shared.openApplication(at: settingsURL, configuration: config)
+            // Smart Toggle is the "get me there and back" switch, so it also
+            // decides whether you arrive ready to type. Opening onto whichever
+            // pane you left behind is fine when you went looking for that pane;
+            // it is a dead end when you came for a setting you'd have to hunt.
+            let wantsSearch = UserDefaults.standard.settingsToggle
+            NSWorkspace.shared.openApplication(at: settingsURL, configuration: config) { [weak self] app, _ in
+                guard wantsSearch, let app else { return }
+                DispatchQueue.main.async { self?.focusSettingsSearch(in: app) }
+            }
             return
         }
 
@@ -2178,6 +2186,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let item = search(menuBar as! AXUIElement, depth: 0) else { return false }
         return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+    }
+
+    /// Puts the cursor in System Settings' search field by pressing that app's
+    /// own View ▸ Search item.
+    ///
+    /// Not a synthesised ⌘F. `openApplication` is asynchronous, so a keystroke
+    /// fired on a timer can land wherever the frontmost app happens to be, and
+    /// ⌘F is Find almost everywhere — the failure mode is opening a find bar in
+    /// somebody's editor. Addressing the menu item by pid can only ever reach
+    /// System Settings, no matter how slow the launch.
+    ///
+    /// Matched on the key equivalent rather than the word "Search": the title is
+    /// localised, the shortcut is not. AXMenuItemCmdModifiers of 0 means ⌘ alone.
+    ///
+    /// Best effort throughout. No Accessibility, a renamed attribute, a future
+    /// System Settings that drops the item — all of them just mean the window
+    /// opens the way it always did.
+    private func focusSettingsSearch(in app: NSRunningApplication,
+                                     deadline: Date = Date().addingTimeInterval(3)) {
+        guard AXIsProcessTrusted() else { return }
+
+        func commandF(_ element: AXUIElement, depth: Int) -> AXUIElement? {
+            if depth > 4 { return nil }
+            var childrenRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+                  let children = childrenRef as? [AXUIElement] else { return nil }
+            for child in children {
+                var charRef: CFTypeRef?, modRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(child, "AXMenuItemCmdChar" as CFString, &charRef)
+                AXUIElementCopyAttributeValue(child, "AXMenuItemCmdModifiers" as CFString, &modRef)
+                if (charRef as? String)?.uppercased() == "F", (modRef as? Int) == 0 { return child }
+                if let hit = commandF(child, depth: depth + 1) { return hit }
+            }
+            return nil
+        }
+
+        let ax = AXUIElementCreateApplication(app.processIdentifier)
+        var menuBarRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(ax, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
+           let menuBar = menuBarRef, CFGetTypeID(menuBar) == AXUIElementGetTypeID(),
+           let item = commandF(menuBar as! AXUIElement, depth: 0) {
+            AXUIElementPerformAction(item, kAXPressAction as CFString)
+            return
+        }
+        // A cold launch has no menu bar to walk yet. Poll rather than guess at a
+        // single delay, and give up quietly at the deadline — the window is open
+        // either way, which is the part that matters.
+        guard Date() < deadline else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.focusSettingsSearch(in: app, deadline: deadline)
+        }
     }
 
     /// Wait out a short dead zone before engaging. The hold key is a real
@@ -3485,7 +3544,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             if panel.defaultsKey == "settings" {
                 centeredCheckbox("Smart Toggle", on: UserDefaults.standard.settingsToggle,
                                  action: #selector(smartToggleChanged(_:)),
-                                 tip: "Press again to go back where you were.")
+                                 tip: "Opens into the search field, ready to type. Press again to go back where you were.")
             }
             if panel.defaultsKey == "textcapture" {
                 centeredCheckbox("Remove Breaks", on: !UserDefaults.standard.ocrKeepLineBreaks,

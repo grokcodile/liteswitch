@@ -37,10 +37,11 @@ Your Mac keeps a clipboard history of its own. This opens it, so you can paste s
 
 ### System Settings
 
-Opens System Settings from wherever you are. With Smart Toggle on, pressing the shortcut again hides it and drops you back where you were.
+Opens System Settings from wherever you are. With Smart Toggle on it arrives with the cursor already in the search field, so you can type the setting you want rather than hunting through panes — and pressing the shortcut again hides it and drops you back where you were.
 
 - Flip a toggle mid-task and land straight back where you were.
 - Reach Wi-Fi, Sound or Displays without touching the menu bar.
+- Type the name of a setting the moment the window appears; nothing to click first.
 
 ### Keep Awake
 
