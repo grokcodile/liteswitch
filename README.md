@@ -170,7 +170,7 @@ base64 -i Certificates.p12 | gh secret set MACOS_CERT_P12_BASE64
 base64 -i AuthKey_XXXXXXXX.p8 | gh secret set AC_API_KEY_BASE64
 ```
 
-The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from the vector source with `icon/make-icns.sh` (needs `brew install librsvg`).
+The app icon ships pre-generated (`icon/AppIcon.icns`); regenerate it from `icon/AppIcon.png` with `icon/make-icns.sh`, which needs nothing installed — `sips` and `iconutil` both ship with macOS.
 
 ## Requirements
 
