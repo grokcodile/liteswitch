@@ -757,9 +757,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var rewriteTapChord = false      // another event interrupted the press
     private var rewriteTapFirst: Date?       // when the first bare tap landed
 
-    /// The field dictation is going into, and what it held before — enough to
-    /// work out afterwards exactly what was inserted.
-    private var dictationElement: AXUIElement?
     private var keepAwakeStatusItem: NSStatusItem?
     private var axPollTimer: Timer?
     private(set) var hasAccessibility = AXIsProcessTrusted()
@@ -2285,7 +2282,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         dictating = true
-        captureDictationField()
         hud.showWaveform()
     }
 
@@ -2306,21 +2302,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (Whether the trailing punctuation survives is macOS's business: it varies
     /// by app, and no amount of waiting here changes it.)
     ///
-    /// Where the field can be read, this waits for the *text* to settle rather
-    /// than for a fixed number of seconds — which is both quicker and safer than
-    /// any constant. A fixed 1.5 s was slow whenever transcription had already
-    /// finished; cutting it to 0.5 s to feel snappy started clipping the ends of
-    /// sentences, because how long macOS needs is a property of what you said,
-    /// not a number to guess. Polling stops as soon as nothing new has arrived
-    /// for `stableFor`, so a short phrase ends almost immediately and a long one
-    /// gets as long as it needs.
+    /// One number, for everybody. This used to watch the field's text over
+    /// Accessibility and stop as soon as nothing new had arrived for a moment —
+    /// quicker in theory, and wrong in practice: in Notes it read a natural pause
+    /// mid-sentence as "finished" and cut dictation off early. Reading the field
+    /// to decide is the same fragility that took Auto-Correct down, and it earns
+    /// less here, because the thing it was optimising was a second of waiting
+    /// with the meter up.
     ///
-    /// It also handles releasing early for free: if you are still talking, text
-    /// keeps arriving, so it keeps waiting.
-    ///
-    /// Fields that won't say what they contain — Zed and most Electron views —
-    /// have nothing to poll, so they keep the fixed wait that was known to work.
-    private func scheduleDictationStop(after grace: TimeInterval = 1.5) {
+    /// So: wait, always, long enough that nothing is ever clipped. Two seconds is
+    /// past what macOS has been seen to need, and it costs nothing that matters —
+    /// the words are already typed, the meter is still up, and letting go and
+    /// carrying on both still work.
+    private func scheduleDictationStop(after grace: TimeInterval = 2.0) {
         pendingDictationStop?.cancel()
         // The meter stays up, deliberately. The microphone is still open and
         // macOS is still transcribing through this window — dictation has not
@@ -2333,39 +2327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.stopDictation()
         }
         pendingDictationStop = work
-
-        guard dictationElement != nil else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + grace, execute: work)
-            return
-        }
-
-        let tick = 0.1                 // how often to look
-        let stableFor = 0.3            // quiet this long means macOS is done
-        let ceiling = grace + 1.5      // never wait forever on a field that churns
-        var lastText = currentDictationText()
-        var quiet = 0.0
-        var waited = 0.0
-
-        func poll() {
-            // Cancelled by a re-press: the user let go too early and carried on.
-            guard let pending = pendingDictationStop, pending === work,
-                  !work.isCancelled else { return }
-            waited += tick
-            let now = currentDictationText()
-            if now == lastText {
-                quiet += tick
-            } else {
-                quiet = 0
-                lastText = now
-            }
-            if quiet >= stableFor || waited >= ceiling {
-                work.perform()
-                pendingDictationStop = nil
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + tick) { poll() }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + tick) { poll() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + grace, execute: work)
     }
 
     /// Claim the text for a rewrite's round trip. Every path that finishes with
@@ -2409,37 +2371,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // dictation while keeping whatever has already been transcribed.
         if !pressDictationMenuItem(starting: false) { post(CGKeyCode(kVK_Escape), []) }
         hud.hide()
-    }
-
-    /// Note the focused field, so `scheduleDictationStop` can watch its text
-    /// settle rather than guessing at a grace period.
-    ///
-    /// It used to snapshot the text too, as the baseline Auto-Correct diffed
-    /// against to find the dictated run. Nothing diffs any more; only the
-    /// element is still worth having, and only for knowing when to stop.
-    private func captureDictationField() {
-        dictationElement = nil
-        guard let field = focusedTextElement() else { return }
-        // Only keep it if the value actually reads. `scheduleDictationStop`
-        // treats a non-nil element as "I can watch this settle", and an element
-        // that answers nothing looks instantly quiet — which would cut the grace
-        // period to a fraction in precisely the apps that need all of it, the
-        // ones that publish no text at all.
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
-              value as? String != nil else { return }
-        dictationElement = field
-    }
-
-    /// What the dictation target holds right now, for comparing against the
-    /// snapshot taken when dictation started — or against itself a moment ago,
-    /// which is how `scheduleDictationStop` knows transcription has settled.
-    private func currentDictationText() -> String? {
-        guard let el = dictationElement else { return nil }
-        var v: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, kAXValueAttribute as CFString, &v) == .success
-        else { return nil }
-        return v as? String
     }
 
     /// The focused text element — asking the frontmost app directly when the
