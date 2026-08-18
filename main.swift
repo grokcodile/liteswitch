@@ -1228,14 +1228,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         previousApp = app
     }
 
-    /// Hand the keyboard back while an excluded app is in front, and take it
-    /// again when that app goes away. Registering and unregistering is the whole
-    /// mechanism — a hotkey we don't hold can't shadow the app's own.
+    /// Stand the bare-modifier triggers down while an excluded app is in front.
+    ///
+    /// Only those. Dictation watches for a modifier being held and Rewrite Text
+    /// for ⌃ tapped twice, and neither can tell a deliberate press from a key the
+    /// app itself wanted — which is what makes a game, a remote session or a
+    /// virtual machine worth excluding. A recorded shortcut has no such problem:
+    /// ⌃⌥⌘V is not something you hit while playing, so taking it away in these
+    /// apps disabled tools that were never going to misfire.
     func updatePause(for bundleID: String?) {
         let paused = bundleID.map { UserDefaults.standard.pausedApps.contains($0) } ?? false
         guard paused != pausedForFrontApp else { return }
         pausedForFrontApp = paused
-        syncHotkeys()
         syncDictationMonitor()
         syncRewriteTapMonitor()
     }
@@ -1332,7 +1336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         idToSet = [:]
         conflicted = []
         defer { settings?.refreshBanner() }
-        guard appEnabled && !recording && !synthesizing && !pausedForFrontApp else { return }
+        guard appEnabled && !recording && !synthesizing else { return }
         var nextId: UInt32 = 1
         for (i, panel) in panels.enumerated() {
             if mirrorsMacOSHotkey(panel) { continue }   // macOS owns Speak Text's hotkey
@@ -2310,11 +2314,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// less here, because the thing it was optimising was a second of waiting
     /// with the meter up.
     ///
-    /// So: wait, always, long enough that nothing is ever clipped. Two seconds is
-    /// past what macOS has been seen to need, and it costs nothing that matters —
-    /// the words are already typed, the meter is still up, and letting go and
-    /// carrying on both still work.
-    private func scheduleDictationStop(after grace: TimeInterval = 2.0) {
+    /// So: wait, always. One second covers what macOS has been seen to need
+    /// while still feeling like a release rather than a hang — two was safe and
+    /// read as lag. The words are already typed either way; all this decides is
+    /// when the microphone closes and the meter goes.
+    private func scheduleDictationStop(after grace: TimeInterval = 1.0) {
         pendingDictationStop?.cancel()
         // The meter stays up, deliberately. The microphone is still open and
         // macOS is still transcribing through this window — dictation has not
@@ -3826,13 +3830,14 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 }
 
-/// The apps that should have the keyboard to themselves.
+/// The apps that should be left alone by the bare-modifier triggers.
 ///
-/// A safety net rather than a setting most people will touch: some apps own the
-/// same chords, and some — a remote session, a game, a virtual machine — want
-/// every key. Pullcord unregisters while one of them is frontmost, so there is
-/// nothing to shadow the app's own bindings, and takes the keys back on the way
-/// out.
+/// A safety net rather than a setting most people will touch. Holding a modifier
+/// to dictate, or tapping ⌃ twice to rewrite, are indistinguishable from ordinary
+/// typing to the app underneath — so a game, a remote session or a virtual
+/// machine can set them off with keys meant for itself. Those two stand down
+/// here; the recorded shortcuts carry on, because a combo nobody presses by
+/// accident had nothing to stand down from.
 final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelegate {
     private var bundleIDs: [String] = []
     private let table = NSTableView()
@@ -3850,7 +3855,8 @@ final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelega
 
         let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
         let intro = NSTextField(wrappingLabelWithString:
-            "Pullcord shortcuts will be disabled when using these apps.")
+            "Dictate Text and Rewrite Text are disabled while these apps are in front, "
+            + "since both trigger on a modifier alone. Recorded shortcuts keep working.")
         intro.font = .systemFont(ofSize: 11)
         intro.textColor = .secondaryLabelColor
         intro.preferredMaxLayoutWidth = w - pad * 2
@@ -4031,7 +4037,7 @@ enum MoreInfo {
         // marks it out — it needs no heading to say so.
         let settings: [Row] = [
             ("Protected Apps", "hand.raised",
-             "Disable Pullcord when using these apps", nil, pause),
+             "Stop the hold-to-dictate and tap-to-rewrite keys firing in these apps", nil, pause),
         ]
 
         // The two wrapped blocks are the only content-dependent heights —

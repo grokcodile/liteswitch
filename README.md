@@ -67,7 +67,7 @@ Two more that make the point:
 **Throughout**
 
 - Every control has a one-line tooltip, and the **ⓘ** in the titlebar opens an About popover: the version, then Website, User Guide and Bug Report, then Protected Apps, then the two ways to support it. Every row is one button, with what it does in a tooltip — and rows that leave the app name their destination on a second line, so no link is a mystery before you click it. What each of the twelve tools does, with a couple of uses each, lives in [HELP.md](HELP.md) rather than in the app.
-- **Protected Apps** (in the ⓘ popover) disables Pullcord while you're using the apps you list — a remote session, a game, anything that owns the same chords. It unregisters its shortcuts while one of them is frontmost and takes them back on the way out, so there is nothing to shadow the app's own bindings.
+- **Protected Apps** (in the ⓘ popover) stands the bare-modifier triggers down while you're using the apps you list — a remote session, a game, a virtual machine. **Dictate Text** and **Rewrite Text** are the two that watch for a modifier held or ⌃ tapped twice, and neither can tell a deliberate press from a key the app itself wanted. Recorded shortcuts keep working: a combo nobody hits by accident had nothing to stand down from.
 - Shortcut conflicts with other apps are surfaced in the settings window rather than failing silently.
 - Runs as a background agent — no Dock icon, no menu bar item — and starts at login. Opening it again brings up settings.
 
