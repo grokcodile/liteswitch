@@ -89,7 +89,7 @@ Tap ⌃ twice and it rewrites whatever you've selected with Apple Intelligence, 
 
 ### Dictate Text
 
-Hold a key, talk, let go. Your Mac does the transcribing on-device, so nothing you say leaves it. What it won't do is hold-to-talk, and that's the only thing this adds — it starts and stops the same dictation the F5 key does, and changes nothing about what gets typed. The meter stays up for about two seconds after you let go, while your Mac finishes the last of the transcription — press the key again in that window and it carries straight on.
+Hold a key, talk, let go. Your Mac does the transcribing on-device, so nothing you say leaves it. What it won't do is hold-to-talk, and that's the only thing this adds — it starts and stops the same dictation the F5 key does, and changes nothing about what gets typed. Your Mac shows its own dictation indicator, so Pullcord adds nothing on screen. It keeps dictating for about a second after you let go, so the last of what you said isn't clipped — press the key again in that window and it carries straight on.
 
 - Get a long reply down without typing it all out.
 - Talk out a rough paragraph, then select it and run **Clean Dictation** from Rewrite Text to tidy it up.

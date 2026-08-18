@@ -288,14 +288,6 @@ extension UserDefaults {
         get { object(forKey: "settingsToggle") as? Bool ?? true }
         set { set(newValue, forKey: "settingsToggle") }
     }
-    /// Bundle ids of apps that should have the keyboard to themselves. While one
-    /// of them is in front, Pullcord's shortcuts and its dictation hold key
-    /// stand down — a safety net for apps that own the same chords, and for
-    /// anything that takes the whole keyboard like a remote session or a game.
-    var pausedApps: [String] {
-        get { stringArray(forKey: "pausedApps") ?? [] }
-        set { set(newValue, forKey: "pausedApps") }
-    }
     var colorFormat: ColorFormat {
         get { ColorFormat(rawValue: integer(forKey: "colorFormat")) ?? .hex }
         set { set(newValue.rawValue, forKey: "colorFormat") }
@@ -739,8 +731,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dead until the app restarts. Long enough not to fire during a normal
     /// rewrite; short enough that a wedge recovers on its own.
     private var rewriteWatchdog: DispatchWorkItem?
-    /// True while an app the user has excluded is frontmost.
-    private var pausedForFrontApp = false
     /// Which set the chooser landed on, read straight after the menu closes.
     private var pendingActionChoice: Int?
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
@@ -819,7 +809,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(appDidActivate(_:)),
             name: NSWorkspace.didActivateApplicationNotification, object: nil)
         installHandler()
-        updatePause(for: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
         syncHotkeys()
         watchAccessibility()
         // A user-initiated launch (Finder / Spotlight / Launchpad / Dock / `open`)
@@ -1146,6 +1135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Left behind by an in-app speech engine that was tried and reverted.
         d.removeObject(forKey: "speakVoiceIdentifier")
+        // Left behind by Protected Apps, which stopped being needed once the only
+        // things it stood down were two triggers nobody had trouble with.
+        d.removeObject(forKey: "pausedApps")
         migrateAutoCorrectToAction()
     }
 
@@ -1223,25 +1215,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
                 as? NSRunningApplication,
               let bundleID = app.bundleIdentifier else { return }
-        updatePause(for: bundleID)
         if bundleID == "com.apple.systempreferences" || bundleID == Bundle.main.bundleIdentifier { return }
         previousApp = app
-    }
-
-    /// Stand the bare-modifier triggers down while an excluded app is in front.
-    ///
-    /// Only those. Dictation watches for a modifier being held and Rewrite Text
-    /// for ⌃ tapped twice, and neither can tell a deliberate press from a key the
-    /// app itself wanted — which is what makes a game, a remote session or a
-    /// virtual machine worth excluding. A recorded shortcut has no such problem:
-    /// ⌃⌥⌘V is not something you hit while playing, so taking it away in these
-    /// apps disabled tools that were never going to misfire.
-    func updatePause(for bundleID: String?) {
-        let paused = bundleID.map { UserDefaults.standard.pausedApps.contains($0) } ?? false
-        guard paused != pausedForFrontApp else { return }
-        pausedForFrontApp = paused
-        syncDictationMonitor()
-        syncRewriteTapMonitor()
     }
 
     // MARK: Accessibility
@@ -2041,7 +2016,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if dictating { stopDictation() }
 
         let hold = UserDefaults.standard.dictationHoldKey
-        guard appEnabled, !pausedForFrontApp,
+        guard appEnabled,
               hold != .off, let code = hold.keyCode, let flag = hold.flag else { return }
 
         let handle: (NSEvent) -> Void = { [weak self] event in
@@ -2097,7 +2072,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rewriteTapDown = false
         rewriteTapChord = false
         rewriteTapFirst = nil
-        guard appEnabled, !pausedForFrontApp else { return }
+        guard appEnabled else { return }
 
         let handle: (NSEvent) -> Void = { [weak self] event in
             guard let self, event.keyCode == CGKeyCode(kVK_Control) else { return }
@@ -2286,7 +2261,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         dictating = true
-        hud.showWaveform()
+        // No pill. macOS puts up its own indicator the moment dictation starts,
+        // and a second one saying the same thing is just a second thing on screen.
+        // Errors above still speak, because those are the cases macOS says nothing
+        // about.
     }
 
     /// A buffer for fingers moving faster than mouths.
@@ -2374,7 +2352,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Prefer the app's own Stop item; fall back to Escape, which ends
         // dictation while keeping whatever has already been transcribed.
         if !pressDictationMenuItem(starting: false) { post(CGKeyCode(kVK_Escape), []) }
-        hud.hide()
     }
 
     /// The focused text element — asking the frontmost app directly when the
@@ -2954,7 +2931,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     /// and re-set on every open — the popover is rebuilt from scratch each time, so
     /// a check still running when it closes must not write to a dead view.
     private weak var versionLabel: NSButton?
-    private var pausedAppsWindow: PausedAppsWindow?
     private var instructionsWindow: InstructionsWindow?
 
     init(delegate: AppDelegate) {
@@ -3034,7 +3010,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
 
     @objc private func openMoreInfo(_ sender: NSButton) {
         let content = MoreInfo.makeContent(target: self,
-                                           pause:   #selector(openPausedApps),
                                            guide:   #selector(openHelpDoc),
                                            website: #selector(openWebsite),
                                            issues:  #selector(openIssues),
@@ -3060,20 +3035,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         infoPopover?.performClose(nil)
         NSWorkspace.shared.open(u)
     }
-    @objc private func openPausedApps() {
-        infoPopover?.performClose(nil)
-        if pausedAppsWindow == nil {
-            pausedAppsWindow = PausedAppsWindow { [weak self] in
-                // Re-evaluate straight away: the app you just excluded may be
-                // the one you came from.
-                self?.appDelegate?.updatePause(for: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
-            }
-        }
-        pausedAppsWindow?.center()
-        NSApp.activate(ignoringOtherApps: true)
-        pausedAppsWindow?.makeKeyAndOrderFront(nil)
-    }
-
     @objc private func openHelpDoc() { openLink(MoreInfo.helpURL) }
     @objc private func openWebsite() { openLink(MoreInfo.siteURL) }
     @objc private func openIssues()  { openLink(MoreInfo.issuesURL) }
@@ -3811,7 +3772,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         // stray windows from an app with no Dock icon to get back to.
         speakSetupWindow?.close()
         instructionsWindow?.close()
-        pausedAppsWindow?.close()
         infoPopover?.performClose(nil)
     }
     func windowDidResignKey(_ notification: Notification) {
@@ -3828,138 +3788,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         if CGPreflightScreenCaptureAccess() != builtScreenRec
             || SpokenSelection.current != builtSpoken { rebuild() }
     }
-}
-
-/// The apps that should be left alone by the bare-modifier triggers.
-///
-/// A safety net rather than a setting most people will touch. Holding a modifier
-/// to dictate, or tapping ⌃ twice to rewrite, are indistinguishable from ordinary
-/// typing to the app underneath — so a game, a remote session or a virtual
-/// machine can set them off with keys meant for itself. Those two stand down
-/// here; the recorded shortcuts carry on, because a combo nobody presses by
-/// accident had nothing to stand down from.
-final class PausedAppsWindow: NSWindow, NSTableViewDataSource, NSTableViewDelegate {
-    private var bundleIDs: [String] = []
-    private let table = NSTableView()
-    private let onChange: () -> Void
-    private let w: CGFloat = 460, pad: CGFloat = 20
-
-    init(onChange: @escaping () -> Void) {
-        self.onChange = onChange
-        let h: CGFloat = 380
-        super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
-                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Protected Apps"
-        isReleasedWhenClosed = false
-        bundleIDs = UserDefaults.standard.pausedApps
-
-        let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-        let intro = NSTextField(wrappingLabelWithString:
-            "Dictate Text and Rewrite Text are disabled while these apps are in front, "
-            + "since both trigger on a modifier alone. Recorded shortcuts keep working.")
-        intro.font = .systemFont(ofSize: 11)
-        intro.textColor = .secondaryLabelColor
-        intro.preferredMaxLayoutWidth = w - pad * 2
-        let introH = ceil(intro.sizeThatFits(
-            NSSize(width: w - pad * 2, height: .greatestFiniteMagnitude)).height)
-        intro.frame = NSRect(x: pad, y: h - pad - introH, width: w - pad * 2, height: introH)
-        v.addSubview(intro)
-
-        let listTop = intro.frame.minY - 12, listBottom: CGFloat = 66
-        let scroll = NSScrollView(frame: NSRect(x: pad, y: listBottom,
-                                                width: w - pad * 2, height: listTop - listBottom))
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
-        let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("app"))
-        col.width = w - pad * 2 - 24
-        table.addTableColumn(col)
-        table.headerView = nil
-        table.rowHeight = 28
-        table.dataSource = self
-        table.delegate = self
-        scroll.documentView = table
-        v.addSubview(scroll)
-
-        let add = NSButton(title: "+", target: self, action: #selector(addApp))
-        add.bezelStyle = .rounded
-        add.frame = NSRect(x: pad, y: listBottom - 34, width: 32, height: 26)
-        v.addSubview(add)
-        let remove = NSButton(title: "−", target: self, action: #selector(removeApp))
-        remove.bezelStyle = .rounded
-        remove.frame = NSRect(x: pad + 36, y: listBottom - 34, width: 32, height: 26)
-        v.addSubview(remove)
-
-        let done = NSButton(title: "Done", target: self, action: #selector(closeUp))
-        done.bezelStyle = .rounded
-        done.keyEquivalent = "\r"
-        done.frame = NSRect(x: w - pad - 90, y: listBottom - 36, width: 90, height: 30)
-        v.addSubview(done)
-
-        contentView = v
-        table.reloadData()
-    }
-
-    /// A bundle id is what's stored — it survives the app being renamed or moved
-    /// — so the name and icon are looked up fresh each time it's drawn.
-    private static func appURL(_ id: String) -> URL? {
-        NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
-    }
-
-    func numberOfRows(in tableView: NSTableView) -> Int { bundleIDs.count }
-
-    func tableView(_ t: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
-        guard let id = bundleIDs[safe: row] else { return nil }
-        let cell = NSView(frame: NSRect(x: 0, y: 0, width: w - pad * 2 - 24, height: 28))
-        let url = Self.appURL(id)
-        let icon = NSImageView(frame: NSRect(x: 2, y: 3, width: 22, height: 22))
-        icon.image = url.map { NSWorkspace.shared.icon(forFile: $0.path) }
-        icon.imageScaling = .scaleProportionallyDown
-        cell.addSubview(icon)
-        let name = url.map { FileManager.default.displayName(atPath: $0.path) } ?? id
-        let label = NSTextField(labelWithString: name)
-        label.font = .systemFont(ofSize: 12)
-        // An app that isn't installed any more still holds its place, greyed, so
-        // the row can be removed rather than silently vanishing.
-        label.textColor = url == nil ? .tertiaryLabelColor : .labelColor
-        label.lineBreakMode = .byTruncatingTail
-        label.frame = NSRect(x: 30, y: 5, width: w - pad * 2 - 60, height: 18)
-        cell.addSubview(label)
-        return cell
-    }
-
-    @objc private func addApp() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.application]
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.prompt = "Add"
-        panel.message = "Choose apps to disable Pullcord in."
-        panel.beginSheetModal(for: self) { [weak self] response in
-            guard let self, response == .OK else { return }
-            for url in panel.urls {
-                guard let id = Bundle(url: url)?.bundleIdentifier,
-                      !self.bundleIDs.contains(id) else { continue }
-                self.bundleIDs.append(id)
-            }
-            self.save()
-        }
-    }
-
-    @objc private func removeApp() {
-        let row = table.selectedRow
-        guard bundleIDs.indices.contains(row) else { NSSound.beep(); return }
-        bundleIDs.remove(at: row)
-        save()
-    }
-
-    private func save() {
-        UserDefaults.standard.pausedApps = bundleIDs
-        table.reloadData()
-        onChange()
-    }
-
-    @objc private func closeUp() { close() }
 }
 
 /// What the ⓘ in the titlebar shows: the app, where its source and help live,
@@ -3993,7 +3821,7 @@ enum MoreInfo {
     /// reference has to be re-fetched rather than kept.
     static let versionTag = 9101
 
-    static func makeContent(target: AnyObject, pause: Selector, guide: Selector,
+    static func makeContent(target: AnyObject, guide: Selector,
                             website: Selector, issues: Selector,
                             coffee: Selector, star: Selector,
                             check: Selector) -> NSView {
@@ -4035,11 +3863,6 @@ enum MoreInfo {
         // app does rather than opening something, so it doesn't belong in the
         // run of destinations above it. The missing ↗ in its tooltip is what
         // marks it out — it needs no heading to say so.
-        let settings: [Row] = [
-            ("Protected Apps", "hand.raised",
-             "Stop the hold-to-dictate and tap-to-rewrite keys firing in these apps", nil, pause),
-        ]
-
         // The two wrapped blocks are the only content-dependent heights —
         // measure both first and derive every frame (and the popover height)
         // from them, so a copy change can't clip the popover.
@@ -4090,8 +3913,6 @@ enum MoreInfo {
         let supportY  = reserve(support, from: &y)
         y += sectionGap
         let bodyY     = y;           y += bodyH + leadInGap
-        let settingsY = reserve(settings, from: &y)
-        y += rowGap          // sits with the links: the missing ↗ is what separates it
         let helpY     = reserve(help, from: &y)
         y += sectionGap
         let taglineY  = y;           y += taglineH + sectionGap
@@ -4173,7 +3994,6 @@ enum MoreInfo {
         }
         place(support, supportY)
         place(help, helpY)
-        place(settings, settingsY)
         return v
     }
 }
@@ -4537,76 +4357,7 @@ extension InstructionsWindow: NSTextViewDelegate, NSTextFieldDelegate {
     func textDidEndEditing(_ notification: Notification) { commitEditor(); saveQuietly() }
 }
 
-// MARK: - Waveform
-
-/// The little bar meter the dictation pill shows. It's a motion cue, not a real
-/// level meter — reading actual input would mean asking for the microphone, which
-/// this app has no reason to hold — so the bars move on their own. Two motions:
-/// a slow symmetric breathing while it listens, and a pulse travelling along the
-/// row while it catches up, so the two states don't just differ by color.
-final class WaveformView: NSView {
-    private var bars: [CALayer] = []
-    private var heights: [CGFloat] = []      // eased toward the target each tick
-    private var t: Double = 0
-    private var timer: Timer?
-    private let barW: CGFloat = 3, barGap: CGFloat = 3
-    private let minH: CGFloat = 3
-
-    var tint: NSColor = .systemGreen {
-        didSet { bars.forEach { $0.backgroundColor = tint.cgColor } }
-    }
-
-    init(barCount: Int = 7, height: CGFloat = 18) {
-        let w = CGFloat(barCount) * barW + CGFloat(barCount - 1) * barGap
-        super.init(frame: NSRect(x: 0, y: 0, width: w, height: height))
-        wantsLayer = true
-        for i in 0..<barCount {
-            let bar = CALayer()
-            bar.backgroundColor = tint.cgColor
-            bar.cornerRadius = barW / 2
-            bar.frame = NSRect(x: CGFloat(i) * (barW + barGap), y: (height - minH) / 2,
-                               width: barW, height: minH)
-            layer?.addSublayer(bar)
-            bars.append(bar)
-            heights.append(minH)
-        }
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    func start() {
-        guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
-            self?.step()
-        }
-    }
-
-    func stop() {
-        timer?.invalidate()
-        timer = nil
-    }
-
-    private func step() {
-        t += 1.0 / 30
-        let h = bounds.height, span = h - minH
-        let n = bars.count
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)   // the easing below does the smoothing
-        for i in 0..<n {
-            // A wave travelling along the row — each bar lags the one before it,
-            // which is what makes it read as a waveform rather than bars bouncing
-            // independently.
-            let phase = t * 5.2 - Double(i) * 0.85
-            let target = minH + span * CGFloat(0.12 + 0.88 * abs(sin(phase)))
-            heights[i] += (target - heights[i]) * 0.30   // ease toward it
-            let barH = heights[i]
-            bars[i].frame = NSRect(x: bars[i].frame.minX, y: (h - barH) / 2, width: barW, height: barH)
-        }
-        CATransaction.commit()
-    }
-
-    deinit { timer?.invalidate() }
-}
+// MARK: - Working indicator
 
 /// The app's single "working" indicator: a row of dots with a bright crest
 /// travelling along them.
@@ -4618,9 +4369,8 @@ final class WaveformView: NSView {
 /// which is wrong for a grace period that is only waiting. The tint already says
 /// which tool is working, so the shape only has to say "not finished yet".
 ///
-/// The waveform survives for listening alone, because that one is not
-/// decoration: it says the microphone is open and you should speak. Two states
-/// that genuinely differ, two shapes.
+/// It is the last one standing. The bar meter went with the dictation pill, once
+/// macOS's own indicator turned out to say the same thing in the same moment.
 final class ProcessingDotsView: NSView {
     private var dots: [CALayer] = []
     private let dotD: CGFloat = 6, dotGap: CGFloat = 5
@@ -4694,7 +4444,6 @@ final class HUD {
     private var panel: NSPanel?
     private var hideTimer: Timer?
     private var stickyWatchdog: Timer?
-    private weak var waveform: WaveformView?
     private weak var working: ProcessingDotsView?
     private var chrome: NSVisualEffectView?
     private let panelH: CGFloat = 42, padH: CGFloat = 18, gap: CGFloat = 10
@@ -4732,26 +4481,8 @@ final class HUD {
         label.textColor = ink
         label.frame = NSRect(x: padH + dotD + gap, y: (panelH - textH) / 2, width: textW, height: textH)
         content.addSubview(label)
-        waveform?.stop()
         working?.stop()
         present(content, width: width)
-    }
-
-    /// A pill that's just the animated bar meter — the dictation indicator.
-    func showWaveform(tint: NSColor? = nil) {
-        let tint = tint ?? ink
-        let meter = WaveformView()
-        meter.tint = tint
-        let width = padH + meter.frame.width + padH
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
-        meter.frame.origin = NSPoint(x: padH, y: (panelH - meter.frame.height) / 2)
-        content.addSubview(meter)
-        waveform?.stop()
-        working?.stop()
-        working = nil
-        waveform = meter
-        present(content, width: width, sticky: true)
-        meter.start()
     }
 
     /// A pill that's just the dots — shown whenever something is working: the
@@ -4765,8 +4496,6 @@ final class HUD {
         let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: panelH))
         dots.frame.origin = NSPoint(x: padH, y: (panelH - dots.frame.height) / 2)
         content.addSubview(dots)
-        waveform?.stop()
-        waveform = nil
         working?.stop()
         working = dots
         present(content, width: width, sticky: true)
@@ -4776,7 +4505,6 @@ final class HUD {
     /// Take down a sticky pill.
     func hide() {
         working?.stop()
-        waveform?.stop()
         hideTimer?.invalidate()
         dismiss()
     }
@@ -4935,7 +4663,6 @@ final class HUD {
     private func dismiss() {
         // Both meters, always: a timer left running on a dismissed pill is a
         // retained view redrawing 30 times a second forever.
-        waveform?.stop()
         working?.stop()
         stickyWatchdog?.invalidate()
         stickyWatchdog = nil
