@@ -214,6 +214,7 @@ extension UserDefaults {
     /// that tells it to transform, so each one names what to keep as well as
     /// what to change.
     static let starterActions: [RewriteAction] = [
+        RewriteAction(title: cleanDictationTitle, shortcutless: cleanDictationInstructions),
         RewriteAction(title: "Professional", shortcutless:
             "Rewrite the text in a professional tone suitable for workplace correspondence. "
             + "Keep every line of the original, including any heading or introductory line. "
@@ -380,7 +381,13 @@ extension UserDefaults {
     /// 3. Closing the list is what fixed it: 3 in 3, on both, while still
     /// stripping the um and uh. The lesson matches the one on the set above: this
     /// model needs the *scope* of an instruction bounded, or it generalises it.
-    static let defaultDictationInstructions = """
+    static let cleanDictationTitle = "Clean Dictation"
+
+    /// What Auto-Correct used to apply on its own, now a rewrite action you aim
+    /// yourself. Every clause was measured against the on-device model — the
+    /// "those removals are the only ones" paragraph is what stopped it quietly
+    /// dropping words it judged redundant.
+    static let cleanDictationInstructions = """
         Turn dictated speech into clean written text.
 
         Remove filler words and vocalized pauses — um, uh, er, like, you know, \
@@ -416,22 +423,6 @@ extension UserDefaults {
                 set(newValue, forKey: "rewriteInstructions")
             }
         }
-    }
-    var dictationInstructions: String {
-        get { string(forKey: "dictationInstructions") ?? UserDefaults.defaultDictationInstructions }
-        set {
-            if newValue == UserDefaults.defaultDictationInstructions {
-                removeObject(forKey: "dictationInstructions")
-            } else {
-                set(newValue, forKey: "dictationInstructions")
-            }
-        }
-    }
-    /// Rewrite Text: run dictated text through the model as soon as it lands. On by
-    /// default — speech nearly always wants the filler stripped.
-    var autoCorrectDictation: Bool {
-        get { object(forKey: "autoCorrectDictation") as? Bool ?? true }
-        set { set(newValue, forKey: "autoCorrectDictation") }
     }
     /// Dictation: which modifier is held to talk (Off = the tool is idle).
     /// Right ⌥ by default — nothing else claims it, so the tool works out of the
@@ -737,12 +728,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // have dictation running right now.
     private var holdMonitors: [Any] = []
     private var dictating = false
-    /// True from the moment dictation stops until Auto-Correct has finished with the
-    /// text. `dictating` can't stand in for this: it clears the instant dictation
-    /// stops, while the round trip that follows — select, copy, run the model,
-    /// paste — keeps running for seconds afterwards. Dictating again inside that
-    /// window lets the pending paste land in the middle of the new utterance,
-    /// which is exactly how the text came back doubled and jumbled.
+    /// True for the length of a rewrite's round trip — select, copy, run the
+    /// model, paste — which keeps running for seconds after the shortcut. It
+    /// blocks a second rewrite, and it blocks dictation arming: start talking
+    /// mid-rewrite and the pending paste lands in the middle of the new
+    /// utterance, which is how text came back doubled and jumbled.
     private var rewriting = false
     /// Insurance for the flag above. The model call has no timeout of its own, so
     /// without this one hung request would leave `rewriting` set and the hold key
@@ -770,19 +760,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The field dictation is going into, and what it held before — enough to
     /// work out afterwards exactly what was inserted.
     private var dictationElement: AXUIElement?
-    private var dictationBeforeText: String?
-    /// Whether the dictated run landed inside an existing sentence rather than
-    /// starting one — nil when there is no way to know.
-    ///
-    /// Only the exact diff can answer it, so it stays nil whenever that doesn't
-    /// run. It was a plain Bool at first, which meant a run the diff couldn't
-    /// measure silently inherited the previous run's answer: dictate a fragment,
-    /// then dictate a sentence into an app the diff can't read, and the sentence
-    /// lost its full stop because the fragment before it hadn't wanted one.
-    private var dictatedMidSentence: Bool?
-    /// Where the dictated run sits, kept so the selection can be put back right
-    /// before the paste rather than trusted to survive the model call.
-    private var dictatedRange: CFRange?
     private var keepAwakeStatusItem: NSStatusItem?
     private var axPollTimer: Timer?
     private(set) var hasAccessibility = AXIsProcessTrusted()
@@ -1094,8 +1071,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// Two copies do not share nicely. Each registers the same global hotkeys and
     /// installs its own dictation monitor, so one keypress fires twice and two
-    /// Auto-Correct passes rewrite the same sentence while the other is pasting into
-    /// it — which reads as dictated text coming back mangled and repeated.
+    /// rewrites run over the same sentence while the other is pasting into it —
+    /// which reads as text coming back mangled and repeated.
     ///
     /// This asks which processes are running rather than setting
     /// LSMultipleInstancesProhibited, because LaunchServices keys that on the
@@ -1165,7 +1142,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            ("polishKeyCode", "rewriteKeyCode"),
                            ("polishModifiers", "rewriteModifiers"),
                            ("polishInstructions", "rewriteInstructions"),
-                           ("polishDictation", "autoCorrectDictation"),
                            ("correctSets", "rewriteActions")] {
             guard d.object(forKey: new) == nil, let value = d.object(forKey: old) else { continue }
             d.set(value, forKey: new)
@@ -1173,6 +1149,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Left behind by an in-app speech engine that was tried and reverted.
         d.removeObject(forKey: "speakVoiceIdentifier")
+        migrateAutoCorrectToAction()
+    }
+
+    /// Auto-Correct is gone; its instructions are not.
+    ///
+    /// An existing install has already been seeded, so it would never pick up
+    /// Clean Dictation from `starterActions` — the new action would exist only
+    /// for people installing fresh. So it is added here instead, carrying any
+    /// wording that had been customised for Auto-Correct rather than the stock
+    /// text, since that is the part worth keeping.
+    ///
+    /// Guarded on the title being absent, so deleting the action on purpose
+    /// makes it stay deleted.
+    private func migrateAutoCorrectToAction() {
+        let d = UserDefaults.standard
+        defer {
+            d.removeObject(forKey: "autoCorrectDictation")
+            d.removeObject(forKey: "dictationInstructions")
+            d.removeObject(forKey: "polishDictation")
+        }
+        guard d.object(forKey: "rewriteActions") != nil else { return }   // fresh install: seeded already
+        var actions = d.rewriteActions
+        guard !actions.contains(where: { $0.title == UserDefaults.cleanDictationTitle }) else { return }
+        let carried = (d.string(forKey: "dictationInstructions")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        actions.append(RewriteAction(title: UserDefaults.cleanDictationTitle,
+                                     shortcutless: carried ?? UserDefaults.cleanDictationInstructions))
+        d.rewriteActions = actions
     }
 
     private func seedDefaultShortcutsIfNeeded() {
@@ -1459,22 +1463,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// has collapsed the selection so ⌘C cannot reach it, and the edit itself is
     /// undoable either way. Restoring the old text there was tidy and useless.
     ///
-    /// With nothing selected, it takes the whole field — ⌘A then copy — so the
-    /// shortcut does something useful when you just want the thing you're looking
-    /// at corrected. That fallback is deliberately NOT used for Auto-Correct: after
-    /// dictation the selection is an estimate, and if it came back empty,
-    /// selecting all would rewrite the entire document instead of the sentence
-    /// you just spoke.
-    func rewriteSelection(dictated: Bool = false, known: String? = nil, setIndex: Int? = nil) {
+    /// With nothing selected it asks rather than guessing. Taking the whole field
+    /// used to happen here and is what made this unsafe: apps that publish no
+    /// accessibility element hand over the field's text whether or not anything
+    /// is selected, so a deliberate select-all could not be told from an empty
+    /// caret — and pasting into the second appends instead of replacing.
+    func rewriteSelection(known: String? = nil, setIndex: Int? = nil) {
         // One round trip at a time. Two overlapping ones race over the clipboard
         // and the selection, and the loser's paste lands wherever the caret has
         // got to by then — the same failure as dictating again mid-rewrite, just
         // reached by pressing the shortcut twice. The dictated path claimed this
         // back in stopDictation; a manual press hasn't.
-        if !dictated {
-            if rewriting { NSSound.beep(); return }
-            beginRewriting()
-        }
+        if rewriting { NSSound.beep(); return }
+        beginRewriting()
         guard hasAccessibility else { endRewriting(); promptForAccessibility(); return }
         let pb = NSPasteboard.general
         let saved = pb.string(forType: .string)
@@ -1482,22 +1483,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Three ways to learn what's selected, cheapest first. Only the last one
         // touches the clipboard, and it's the only one that leaves a trace there.
         if let known {
-            resolveThenRun(known, dictated: dictated, restoring: saved, setIndex: setIndex)
+            resolveThenRun(known, restoring: saved, setIndex: setIndex)
             return
         }
         if let viaAX = selectedTextViaAX() {
-            resolveThenRun(viaAX, dictated: dictated, restoring: saved, setIndex: setIndex)
+            resolveThenRun(viaAX, restoring: saved, setIndex: setIndex)
             return
         }
 
         copySelectionText { [weak self] text in
             guard let self else { return }
             if let text {
-                self.resolveThenRun(text, dictated: dictated, restoring: saved, setIndex: setIndex)   // ends it
-            } else if dictated {
-                self.endRewriting()
-                self.hud.hide()          // nothing to work on; leave the text alone
-                Self.restoreClipboard(saved, on: pb)
+                self.resolveThenRun(text, restoring: saved, setIndex: setIndex)   // ends it
             } else {
                 // No selection, and nothing to fall back on. Taking the whole
                 // field used to happen here, and it is what made this unsafe:
@@ -1519,16 +1516,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The text is gathered before the chooser opens, deliberately: the menu
     /// takes key events, and reading the selection afterwards would be reading
     /// it through whatever the menu did to focus.
-    private func resolveThenRun(_ text: String, dictated: Bool,
+    private func resolveThenRun(_ text: String,
                                 restoring saved: String?, setIndex: Int?) {
-        if dictated {
-            runRewrite(text, instructions: UserDefaults.standard.dictationInstructions,
-                          dictated: true, restoring: saved)
-            return
-        }
         let sets = UserDefaults.standard.rewriteActions
         if let i = setIndex, let set = sets[safe: i] {            // a set's own shortcut
-            runRewrite(text, instructions: set.instructions, dictated: false, restoring: saved)
+            runRewrite(text, action: set, restoring: saved)
             return
         }
         // Nothing enabled falls back to the built-in Clean Up, so the shortcut
@@ -1537,8 +1529,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let active = sets.filter(\.enabled)
         if active.count <= 1 {
             let only = active.first ?? sets.first
-            runRewrite(text, instructions: only?.instructions ?? UserDefaults.defaultRewriteInstructions,
-                          dictated: false, restoring: saved)
+            runRewrite(text,
+                       action: only ?? RewriteAction(title: UserDefaults.cleanUpTitle,
+                                                     shortcutless: UserDefaults.defaultRewriteInstructions),
+                       restoring: saved)
             return
         }
         guard let chosen = chooseRewriteAction(active) else {    // Esc, or clicked away
@@ -1547,7 +1541,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.restoreClipboard(saved, on: NSPasteboard.general)
             return
         }
-        runRewrite(text, instructions: chosen.instructions, dictated: false, restoring: saved)
+        runRewrite(text, action: chosen, restoring: saved)
     }
 
     /// The chooser: a plain menu at the pointer, numbered so a set is one
@@ -1611,8 +1605,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings?.addRewriteAction()
     }
 
-    private func runRewrite(_ text: String, instructions: String,
-                               dictated: Bool, restoring saved: String?) {
+    private func runRewrite(_ text: String, action: RewriteAction,
+                               restoring saved: String?) {
+        let instructions = action.instructions
+        // Clean Dictation keeps the prose path. Everything else fills a field.
+        // Measured when this was Auto-Correct and the choice was made per-caller:
+        // the same speech came back through the field as "I drove to the office
+        // and it was really busy so yeah", no final stop and a quarter of the
+        // commas, where prose punctuated it properly. Punctuation is most of what
+        // cleaning up dictation is, so that one action keeps the path that does
+        // it. Matched on the title, so renaming the action opts out — and a
+        // renamed one is no longer the thing this was measured on.
+        let prose = action.title == UserDefaults.cleanDictationTitle
         let pb = NSPasteboard.general
         // A selection with no letters in it — a lone arrow, a bullet, a number —
         // has no spelling or grammar to fix, and asking anyway invites the model
@@ -1626,34 +1630,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         hud.showProcessing()
-        rewriteText(text, instructions: instructions, dictated: dictated) { [weak self] result in
+        rewriteText(text, instructions: instructions, prose: prose) { [weak self] result in
             guard let self else { return }
             guard let result else {
                 self.endRewriting()
-                // Auto-Correct runs on its own after every dictation, so "nothing
-                // needed doing" is not news — it just wants to say it ran. A
-                // manual rewrite is different: you pressed a key and are owed an
-                // answer about why the text didn't move.
+                // You pressed a key and are owed an answer about why the text
+                // didn't move.
                 //
                 // Not the red warning triangle the other failures use either.
                 // Those are things you have to go and fix; this one is the model
                 // shrugging, and your text is exactly where you left it.
-                if dictated {
-                    self.hud.showMessage("Auto-Corrected", symbol: "checkmark.circle.fill",
-                                         tint: nil)
-                } else {
-                    self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
-                                         tint: nil)
-                }
+                self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
+                                     tint: nil)
                 Self.restoreClipboard(saved, on: pb)
                 return
             }
-            var outgoing = Self.rewrap(result, like: text)
-            // Only when the diff actually established it. Unknown means leave
-            // the model's sentence shaping alone.
-            if dictated, self.dictatedMidSentence == true {
-                outgoing = Self.keepFragmentShape(outgoing, like: text)
-            }
+            let outgoing = Self.rewrap(result, like: text)
             Self.setClipboardQuietly(outgoing, on: pb)
             // Take the field again right before pasting rather than trusting the
             // selection to have survived the model call. It often doesn't: apps
@@ -1662,22 +1654,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // which appended the rewrite to the text it was meant to replace.
             // This is what the dictation path has always done, and why that one
             // never had the bug.
-            if dictated {
-                // Select the run again first. It was selected when the diff found
-                // it, a second or more ago, and a field that isn't being typed
-                // into can let go of a selection in between — which pasted the
-                // word next to itself instead of over it: "typetype".
-                self.reassertDictatedSelection()
-                self.post(CGKeyCode(kVK_ANSI_V), .maskCommand)
-            } else {
-                self.pasteOverVerifiedSelection(outgoing, matching: text, on: pb, saved: saved)
-            }
-            // Auto-Correct names itself; the manual one doesn't need to. You pressed
-            // the shortcut for that one, so what just happened isn't in question —
-            // but Auto-Correct runs on its own, and if your words come back changed
-            // it should be clear which thing changed them.
-            self.hud.showMessage(dictated ? "Auto-Corrected" : "Rewritten",
-                                 symbol: "checkmark.circle.fill", tint: nil)
+            self.pasteOverVerifiedSelection(outgoing, matching: text, on: pb, saved: saved)
+            self.hud.showMessage("Rewritten", symbol: "checkmark.circle.fill", tint: nil)
             // Give the paste a moment to land before handing the clipboard back —
             // and only release the hold key once it has, since that paste is the
             // thing a new dictation would otherwise land in the middle of.
@@ -1856,57 +1834,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setClipboardQuietly(saved, on: pb)
     }
 
-    /// Run the text through the model and paste the result over the selection.
-    /// Put the dictated run back under the selection.
-    ///
-    /// Cheap and exact, because the diff already worked out where it is — no
-    /// guessing, and no clipboard round trip to check it the way the rewrite path
-    /// has to. Nothing has typed into the field since, so the range still holds.
-    private func reassertDictatedSelection() {
-        guard let field = dictationElement, var range = dictatedRange,
-              let axRange = AXValueCreate(.cfRange, &range) else { return }
-        AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString, axRange)
-    }
-
-    /// Undo the sentence-shaping the model applies to a fragment.
-    ///
-    /// Dictating a word or two into the middle of a sentence gave back "It's
-    /// Funny that…" and "a pop-up last." — a capital and a full stop, because the
-    /// model treats whatever it is handed as a sentence. Telling it not to was
-    /// measured and made things worse: the fragments improved, and full dictated
-    /// sentences lost their capitals, their final stops and their filler removal.
-    ///
-    /// So the model is left alone and the shape is put back afterwards, which is
-    /// possible because the diff already knows this run landed mid-sentence.
-    private static func keepFragmentShape(_ rewritten: String, like original: String) -> String {
-        func letters(_ s: String) -> String {
-            String(s.lowercased().filter { $0.isLetter || $0.isNumber || $0.isWhitespace })
-                .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-        }
-        // Nothing actually corrected — the model has only restyled the words.
-        // Measured: dictating one word gets it capitalized every time and shouted
-        // some of the time ("school" came back as "SCHOOL" twice in three). Take
-        // the words as spoken; the shaping below still applies to them.
-        var out = letters(rewritten) == letters(original) ? original : rewritten
-
-        // Dictation capitalizes the word it inserts, so this has to run on
-        // whatever we ended up with rather than only when the model added the
-        // capital — otherwise every word dropped into a sentence arrives looking
-        // like the start of a new one.
-        let firstWord = out.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
-        let isAcronym = firstWord.count > 1 && firstWord == firstWord.uppercased()
-        if let first = out.first, first.isUppercase, firstWord.lowercased() != "i", !isAcronym {
-            out.replaceSubrange(out.startIndex...out.startIndex, with: String(first).lowercased())
-        }
-        // A full stop closing a sentence that hasn't ended. Only the period — a
-        // question or exclamation mark is something the speaker meant.
-        let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        if out.hasSuffix("."), !(trimmed.last.map { ".!?".contains($0) } ?? false) {
-            out.removeLast()
-        }
-        return out
-    }
-
     /// One field, holding the rewrite. Built once, at runtime rather than with
     /// the @Generable macro, so the whole app still compiles with a bare swiftc.
     private static let rewriteSchema: GenerationSchema? = {
@@ -1975,13 +1902,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// separate cleanly: over the collected outputs, refusals kept none of the
     /// input's words while rewrites kept nearly all of them.
     private static func isRefusal(_ output: String, for input: String,
-                                  dictated: Bool = false) -> Bool {
-        // A cleanup is about as long as what it cleaned. Prose several times the
-        // length of a short utterance is the model talking about it, whatever
-        // words it picked — which is the only way to catch a refusal phrased in a
-        // way the list below has never seen. Dictation only: a rewrite action is
-        // allowed to expand, since wrapping text in HTML or translating it does.
-        if dictated, input.count <= 60, output.count > max(60, input.count * 3) { return true }
+                                  ) -> Bool {
         let markers = ["cannot rewrite", "can't rewrite", "cannot assist", "can't assist",
                        "cannot process", "can't process", "cannot help", "can't help",
                        "unable to rewrite", "unable to process", "cannot determine",
@@ -2022,17 +1943,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Run `text` through Apple Intelligence's on-device model with the saved
     /// instructions. Nothing leaves the Mac. `done` is called on the main queue,
     /// with nil if the model is unavailable or refuses.
-    /// `structured` asks the model to fill a field instead of answering in
-    /// prose. It is right for Rewrite Text — there is nowhere in a field to
-    /// refuse — and wrong for dictation, measured: the same speech came back as
-    /// "I drove to the office and it was really busy so yeah", with no final stop
-    /// and a quarter of the commas, where the prose path punctuated it properly.
-    /// Adding punctuation is most of what Auto-Correct is for, so it keeps the
-    /// path that does it.
-    func rewriteText(_ text: String, instructions: String, dictated: Bool = false,
+    /// By default the model is asked to fill a field rather than answer in
+    /// prose, which is what stops refusals: there is nowhere in a `text` field to
+    /// say "I cannot rewrite this". `prose` opts back out, and Clean Dictation is
+    /// the one action that does. Measured: the same speech came back through the
+    /// field as "I drove to the office and it was really busy so yeah", with no
+    /// final stop and a quarter of the commas, where prose punctuated it
+    /// properly. Punctuation is most of what cleaning up dictation is.
+    func rewriteText(_ text: String, instructions: String, prose: Bool = false,
                      done: @escaping (String?) -> Void) {
-        // Dictation takes the prose path; everything else takes the field.
-        let structured = !dictated
         guard case .available = SystemLanguageModel.default.availability else {
             DispatchQueue.main.async { done(nil) }
             return
@@ -2062,7 +1981,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let prompt = "Rewrite this text:\n\n" + text
 
                 var filled: String?
-                if structured, let schema = Self.rewriteSchema {
+                if !prose, let schema = Self.rewriteSchema {
                     let session = LanguageModelSession(instructions: framing)
                     if let answer = try? await session.respond(to: prompt, schema: schema) {
                         filled = try? answer.content.value(String.self, forProperty: "text")
@@ -2104,7 +2023,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // nil is the existing "couldn't do it" signal: the HUD says so and the
             // text is left alone.
             var result = output
-            if let out = result, Self.isRefusal(out, for: text, dictated: dictated) { result = nil }
+            if let out = result, Self.isRefusal(out, for: text) { result = nil }
             let final = result
             await MainActor.run { done(final?.isEmpty == false ? final : nil) }
         }
@@ -2139,8 +2058,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // flicker at the moment you are trying to keep talking.
                     return
                 }
-                // Not while Auto-Correct still has the text: starting again here is
-                // what let the previous rewrite paste itself into this sentence.
+                // Not while a rewrite still has the text: starting again here is
+                // what let a pending paste land inside the new sentence.
                 if !self.dictating && !self.rewriting { self.armDictation() }
             } else {
                 self.disarmDictation()          // let go inside the dead zone: nothing happened
@@ -2334,15 +2253,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Wait out a short dead zone before engaging. The hold key is a real
-    /// modifier — right ⌥ still types å and ø, and gets held for ⌥-click and
-    /// ⌥-arrow — so dictation must not start the instant it goes down. Holding it
-    /// alone past the buffer is unambiguous; any other key joining means it was a
-    /// chord after all, and cancels.
-    /// Set at dictation start: Auto-Correct is on, but the focused target won't
-    /// say what it contains, so there will be nothing to correct against.
-    private var autoCorrectUnavailable = false
-
     private func armDictation() {
         disarmDictation()
         dictationArmTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
@@ -2356,41 +2266,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictationArmTimer = nil
     }
 
-    /// Whether the focused thing could take dictated characters at all.
-    ///
-    /// Deliberately generous. A missing focused element is NOT a no: Zed
-    /// publishes none and dictates perfectly well, and plenty of web and
-    /// Electron views are the same. Only a control that positively says it is
-    /// something else — the Finder's desktop, a list, a button — counts as a no,
-    /// so the cost of being wrong is a dictation that runs where it needn't
-    /// rather than one refused where it would have worked.
-    private func focusAcceptsText() -> Bool {
-        guard let el = focusedTextElement() else { return true }
-
-        var roleRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &roleRef) == .success,
-           let role = roleRef as? String,
-           [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(role) {
-            return true
-        }
-        // Not a known text role, but anything that reports a selected-text range
-        // is editable text under another name — web areas especially.
-        var names: CFArray?
-        if AXUIElementCopyAttributeNames(el, &names) == .success,
-           let list = names as? [String],
-           list.contains(kAXSelectedTextRangeAttribute as String)
-            || list.contains(kAXSelectedTextAttribute as String) {
-            return true
-        }
-        // Last chance: a string value means there is text in there to add to.
-        var value: CFTypeRef?
-        if AXUIElementCopyAttributeValue(el, kAXValueAttribute as CFString, &value) == .success,
-           value as? String != nil {
-            return true
-        }
-        return false
-    }
-
     private func startDictation() {
         // Distinguish the two failures: without Accessibility we can't read any
         // app's menus at all (a rebuild silently drops that trust), which looks
@@ -2400,26 +2275,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud.showMessage("Needs Accessibility", symbol: "exclamationmark.triangle.fill", tint: .systemRed)
             return
         }
-        // Refuse before starting, not after. macOS will happily begin dictating
-        // at the Finder's desktop — mic live, nowhere for the words to land —
-        // and the meter made that look like it was working.
-        guard focusAcceptsText() else {
-            hud.showMessage("Dictation requires an active text field", symbol: "text.cursor",
-                            tint: nil)
-            return
-        }
+        // Nothing checks whether the focus can take text. macOS makes no such
+        // check when you press the dictation key, and this is meant to be that
+        // key under a different finger. The probe that used to be here read
+        // perfectly good fields as unusable and refused to start in apps where
+        // dictation worked fine on its own.
         guard pressDictationMenuItem(starting: true) else {
             hud.showMessage("No Dictation menu here", symbol: "mic.slash.fill", tint: .systemRed)
             return
         }
         dictating = true
         captureDictationField()
-        // Whether Auto-Correct can run here is settled the moment the field is
-        // read, not when dictation ends: no readable text means there is no way
-        // to know afterwards which characters were inserted. Knowing it now is
-        // what lets stopDictation skip pretending to work.
-        autoCorrectUnavailable = UserDefaults.standard.autoCorrectDictation
-            && dictationBeforeText == nil
         hud.showWaveform()
     }
 
@@ -2502,7 +2368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + tick) { poll() }
     }
 
-    /// Claim the text for the Auto-Correct round trip. Every path that finishes with
+    /// Claim the text for a rewrite's round trip. Every path that finishes with
     /// it — including the ones that give up — has to call `endRewriting`, or the
     /// hold key stays dead until the watchdog fires.
     private func beginRewriting() {
@@ -2521,11 +2387,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rewriteWatchdog = nil
     }
 
-    /// Deliberately just "here". Naming the app was wrong — the same app
-    /// publishes its text in some views and not others — and naming the control
-    /// from its role description was worse, because the case that needs the
-    /// message is exactly the case where the control says least about itself.
-
+    /// Stop, and nothing else.
+    ///
+    /// This used to finish by selecting the run just dictated and rewriting it
+    /// in place — Auto-Correct. It came out because both pieces it stood on were
+    /// unreliable: the diff that worked out which characters had been inserted,
+    /// and the probe that decided whether a field could be read at all. Between
+    /// them they over-selected in some apps and replaced text nobody had asked
+    /// them to touch, and a wrong span is worse than no cleanup at all.
+    ///
+    /// So this is the dictation key now, on a key you can hold, and nothing
+    /// more. Cleaning up is a separate and deliberate act: select what you want
+    /// and run the Clean Dictation rewrite action, which carries the very same
+    /// instructions Auto-Correct used to apply — over a span you chose rather
+    /// than one that was guessed at.
     private func stopDictation() {
         dictating = false
         pendingDictationStop?.cancel()
@@ -2533,69 +2408,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Prefer the app's own Stop item; fall back to Escape, which ends
         // dictation while keeping whatever has already been transcribed.
         if !pressDictationMenuItem(starting: false) { post(CGKeyCode(kVK_Escape), []) }
+        hud.hide()
+    }
 
-        guard UserDefaults.standard.autoCorrectDictation else { hud.hide(); return }
-        // Auto-Correct: select what was just dictated and rewrite it in place.
-        // Dictation leaves the caret at the end of its insertion, so shift-select
-        // back over it — that's the only handle we have on "the dictated text",
-        // since it lands in the app, not in us.
-        // Nothing to correct against, and that was settled when the field was
-        // first read — so say so rather than running the rewrite animation over
-        // work that cannot start. Showing a model-at-work pill for a rewrite
-        // that is already known to be impossible is theatre.
-        if autoCorrectUnavailable {
-            hud.showMessage("Dictation captured — Auto-Correct unsupported here",
-                            symbol: "checkmark.circle.fill", tint: nil)
-            return
-        }
-        beginRewriting()
-        // Every wait in the app looks the same: dots in the label's own colour.
-        //
-        // They used to be told apart by tint — amber for the grace period, purple
-        // for the model, green for OCR — on the rule that states behaving
-        // differently should not look alike. In practice that produced a colour
-        // per tool, which told the user which shortcut they had just pressed:
-        // something they already knew. And the one distinction that did encode
-        // behaviour, amber, marked a window too short and too silent for anyone
-        // to notice they were inside it. Colour is worth having when it is
-        // scarce; a palette is decoration.
-        hud.showProcessing()
-        // No settle before the diff. There used to be 0.4 s here, on the worry
-        // that the field might still be changing — but that was a precaution
-        // against a failure never actually observed, and it is a third of the
-        // wait between letting go and seeing the result. Still a hop to the next
-        // runloop turn, so the stop above has been processed first.
-        //
-        // If it turns out to be needed, the symptom is specific: the diff
-        // reading a half-written field, so Auto-Correct grabs the wrong span or
-        // declines when it should have worked. Put the delay back, don't guess
-        // at a different number.
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            // Auto-Correct runs only on a run the diff has identified exactly.
-            //
-            // There used to be a fallback that walked back a guessed number of
-            // words with ⇧⌥←, for apps the diff can't read. A guess is the wrong
-            // shape for this: when it was off, the model was handed the wrong
-            // text and confidently rewrote it, so a word dictated into a sentence
-            // came back having eaten its neighbours. Everything downstream — the
-            // rewrite, the sentence shaping — is only as good as the span, and
-            // there is no way to check a span that was guessed.
-            //
-            // Dictation itself is unaffected: the words are typed either way.
-            // Only the cleanup stands down, and says so.
-            guard let dictatedText = self.selectDictatedRunExactly() else {
-                // endRewriting, or the hold key stays ignored and dictation looks
-                // locked up until the watchdog gets round to it.
-                self.endRewriting()
-                self.hud.showMessage("Dictation captured — Auto-Correct unsupported here",
-                                     symbol: "checkmark.circle.fill", tint: nil)
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                self.rewriteSelection(dictated: true, known: dictatedText)
-            }
-        }
+    /// Note the focused field, so `scheduleDictationStop` can watch its text
+    /// settle rather than guessing at a grace period.
+    ///
+    /// It used to snapshot the text too, as the baseline Auto-Correct diffed
+    /// against to find the dictated run. Nothing diffs any more; only the
+    /// element is still worth having, and only for knowing when to stop.
+    private func captureDictationField() {
+        dictationElement = nil
+        guard let field = focusedTextElement() else { return }
+        // Only keep it if the value actually reads. `scheduleDictationStop`
+        // treats a non-nil element as "I can watch this settle", and an element
+        // that answers nothing looks instantly quiet — which would cut the grace
+        // period to a fraction in precisely the apps that need all of it, the
+        // ones that publish no text at all.
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
+              value as? String != nil else { return }
+        dictationElement = field
     }
 
     /// What the dictation target holds right now, for comparing against the
@@ -2636,73 +2469,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let element = appFocused, CFGetTypeID(element) == AXUIElementGetTypeID()
         else { return nil }
         return (element as! AXUIElement)
-    }
-
-    /// Note the focused field and its current text, so what dictation adds can be
-    /// identified exactly rather than guessed at.
-    private func captureDictationField() {
-        dictationElement = nil
-        dictationBeforeText = nil
-        dictatedMidSentence = nil        // this run's answer, not the last one's
-        dictatedRange = nil
-        guard let field = focusedTextElement() else { return }
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
-              let text = value as? String else { return }
-        dictationElement = field
-        dictationBeforeText = text
-    }
-
-    /// Select exactly what dictation inserted, by diffing the field against the
-    /// snapshot taken when it started: the common head and tail are what was
-    /// already there, so everything between them is new. Returns nil when the
-    /// app won't expose its text (many Electron and web views), leaving the
-    /// caller to fall back on the estimate.
-    ///
-    /// Hands back the text as well as selecting it. The diff has already worked
-    /// out precisely which characters those are, so making the caller fetch them
-    /// again with a ⌘C would be both redundant and visible: that copy is the
-    /// app's own write to the clipboard, which lands in clipboard history where
-    /// nothing this tool does belongs.
-    private func selectDictatedRunExactly() -> String? {
-        guard let field = dictationElement, let before = dictationBeforeText else {
-            return nil
-        }
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) == .success,
-              let after = value as? String, after != before else {
-            return nil
-        }
-
-        // UTF-16 offsets, because that's what an AX range is counted in.
-        let b = Array(before.utf16), a = Array(after.utf16)
-        guard a != b else { return nil }
-        // Bounded by the shorter side, so this measures a replacement as well as
-        // an insertion. It used to require the text to have grown, which meant
-        // dictating a word over a selected one of the same length looked like
-        // nothing had happened and Auto-Correct declined.
-        let shared = min(a.count, b.count)
-        var head = 0
-        while head < shared, a[head] == b[head] { head += 1 }
-        var tail = 0
-        while tail < shared - head, a[a.count - 1 - tail] == b[b.count - 1 - tail] { tail += 1 }
-        let length = a.count - tail - head
-        guard length > 0 else { return nil }
-
-        // What precedes the insertion decides whether this is a sentence or a
-        // fragment dropped into the middle of one. Anything other than a
-        // sentence ending before it means the speaker was mid-sentence.
-        let preceding = String(decoding: b[0..<head], as: UTF16.self)
-        dictatedMidSentence = preceding.last(where: { !$0.isWhitespace })
-            .map { !".!?".contains($0) } ?? false
-
-        var range = CFRange(location: head, length: length)
-        dictatedRange = range
-        guard let axRange = AXValueCreate(.cfRange, &range),
-              AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString,
-                                           axRange) == .success
-        else { return nil }
-        return String(decoding: a[head..<(head + length)], as: UTF16.self)
     }
 
     /// Read the selection straight out of the focused field, no ⌘C involved.
@@ -3248,7 +3014,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     private var updateStatus: NSTextField?
     private var updateButton: NSButton?
     private var speakSetupWindow: SpeakSetupWindow?
-    private var dictationSetupWindow: DictationSetupWindow?
     private var infoPopover: NSPopover?
     /// The About popover's version line, which doubles as the update check. Weak
     /// and re-set on every open — the popover is rebuilt from scratch each time, so
@@ -3584,12 +3349,23 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
             }
 
             if usesHoldKey(panel) {
-                // Driven by holding a modifier rather than a recorded shortcut, so
-                // this reads out the key in use instead of offering a field — the
-                // same shape as Speak Text, and set in Settings below.
-                let key = UserDefaults.standard.dictationHoldKey
-                readOnlyShortcut(key == .off ? "Not Set Up" : key.label,
-                                 opens: #selector(openDictationSetup))
+                // Held rather than recorded, so the shortcut column offers the
+                // choice outright. This used to be a read-only readout that
+                // opened a settings window; once Auto-Correct went, the hold key
+                // was the only thing left in there, and a window for one popup is
+                // not worth opening.
+                let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+                popup.addItems(withTitles: HoldKey.menuOrder.map(\.label))
+                popup.selectItem(at: HoldKey.menuOrder.firstIndex(
+                    of: UserDefaults.standard.dictationHoldKey) ?? 0)
+                popup.isEnabled = enabled
+                popup.controlSize = .small
+                popup.font = .systemFont(ofSize: 11)
+                popup.target = self
+                popup.action = #selector(holdKeyChanged(_:))
+                popup.toolTip = "Hold it to dictate, let go to stop."
+                popup.frame = NSRect(x: cx, y: lineTop - itemH, width: colW, height: itemH)
+                v.addSubview(popup)
             } else if mirrorsMacOSHotkey(panel) {
                 // Read-only mirror of the macOS "Speak selection" shortcut: unlike
                 // the editable recorders it's set in Read & Speak, behind the
@@ -3689,18 +3465,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
                 btn.isEnabled = enabled
                 btn.sizeToFit()
                 let w = min(ceil(btn.frame.width), colW)
-                btn.frame = NSRect(x: cx + (colW - w) / 2, y: lineTop - itemH, width: w, height: itemH)
-                v.addSubview(btn)
-            }
-            if panel.defaultsKey == "dictation" {
-                let btn = NSButton(title: "Settings", target: self, action: #selector(openDictationSetup))
-                btn.bezelStyle = .rounded
-                btn.controlSize = .small
-                btn.font = .systemFont(ofSize: 11)
-                btn.isEnabled = enabled
-                btn.toolTip = "Choose the hold key, and set up Auto-Correct."
-                btn.sizeToFit()
-                let w = ceil(btn.frame.width)
                 btn.frame = NSRect(x: cx + (colW - w) / 2, y: lineTop - itemH, width: w, height: itemH)
                 v.addSubview(btn)
             }
@@ -4021,15 +3785,10 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         UserDefaults.standard.settingsToggle = sender.state == .on
     }
 
-    @objc private func openDictationSetup() {
-        if dictationSetupWindow == nil {
-            dictationSetupWindow = DictationSetupWindow(appDelegate: appDelegate) { [weak self] in
-                self?.rebuild()          // the card's readout follows the hold key
-            }
-        }
-        dictationSetupWindow?.center()
-        NSApp.activate(ignoringOtherApps: true)
-        dictationSetupWindow?.makeKeyAndOrderFront(nil)
+    @objc private func holdKeyChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.dictationHoldKey =
+            HoldKey.menuOrder[safe: sender.indexOfSelectedItem] ?? .off
+        appDelegate?.syncDictationMonitor()
     }
 
     @objc private func editRewriteActions() {
@@ -4116,7 +3875,6 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         // Both belong to cards in this window — left open on their own they'd be
         // stray windows from an app with no Dock icon to get back to.
         speakSetupWindow?.close()
-        dictationSetupWindow?.close()
         instructionsWindow?.close()
         pausedAppsWindow?.close()
         infoPopover?.performClose(nil)
@@ -4840,131 +4598,6 @@ extension InstructionsWindow: NSTextViewDelegate, NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) { commitEditor(); saveQuietly() }
     func textDidChange(_ notification: Notification) { commitEditor() }
     func textDidEndEditing(_ notification: Notification) { commitEditor(); saveQuietly() }
-}
-
-/// Everything Dictate Text needs set up: which key you hold, whether Auto-Correct
-/// runs on what you just said, and what it tells the model when it does.
-///
-/// Auto-Correct's instructions live here rather than with Rewrite Text's. They
-/// are the same model doing a different job — stripping the fillers and false
-/// starts out of speech, not proofreading something you typed — and keeping them
-/// beside the switch that runs them is where you go looking.
-final class DictationSetupWindow: NSWindow {
-    private weak var appDelegate: AppDelegate?
-    private let onChange: () -> Void
-    private let instructionsView = NSTextView()
-
-    init(appDelegate: AppDelegate?, onChange: @escaping () -> Void) {
-        self.appDelegate = appDelegate
-        self.onChange = onChange
-        let w: CGFloat = 520, h: CGFloat = 450
-        super.init(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
-                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "Dictate Text Settings"
-        isReleasedWhenClosed = false
-
-        let v = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-
-        func caption(_ text: String, y: CGFloat, width: CGFloat) {
-            let f = NSTextField(labelWithString: text)
-            f.font = .systemFont(ofSize: 11)
-            f.textColor = .secondaryLabelColor
-            f.lineBreakMode = .byTruncatingTail
-            f.frame = NSRect(x: 20, y: y, width: width, height: 15)
-            v.addSubview(f)
-        }
-
-        // Hold key.
-        let keyHead = NSTextField(labelWithString: "Keyboard Shortcut")
-        keyHead.font = .systemFont(ofSize: 13, weight: .semibold)
-        keyHead.frame = NSRect(x: 20, y: h - 62, width: 220, height: 20)
-        v.addSubview(keyHead)
-        caption("Hold it to dictate, let go to stop.", y: h - 80, width: 260)
-
-        let keyPopup = NSPopUpButton(frame: NSRect(x: w - 20 - 190, y: h - 68, width: 190, height: 26))
-        keyPopup.addItems(withTitles: HoldKey.menuOrder.map(\.label))
-        keyPopup.selectItem(at: HoldKey.menuOrder.firstIndex(of: UserDefaults.standard.dictationHoldKey) ?? 0)
-        keyPopup.target = self
-        keyPopup.action = #selector(holdKeyChanged(_:))
-        v.addSubview(keyPopup)
-
-        // Auto-Correct.
-        let acHead = NSTextField(labelWithString: "Auto-Correct")
-        acHead.font = .systemFont(ofSize: 13, weight: .semibold)
-        acHead.frame = NSRect(x: 20, y: h - 118, width: 220, height: 20)
-        v.addSubview(acHead)
-        caption("Clean up what you said as soon as you stop talking.", y: h - 136, width: 340)
-
-        let sw = NSSwitch()
-        sw.state = UserDefaults.standard.autoCorrectDictation ? .on : .off
-        sw.target = self
-        sw.action = #selector(autoCorrectChanged(_:))
-        let swSize = sw.intrinsicContentSize
-        sw.frame = NSRect(x: w - 20 - ceil(swSize.width), y: h - 122,
-                          width: ceil(swSize.width), height: ceil(swSize.height))
-        v.addSubview(sw)
-
-        // Its instructions.
-        let boxH: CGFloat = 168, boxY: CGFloat = 90
-        let insHead = NSTextField(labelWithString: "Auto-Correct Instructions")
-        insHead.font = .systemFont(ofSize: 13, weight: .semibold)
-        insHead.frame = NSRect(x: 20, y: boxY + boxH + 26, width: w - 160, height: 20)
-        v.addSubview(insHead)
-        caption("What the model is told about the speech it's cleaning up.", y: boxY + boxH + 8, width: w - 160)
-
-        let reset = NSButton(title: "Restore Default", target: self, action: #selector(restoreDefaults))
-        reset.bezelStyle = .rounded
-        reset.controlSize = .small
-        reset.font = .systemFont(ofSize: 11)
-        reset.sizeToFit()
-        let rw = ceil(reset.frame.width) + 10
-        reset.frame = NSRect(x: w - 20 - rw, y: boxY + boxH + 8, width: rw, height: 20)
-        v.addSubview(reset)
-
-        let scroll = NSScrollView(frame: NSRect(x: 20, y: boxY, width: w - 40, height: boxH))
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
-        instructionsView.string = UserDefaults.standard.dictationInstructions
-        instructionsView.font = .systemFont(ofSize: 12)
-        instructionsView.isRichText = false
-        instructionsView.isVerticallyResizable = true
-        instructionsView.autoresizingMask = [.width]
-        instructionsView.textContainer?.widthTracksTextView = true
-        scroll.documentView = instructionsView
-        v.addSubview(scroll)
-
-        let save = NSButton(title: "Save", target: self, action: #selector(save))
-        save.bezelStyle = .rounded
-        save.keyEquivalent = "\r"
-        save.frame = NSRect(x: w - 110, y: 22, width: 90, height: 30)
-        v.addSubview(save)
-
-        contentView = v
-    }
-
-    /// The key and the switch take effect on the spot — there's nothing to
-    /// review about them. Only the instructions wait for Save.
-    @objc private func holdKeyChanged(_ sender: NSPopUpButton) {
-        UserDefaults.standard.dictationHoldKey =
-            HoldKey.menuOrder[safe: sender.indexOfSelectedItem] ?? .off
-        appDelegate?.syncDictationMonitor()
-        onChange()
-    }
-
-    @objc private func autoCorrectChanged(_ sender: NSSwitch) {
-        UserDefaults.standard.autoCorrectDictation = sender.state == .on
-    }
-
-    @objc private func restoreDefaults() {
-        instructionsView.string = UserDefaults.defaultDictationInstructions
-    }
-
-    @objc private func save() {
-        let t = instructionsView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        UserDefaults.standard.dictationInstructions =
-            t.isEmpty ? UserDefaults.defaultDictationInstructions : t
-        close()
-    }
 }
 
 // MARK: - Waveform

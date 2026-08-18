@@ -82,14 +82,14 @@ Your Mac reads the selection aloud in a Siri voice, on a shortcut macOS owns rat
 
 ### Rewrite Text
 
-Tap ⌃ twice and it rewrites whatever you've selected with Apple Intelligence, running on your Mac. It holds any number of named **rewrite actions** — clean up, restyle, shorten, translate, wrap in HTML — and the shortcut asks which to use when more than one is selected. An action can also take a shortcut of its own, which skips the menu and runs it directly. With nothing selected it takes the whole field.
+Tap ⌃ twice and it rewrites whatever you've selected with Apple Intelligence, running on your Mac. It holds any number of named **rewrite actions** — clean up, restyle, shorten, translate, wrap in HTML — and the shortcut asks which to use when more than one is selected. An action can also take a shortcut of its own, which skips the menu and runs it directly. With nothing selected it asks you to select something first.
 
 - Clean up a paragraph you typed in a hurry, without it being reworded.
 - Translate a note into Spanish, or restyle it for a work email.
 
 ### Dictate Text
 
-Hold a key, talk, let go. Your Mac does the transcribing on-device, so nothing you say leaves it. What it won't do is hold-to-talk, and that's the only thing this adds. The meter is green while listening, amber while dictation catches up, purple while Auto-Correct rewrites.
+Hold a key, talk, let go. Your Mac does the transcribing on-device, so nothing you say leaves it. What it won't do is hold-to-talk, and that's the only thing this adds — it starts and stops the same dictation the F5 key does, and changes nothing about what gets typed. The meter is green while listening, then amber while dictation catches up.
 
 - Get a long reply down without typing it all out.
-- Talk out a rough paragraph, then correct it by hand.
+- Talk out a rough paragraph, then select it and run **Clean Dictation** from Rewrite Text to tidy it up.
