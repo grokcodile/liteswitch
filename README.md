@@ -61,7 +61,7 @@ Two more that make the point:
 
 - **Speak Text** — mirrors macOS's own **Speak selection**. The card shows the shortcut macOS has assigned it, and **Configure…** opens a window walking through switching it on in Read & Speak. It mirrors rather than re-implements for a measured reason: the Siri voices are the ones worth listening to, and no public API vends them. `AVSpeechSynthesizer` refuses them outright and silently substitutes a fallback; `NSSpeechSynthesizer` exposes exactly one, and is deprecated besides. Voices sitting on disk as several hundred megabytes of neural model — `nora`, `quinn` — render byte-identical audio to a made-up voice name when requested through either. macOS is the only thing that can read to you in them, so macOS does the talking.
 - **Capture Text** — drag a region and its text is recognized on-device and copied, with a pill showing how much was grabbed. **Remove Breaks** flows it onto one line. A native TextSniper.
-- **Rewrite Text** — triggered by **tapping ⌃ twice** rather than a recorded shortcut, it rewrites the selected text with Apple Intelligence's on-device model, and asks you to select something if you haven't. It holds any number of named **rewrite actions** — Clean Up ships built in, alongside Clean Dictation, Professional, Friendly, Shorten, Translate to Spanish and Wrap in HTML — and the shortcut offers a menu of the ones you've selected. Tick none and it just cleans up; tick one and it runs straight through. Any action can also take a shortcut of its own, which skips the menu whether or not it's ticked. **Clean Dictation** carries the instructions that used to run automatically after dictation — it's an ordinary action now, so you aim it at a span you chose.
+- **Rewrite Text** — triggered by **tapping ⌃ twice** rather than a recorded shortcut, it rewrites the selected text with Apple Intelligence's on-device model, and asks you to select something if you haven't. It holds any number of named **rewrite actions** — **Clean Dictation** ships built in at the top, alongside Proofread, Professional, Friendly, Shorten, Translate to Spanish and Wrap in HTML — and the shortcut offers a menu of the ones you've selected. Tick none and it just cleans up; tick one and it runs straight through. Any action can also take a shortcut of its own, which skips the menu whether or not it's ticked. Clean Dictation carries the instructions that used to run automatically after dictation — it's an ordinary action now, so you aim it at a span you chose, and it's the one that runs if you tick nothing at all.
 - **Dictate Text** — hold **Right ⌥** or **Right ⌘** and it dictates; release and it stops. That is the whole of it: the same thing the dictation key does, on a key you can hold, with no cleanup pass afterwards. It shows nothing of its own while listening: macOS already puts up its own dictation indicator, and a second one saying the same thing is just more on screen. Dictation keeps running for about a second after you let go, so macOS can finish the last of the transcription — press the key again in that window and it carries straight on. To tidy up what you said, select it and run **Clean Dictation** from Rewrite Text.
 
 **Throughout**
@@ -191,17 +191,15 @@ Nothing needs setting up in advance: macOS prompts the first time a shortcut nee
 
 ## Shortcuts
 
-A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a key under your right hand**, with Clipboard as the one exception:
+A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a key under your right hand**:
 
 | | | | |
 |---|---|---|---|
-| ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | **⇧⌘V Clipboard** |
+| ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘V Clipboard |
 | ⌃⌥⌘, System Settings | ⌃⌥⌘K Keep Awake | ⌃⌥⌘P Color Picker | ⌃⌥⌘H Color History |
-| Speak Text: macOS's own | ⌃⌥⌘O Capture Text | Rewrite Text: **tap ⌃ twice** | Hold **Right ⌥** to dictate |
+| Hold **Right ⌥** to dictate | Rewrite Text: **tap ⌃ twice** | Speak Text: macOS's own | ⌃⌥⌘O Capture Text |
 
 Three modifiers look heavy written down, but the left hand takes them as one shape and never moves, so every trigger key sits under the right — no chord crosses the keyboard. It's also the one combination nothing else claims: ⌃ alone hits the text-editing bindings macOS puts in every field (⌃A, ⌃K, ⌃H), ⌥ alone eats the character it would otherwise type, and ⌘ belongs to whatever app is frontmost.
-
-Clipboard history breaks that rule on purpose. It's the one tool you reach for without thinking, and **⇧⌘V** is where thinking-free already points — one modifier away from the paste key it extends. The trade is that ⇧⌘V, unlike ⌃⌥⌘, *is* claimed by some apps; where it is, the frontmost app wins and the panel won't open. Record a different combo for it there.
 
 Every key earns its place. **`/` finds and `\` does** — mirrored symbols, one for paths, one for escapes. **`,`** is the preferences key every Mac app already uses, **`V`** the paste key for the paste history. The rest are initials: **L**oupe, **H**istory, **K**eep awake, **O**CR, **P**roofread.
 

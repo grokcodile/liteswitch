@@ -64,10 +64,10 @@ let panels: [Panel] = [
     Panel(name: "Keep Awake", symbol: "mug.fill", glyphPath: nil, detail: "Hold your Mac awake through a long render, a download, or a presentation.", spotlightKey: 0, defaultsKey: "keepawake"),
     Panel(name: "Color Picker", symbol: "eyedropper", glyphPath: nil, detail: "Magnify any pixel on screen and copy its exact color as code.", spotlightKey: 0, defaultsKey: "colorpicker"),
     Panel(name: "Color History", symbol: "paintpalette", glyphPath: nil, detail: "Your last twenty picks, ready to copy again, drag out as a swatch, or pin.", spotlightKey: 0, defaultsKey: "colorhistory"),
-    Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Pull the text off anything on screen — a screenshot, a PDF, a paused video.", spotlightKey: 0, defaultsKey: "textcapture"),
-    Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Have your Mac read the text you've selected out loud, in a Siri voice.", spotlightKey: 0, defaultsKey: "speakclipboard"),
-    Panel(name: "Rewrite Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Clean up, restyle, shorten or translate what you've selected, on your Mac.", spotlightKey: 0, defaultsKey: "rewrite"),
     Panel(name: "Dictate Text", symbol: "waveform.badge.microphone", glyphPath: nil, detail: "Hold a key and speak; let go and what you said is typed where the cursor is.", spotlightKey: 0, defaultsKey: "dictation"),
+    Panel(name: "Rewrite Text", symbol: "text.badge.checkmark", glyphPath: nil, detail: "Clean up, restyle, shorten or translate what you've selected, on your Mac.", spotlightKey: 0, defaultsKey: "rewrite"),
+    Panel(name: "Speak Text", symbol: "text.bubble", glyphPath: nil, detail: "Have your Mac read the text you've selected out loud, in a Siri voice.", spotlightKey: 0, defaultsKey: "speakclipboard"),
+    Panel(name: "Capture Text", symbol: "text.viewfinder", glyphPath: nil, detail: "Pull the text off anything on screen — a screenshot, a PDF, a paused video.", spotlightKey: 0, defaultsKey: "textcapture"),
 ]
 
 /// Panels shown in the "System Utilities" group rather than the "Spotlight" group,
@@ -95,8 +95,7 @@ func mirrorsMacOSHotkey(_ panel: Panel) -> Bool { panel.defaultsKey == "speakcli
 /// reads out the tap instead of offering a field.
 func usesTapKey(_ panel: Panel) -> Bool { panel.defaultsKey == "rewrite" }
 
-/// What a fresh install starts with: ⌃⌥⌘ plus a key under your right hand,
-/// with one deliberate exception noted below.
+/// What a fresh install starts with: ⌃⌥⌘ plus a key under your right hand.
 ///
 /// Three modifiers look heavy written down, but the left hand takes them as one
 /// shape and never moves, which leaves every trigger key on the right — no chord
@@ -110,12 +109,6 @@ func usesTapKey(_ panel: Panel) -> Bool { panel.defaultsKey == "rewrite" }
 /// for escapes. `,` is the preferences key every Mac app already uses. `'` is
 /// quoted text. The rest are initials: Loupe, History, Keep awake, OCR.
 ///
-/// Clipboard is the one exception, on ⇧⌘V. It is the tool people reach for by
-/// muscle memory rather than by looking it up, and ⇧⌘V is where that muscle
-/// memory already points — it is close enough to ⌘V to be guessed. The cost is
-/// real and accepted: unlike ⌃⌥⌘, ⇧⌘V is claimed by some apps, and where it is,
-/// the frontmost app wins and this shortcut will not fire. Rerecord it there.
-///
 /// Only ever applied to a tool with no shortcut of its own — see
 /// `seedDefaultShortcutsIfNeeded`.
 let rightHandChord = UInt32(controlKey | optionKey | cmdKey)
@@ -124,7 +117,7 @@ let defaultShortcuts: [String: (code: UInt32, modifiers: UInt32)] = [   // virtu
     "apps": (47, rightHandChord),           // .        panel 1
     "files": (44, rightHandChord),          // /        panel 2 — the path separator: finding
     "actions": (42, rightHandChord),        // \        panel 3 — the escape: doing
-    "clipboard": (9, UInt32(shiftKey | cmdKey)),   // ⇧⌘V   the paste key, for the paste history
+    "clipboard": (9, rightHandChord),       // V        the paste key, for the paste history
     "settings": (43, rightHandChord),       // ,        the preferences key
     "colorpicker": (35, rightHandChord),    // P        Picker
     "colorhistory": (4, rightHandChord),    // H        History
@@ -192,9 +185,14 @@ struct RewriteAction: Equatable {
     /// as it did before any of them existed.
     var enabled: Bool
 
-    /// A starter set: no shortcut of its own, and off until you want it.
+    /// A starter set with no shortcut of its own. `enabled` decides whether it
+    /// shows up in the chooser; the ones that ship off are the two that change
+    /// the text into something else rather than tidying it.
     init(title: String, shortcutless instructions: String) {
         self.init(title: title, instructions: instructions, shortcut: nil, enabled: false)
+    }
+    init(title: String, enabled: Bool, instructions: String) {
+        self.init(title: title, instructions: instructions, shortcut: nil, enabled: enabled)
     }
     init(title: String, instructions: String, shortcut: Shortcut?, enabled: Bool) {
         self.title = title; self.instructions = instructions
@@ -203,30 +201,27 @@ struct RewriteAction: Equatable {
 }
 
 extension UserDefaults {
-    /// The first set is the built-in one and can't be removed: with nothing
-    /// enabled it is still what runs, so the shortcut always does something.
-    static let cleanUpTitle = "Clean Up"
-
-    /// The sets a fresh install starts with, beyond the built-in Clean Up.
+    /// The sets a fresh install starts with, beyond the built-in Clean Dictation.
     ///
     /// Every wording here was measured against the on-device model rather than
     /// written by eye — see the notes on each. The model over-applies anything
     /// that tells it to transform, so each one names what to keep as well as
     /// what to change.
     static let starterActions: [RewriteAction] = [
-        RewriteAction(title: cleanDictationTitle, shortcutless: cleanDictationInstructions),
-        RewriteAction(title: "Professional", shortcutless:
+        RewriteAction(title: "Proofread", instructions: proofreadInstructions,
+                      shortcut: Shortcut(keyCode: 17, modifiers: rightHandChord), enabled: true),
+        RewriteAction(title: "Professional", enabled: true, instructions:
             "Rewrite the text in a professional tone suitable for workplace correspondence. "
             + "Keep every line of the original, including any heading or introductory line. "
             + "Keep every fact, name, number and request exactly as given. "
             + "Do not add information and do not remove information."),
         // "Keep every line" is load-bearing: without it the model dropped a
         // list's heading outright.
-        RewriteAction(title: "Friendly", shortcutless:
+        RewriteAction(title: "Friendly", enabled: true, instructions:
             "Rewrite the text in a warm, casual tone, as if writing to someone you know well. "
             + "Keep every fact, name, number and request exactly as given. "
             + "Do not add information and do not remove information."),
-        RewriteAction(title: "Shorten", shortcutless:
+        RewriteAction(title: "Shorten", enabled: true, instructions:
             "Rewrite the text so it can be read and answered in a few seconds: shorter "
             + "sentences, no filler, the main point first. Keep every fact, name, number, "
             + "request, heading and list item that is present. Do not add a subject line, "
@@ -251,9 +246,10 @@ extension UserDefaults {
     var rewriteActions: [RewriteAction] {
         get {
             guard let raw = array(forKey: "rewriteActions") as? [[String: Any]], !raw.isEmpty else {
-                return [RewriteAction(title: UserDefaults.cleanUpTitle,
+                return [RewriteAction(title: UserDefaults.cleanDictationTitle,
                                        instructions: rewriteInstructions,
-                                       shortcut: nil, enabled: true)]
+                                       shortcut: Shortcut(keyCode: 2, modifiers: rightHandChord),
+                                       enabled: true)]
                      + UserDefaults.starterActions
             }
             var decoded = raw.compactMap { d -> RewriteAction? in
@@ -268,7 +264,7 @@ extension UserDefaults {
             // empty. An earlier build could blank it on opening the window, and
             // an empty first set means the fallback has nothing to run.
             if decoded.isEmpty || decoded[0].instructions.isEmpty {
-                let builtIn = RewriteAction(title: UserDefaults.cleanUpTitle,
+                let builtIn = RewriteAction(title: UserDefaults.cleanDictationTitle,
                                              instructions: UserDefaults.defaultRewriteInstructions,
                                              shortcut: decoded.first?.shortcut, enabled: true)
                 if decoded.isEmpty { decoded = [builtIn] } else { decoded[0] = builtIn }
@@ -345,7 +341,7 @@ extension UserDefaults {
     /// tell it to transform, and ignores NARROW rules that tell it to hold back —
     /// but the broad "keep the wording" guard is load-bearing, which the
     /// contraction result on its own would have wrongly suggested it wasn't.
-    static let defaultRewriteInstructions = """
+    static let proofreadInstructions = """
         Fix every spelling, grammar, capitalization and punctuation error. \
         Capitalize the first word of every sentence and the pronoun I. End every \
         sentence with the punctuation it needs. Split run-on sentences.
@@ -374,6 +370,12 @@ extension UserDefaults {
     /// stripping the um and uh. The lesson matches the one on the set above: this
     /// model needs the *scope* of an instruction bounded, or it generalises it.
     static let cleanDictationTitle = "Clean Dictation"
+
+    /// The built-in set — the one at the top, which can't be removed and is what
+    /// runs when nothing is ticked. It is Clean Dictation, because dictating and
+    /// then tidying what you said is the pairing this app is actually for; the
+    /// proofreader is a starter set below it, with a key of its own.
+    static let defaultRewriteInstructions = cleanDictationInstructions
 
     /// What Auto-Correct used to apply on its own, now a rewrite action you aim
     /// yourself. Every clause was measured against the on-device model — the
@@ -1453,7 +1455,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if active.count <= 1 {
             let only = active.first ?? sets.first
             runRewrite(text,
-                       action: only ?? RewriteAction(title: UserDefaults.cleanUpTitle,
+                       action: only ?? RewriteAction(title: UserDefaults.cleanDictationTitle,
                                                      shortcutless: UserDefaults.defaultRewriteInstructions),
                        restoring: saved)
             return
