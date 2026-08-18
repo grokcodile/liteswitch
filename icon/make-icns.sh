@@ -1,45 +1,36 @@
 #!/bin/bash
-# Regenerates AppIcon.icns from AppIcon.png. No dependencies: sips and iconutil
-# both ship with macOS. (This used to render an SVG through librsvg — the icon is
-# a 3D render now, so the master is a PNG and that requirement is gone.)
+# Assembles AppIcon.icns from AppIcon.appiconset.
 #
-# AppIcon.png is 1024x1024 with the artwork in the middle 824x824 and the corners
-# transparent — the shape and margins macOS expects. main.swift leans on that
-# margin too: the settings window subtracts a hardcoded 6pt for it (`iconBleed`).
+# The slices are copied, never resampled. Each size in the set was exported for
+# that size, and downscaling one master to all of them is measurably worse at 16
+# and 32 — a 3D render loses its silhouette long before the pixels run out. No
+# pngquant pass either: these are final art, and a lossy requantise is not this
+# script's decision to make.
 #
-# Size choices, for a menu-bar-less background agent:
-#   • No 1024px (512x512@2x) slice. That one rendering is ~half the icns and is
-#     only shown by the App Store and Finder's max "Get Info" zoom — never by an
-#     agent with no Dock icon. Dropping it halves the file with no visible loss.
-#   • If pngquant is installed, a lossy palette pass shrinks the render further.
-#     Skipped (with a note) if pngquant is absent, so the build still works
-#     everywhere — just larger.
+# Nothing to install: iconutil ships with macOS.
 set -e
 
 cd "$(dirname "$0")"
-
+SET="AppIcon.appiconset"
 ICONSET="$(mktemp -d)/AppIcon.iconset"
 mkdir -p "$ICONSET"
 
-render() { sips -s format png -z "$1" "$1" AppIcon.png --out "$ICONSET/$2.png" >/dev/null; }
+# iconset slot <- the file in the set exported at that pixel size
+slot() { cp "$SET/$2" "$ICONSET/$1.png"; }
 
-render 16   icon_16x16
-render 32   icon_16x16@2x
-render 32   icon_32x32
-render 64   icon_32x32@2x
-render 128  icon_128x128
-render 256  icon_128x128@2x
-render 256  icon_256x256
-render 512  icon_256x256@2x
-render 512  icon_512x512
+slot icon_16x16        mac16.png
+slot icon_16x16@2x     mac32.png
+slot icon_32x32        mac32.png
+slot icon_32x32@2x     mac64.png
+slot icon_128x128      mac128.png
+slot icon_128x128@2x   mac256.png
+slot icon_256x256      mac256.png
+slot icon_256x256@2x   mac512.png
+slot icon_512x512      mac512.png
+slot icon_512x512@2x   mac1024.png
 
-if command -v pngquant >/dev/null 2>&1; then
-    for f in "$ICONSET"/*.png; do
-        pngquant --quality=70-92 --force --output "$f" "$f" || true
-    done
-else
-    echo "note: pngquant not found — skipping lossy optimization (icns will be larger)."
-fi
+# appstore1024.png is deliberately unused here: it is the opaque, full-bleed
+# square the App Store wants, which is the wrong shape for a .icns.
 
 iconutil -c icns "$ICONSET" -o AppIcon.icns
 rm -rf "$(dirname "$ICONSET")"
