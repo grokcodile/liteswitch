@@ -781,7 +781,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default.addObserver(
             self, selector: #selector(showSettingsForDuplicateLaunch),
             name: Self.showSettingsNotification, object: nil)
-        migrateRenamedKeys()
         seedDefaultShortcutsIfNeeded()
         // Rewrite Text is tap-driven now; drop any shortcut saved before that,
         // so a stale binding can't keep firing or linger in the settings card.
@@ -1114,58 +1113,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return event?.eventID == AEEventID(kAEOpenApplication)
             && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?
                 .enumCodeValue == keyAELaunchedAsLogInItem
-    }
-
-    /// Give a fresh install the default set. Runs once, and skips any tool that
-    /// already has a shortcut, so it can never overwrite something you chose.
-    /// The on-disk keys still carried the tool's old names. Renaming them
-    /// outright would have silently dropped everyone's actions and shortcuts, so
-    /// each is carried across once and the old key removed. Guarded on the new
-    /// key being absent, so it can't undo later edits if it ever runs twice.
-    private func migrateRenamedKeys() {
-        let d = UserDefaults.standard
-        for (old, new) in [("polishShortcuts", "rewriteShortcuts"),
-                           ("polishKeyCode", "rewriteKeyCode"),
-                           ("polishModifiers", "rewriteModifiers"),
-                           ("polishInstructions", "rewriteInstructions"),
-                           ("correctSets", "rewriteActions")] {
-            guard d.object(forKey: new) == nil, let value = d.object(forKey: old) else { continue }
-            d.set(value, forKey: new)
-            d.removeObject(forKey: old)
-        }
-        // Left behind by an in-app speech engine that was tried and reverted.
-        d.removeObject(forKey: "speakVoiceIdentifier")
-        // Left behind by Protected Apps, which stopped being needed once the only
-        // things it stood down were two triggers nobody had trouble with.
-        d.removeObject(forKey: "pausedApps")
-        migrateAutoCorrectToAction()
-    }
-
-    /// Auto-Correct is gone; its instructions are not.
-    ///
-    /// An existing install has already been seeded, so it would never pick up
-    /// Clean Dictation from `starterActions` — the new action would exist only
-    /// for people installing fresh. So it is added here instead, carrying any
-    /// wording that had been customised for Auto-Correct rather than the stock
-    /// text, since that is the part worth keeping.
-    ///
-    /// Guarded on the title being absent, so deleting the action on purpose
-    /// makes it stay deleted.
-    private func migrateAutoCorrectToAction() {
-        let d = UserDefaults.standard
-        defer {
-            d.removeObject(forKey: "autoCorrectDictation")
-            d.removeObject(forKey: "dictationInstructions")
-            d.removeObject(forKey: "polishDictation")
-        }
-        guard d.object(forKey: "rewriteActions") != nil else { return }   // fresh install: seeded already
-        var actions = d.rewriteActions
-        guard !actions.contains(where: { $0.title == UserDefaults.cleanDictationTitle }) else { return }
-        let carried = (d.string(forKey: "dictationInstructions")?
-            .trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-        actions.append(RewriteAction(title: UserDefaults.cleanDictationTitle,
-                                     shortcutless: carried ?? UserDefaults.cleanDictationInstructions))
-        d.rewriteActions = actions
     }
 
     private func seedDefaultShortcutsIfNeeded() {
