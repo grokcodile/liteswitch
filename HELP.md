@@ -66,12 +66,20 @@ Every color you've picked, in one window. Click a swatch to copy it again, drag 
 
 ## Text Tools
 
+### Capture Text
+
+Drag a box around anything on screen and the text inside it lands on your clipboard. Apple's Vision framework reads it right on your Mac, so it works offline.
+
+- Copy text out of a screenshot, a PDF, or a paused video.
+- Grab an error message from a dialog that won't let you select it.
+
 ### Dictate Text
 
 Hold a key, talk, let go. Your Mac does the transcribing on-device, so nothing you say leaves it. What it won't do is hold-to-talk, and that's the only thing this adds — it starts and stops the same dictation the F5 key does, and changes nothing about what gets typed. Your Mac shows its own dictation indicator, so Pullcord adds nothing on screen. It keeps dictating for about a second after you let go, so the last of what you said isn't clipped — press the key again in that window and it carries straight on.
 
 - Get a long reply down without typing it all out.
 - Talk out a rough paragraph, then select it and run **Clean Dictation** from Rewrite Text to tidy it up.
+
 ### Rewrite Text
 
 Tap ⌃ twice and it rewrites whatever you've selected with Apple Intelligence, running on your Mac. It holds any number of named **rewrite actions** — clean up, restyle, shorten, translate, wrap in HTML — and the shortcut asks which to use when more than one is selected. An action can also take a shortcut of its own, which skips the menu and runs it directly. With nothing selected it asks you to select something first.
@@ -85,11 +93,4 @@ Your Mac reads the selection aloud in a Siri voice, on a shortcut macOS owns rat
 
 - Have a long article read to you while you do something else.
 - Proofread by ear — the mistakes you skim past are audible.
-
-### Capture Text
-
-Drag a box around anything on screen and the text inside it lands on your clipboard. Apple's Vision framework reads it right on your Mac, so it works offline.
-
-- Copy text out of a screenshot, a PDF, or a paused video.
-- Grab an error message from a dialog that won't let you select it.
 

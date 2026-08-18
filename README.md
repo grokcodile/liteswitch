@@ -197,7 +197,7 @@ A fresh install comes with a working set already assigned — **⌃⌥⌘ plus a
 |---|---|---|---|
 | ⌃⌥⌘. Applications | ⌃⌥⌘/ Files | ⌃⌥⌘\\ Actions | ⌃⌥⌘V Clipboard |
 | ⌃⌥⌘, System Settings | ⌃⌥⌘K Keep Awake | ⌃⌥⌘P Color Picker | ⌃⌥⌘H Color History |
-| Hold **Right ⌥** to dictate | Rewrite Text: **tap ⌃ twice** | Speak Text: macOS's own | ⌃⌥⌘O Capture Text |
+| ⌃⌥⌘O Capture Text | Hold **Right ⌥** to dictate | Rewrite Text: **tap ⌃ twice** | Speak Text: macOS's own |
 
 Three modifiers look heavy written down, but the left hand takes them as one shape and never moves, so every trigger key sits under the right — no chord crosses the keyboard. It's also the one combination nothing else claims: ⌃ alone hits the text-editing bindings macOS puts in every field (⌃A, ⌃K, ⌃H), ⌥ alone eats the character it would otherwise type, and ⌘ belongs to whatever app is frontmost.
 
