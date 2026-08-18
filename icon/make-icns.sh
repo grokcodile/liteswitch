@@ -27,10 +27,15 @@ slot icon_128x128@2x   mac256.png
 slot icon_256x256      mac256.png
 slot icon_256x256@2x   mac512.png
 slot icon_512x512      mac512.png
-slot icon_512x512@2x   mac1024.png
 
-# appstore1024.png is deliberately unused here: it is the opaque, full-bleed
-# square the App Store wants, which is the wrong shape for a .icns.
+# No 512x512@2x slice, same as Key54. That one rendering is ~940KB — most of the
+# .icns on its own — and only the App Store and Finder's maximum Get Info zoom
+# ever ask for it. A background agent with no Dock icon renders neither, so it is
+# weight with nothing on the other side of the scale. mac1024.png stays in the set
+# because it is part of the artwork; it just isn't packed.
+#
+# appstore1024.png is unused here for a different reason: it is the opaque,
+# full-bleed square the App Store wants, which is the wrong shape for a .icns.
 
 iconutil -c icns "$ICONSET" -o AppIcon.icns
 rm -rf "$(dirname "$ICONSET")"
