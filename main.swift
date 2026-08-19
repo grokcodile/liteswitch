@@ -727,12 +727,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// blocks a second rewrite, and it blocks dictation arming: start talking
     /// mid-rewrite and the pending paste lands in the middle of the new
     /// utterance, which is how text came back doubled and jumbled.
+    /// No watchdog alongside it any more. There used to be one here — a 20s
+    /// timer insuring against `rewriteText` never calling back at all — but
+    /// `rewriteText` now guarantees that itself (see `rewriteTimeout`), and having
+    /// both was worse than having one: the 20s figure was invisible to the HUD
+    /// and, measured directly, too short for a real rewrite besides, so it could
+    /// silently reset this flag while a legitimate request was still in flight.
     private var rewriting = false
-    /// Insurance for the flag above. The model call has no timeout of its own, so
-    /// without this one hung request would leave `rewriting` set and the hold key
-    /// dead until the app restarts. Long enough not to fire during a normal
-    /// rewrite; short enough that a wedge recovers on its own.
-    private var rewriteWatchdog: DispatchWorkItem?
     /// Which set the chooser landed on, read straight after the menu closes.
     private var pendingActionChoice: Int?
     /// Dictation lags speech, so the stop is deferred — this is the pending one,
@@ -1555,7 +1556,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         hud.showProcessing()
-        rewriteText(text, instructions: instructions, prose: prose) { [weak self] result in
+        rewriteText(text, instructions: instructions, prose: prose) { [weak self] result, timedOut in
             guard let self else { return }
             guard let result else {
                 self.endRewriting()
@@ -1564,9 +1565,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 //
                 // Not the red warning triangle the other failures use either.
                 // Those are things you have to go and fix; this one is the model
-                // shrugging, and your text is exactly where you left it.
-                self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
-                                     tint: nil)
+                // shrugging, and your text is exactly where you left it. A
+                // timeout gets its own honest label rather than folding into
+                // that: nothing was refused, this app just stopped waiting.
+                if timedOut {
+                    self.hud.showMessage("Took Too Long", symbol: "clock.badge.exclamationmark",
+                                         tint: nil)
+                } else {
+                    self.hud.showMessage("Unchanged", symbol: "questionmark.circle.fill",
+                                         tint: nil)
+                }
                 Self.restoreClipboard(saved, on: pb)
                 return
             }
@@ -1579,15 +1587,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // which appended the rewrite to the text it was meant to replace.
             // This is what the dictation path has always done, and why that one
             // never had the bug.
+            //
+            // Nothing after this call: pasteOverVerifiedSelection owns the HUD
+            // message, the clipboard and endRewriting() completely, for both of
+            // its outcomes. This used to also show "Rewritten" and schedule its
+            // own restore-and-end unconditionally, racing whatever that function
+            // decided — so a selection that had moved got "Rewritten" shown for
+            // a paste that never happened, and a successful one could have its
+            // clipboard restored to the old text before the ⌘V it just posted
+            // had actually landed in the target app.
             self.pasteOverVerifiedSelection(outgoing, matching: text, on: pb, saved: saved)
-            self.hud.showMessage("Rewritten", symbol: "checkmark.circle.fill", tint: nil)
-            // Give the paste a moment to land before handing the clipboard back —
-            // and only release the hold key once it has, since that paste is the
-            // thing a new dictation would otherwise land in the middle of.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                Self.restoreClipboard(saved, on: pb)
-                self.endRewriting()
-            }
         }
     }
 
@@ -1649,6 +1658,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Written through setClipboardQuietly, so it carries the transient markers
     /// clipboard managers watch for: there to paste, not filed as a copy.
     private func pasteRewrite(_ outgoing: String, on pb: NSPasteboard) {
+        hud.showMessage("Rewritten", symbol: "checkmark.circle.fill", tint: nil)
         Self.setClipboardQuietly(outgoing, on: pb)
         post(CGKeyCode(kVK_ANSI_V), .maskCommand)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
@@ -1865,9 +1875,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return Double(before.filter { after.contains($0) }.count) / Double(before.count) < 0.5
     }
 
+    /// How long a rewrite gets before this app gives up on it and says so.
+    ///
+    /// The model call has no timeout of its own, so before this existed the only
+    /// backstop was a 20s watchdog that reset the reentrancy flag without telling
+    /// the HUD anything — the pill just sat on "processing" until something else
+    /// happened to supersede it. Worse, that watchdog's own doc comment called
+    /// 20s "long enough not to fire during a normal rewrite," and that turned out
+    /// to be false: measured directly against this machine's on-device model, a
+    /// short selection answers in under a second, but a ~3,600-character one took
+    /// 27s in one run against 14s for a ~6,600-character one in another. The
+    /// spread is real, not an artifact of size alone, so the number has to be
+    /// generous rather than tight. Forty-five seconds clears everything measured
+    /// with real headroom, while still being a wait a person notices rather than
+    /// nothing happening forever.
+    ///
+    /// Verified directly, not assumed: cancelling the Task mid-flight throws
+    /// CancellationError out of `session.respond` and the call actually stops —
+    /// this is a real cancellation, not a timeout that walks away while the
+    /// model keeps working unseen. Racing a task and only ever *reading* its
+    /// result without cancelling it does not stop it; a stray success from that
+    /// abandoned work arriving later and pasting into whatever is now focused was
+    /// the failure mode worth designing out here, not just the visible hang.
+    private static let rewriteTimeout: TimeInterval = 45
+
     /// Run `text` through Apple Intelligence's on-device model with the saved
     /// instructions. Nothing leaves the Mac. `done` is called on the main queue,
-    /// with nil if the model is unavailable or refuses.
+    /// with nil if the model is unavailable or refuses, and `timedOut` true only
+    /// when `rewriteTimeout` above is what ended it.
     /// By default the model is asked to fill a field rather than answer in
     /// prose, which is what stops refusals: there is nowhere in a `text` field to
     /// say "I cannot rewrite this". `prose` opts back out, and Clean Dictation is
@@ -1876,12 +1911,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// final stop and a quarter of the commas, where prose punctuated it
     /// properly. Punctuation is most of what cleaning up dictation is.
     func rewriteText(_ text: String, instructions: String, prose: Bool = false,
-                     done: @escaping (String?) -> Void) {
+                     done: @escaping (_ result: String?, _ timedOut: Bool) -> Void) {
         guard case .available = SystemLanguageModel.default.availability else {
-            DispatchQueue.main.async { done(nil) }
+            DispatchQueue.main.async { done(nil, false) }
             return
         }
-        Task {
+        let work = Task<String?, Never> {
             var output: String?
             do {
                 // Firm framing: without it the model tends to answer the text
@@ -1949,8 +1984,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // text is left alone.
             var result = output
             if let out = result, Self.isRefusal(out, for: text) { result = nil }
-            let final = result
-            await MainActor.run { done(final?.isEmpty == false ? final : nil) }
+            return result?.isEmpty == false ? result : nil
+        }
+
+        // Cancel the real work at the deadline rather than merely stop waiting on
+        // it — see the doc comment above for why that distinction is the whole
+        // point. Cancelled outright, not raced with a plain sleep, so a result
+        // that does slip through late is unambiguous: `work.isCancelled` is only
+        // ever true when this timer, specifically, is what ended it.
+        let giveUp = DispatchWorkItem { work.cancel() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.rewriteTimeout, execute: giveUp)
+
+        Task {
+            let result = await work.value
+            giveUp.cancel()   // no-op if it already fired; stops it firing late otherwise
+            await MainActor.run { done(result, work.isCancelled && result == nil) }
         }
     }
 
@@ -2263,21 +2311,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Claim the text for a rewrite's round trip. Every path that finishes with
     /// it — including the ones that give up — has to call `endRewriting`, or the
-    /// hold key stays dead until the watchdog fires.
+    /// hold key stays dead until `rewriteText`'s own timeout ends the call.
     private func beginRewriting() {
         rewriting = true
-        rewriteWatchdog?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.endRewriting() }
-        rewriteWatchdog = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: work)
     }
 
     /// Safe to call when no tidy is in flight, so the shared paths can call it
     /// unconditionally rather than each having to know how they were reached.
     private func endRewriting() {
         rewriting = false
-        rewriteWatchdog?.cancel()
-        rewriteWatchdog = nil
     }
 
     /// Stop, and nothing else.
